@@ -36,8 +36,8 @@ export function Dashboard({ accounts, reelSnapshots, followerSnapshots }: Props)
   const monthLabel = currentMonthLabel();
   const currentTotal = metric === 'views' ? stats.totalReelViews : stats.totalFollowers;
   const recorded = bars.filter((bar) => !bar.isFuture && bar.value > 0);
-  const monthGain =
-    recorded.length >= 2 ? recorded[recorded.length - 1].value - recorded[0].value : 0;
+  const hasMonthGain = recorded.length >= 2;
+  const monthGain = hasMonthGain ? recorded[recorded.length - 1].value - recorded[0].value : 0;
 
   const chartColor = metric === 'views' ? '#6366f1' : '#14b8a6';
 
@@ -85,10 +85,12 @@ export function Dashboard({ accounts, reelSnapshots, followerSnapshots }: Props)
 
         <div className="trend-chart__summary">
           <strong>{formatCount(currentTotal)}</strong>
-          <span className={monthGain > 0 ? 'delta delta--up' : monthGain < 0 ? 'delta delta--down' : 'delta'}>
-            {monthGain > 0 ? '+' : ''}
-            {formatCount(monthGain)} this month
-          </span>
+          {hasMonthGain && (
+            <span className={monthGain > 0 ? 'delta delta--up' : monthGain < 0 ? 'delta delta--down' : 'delta'}>
+              {monthGain > 0 ? '+' : ''}
+              {formatCount(monthGain)} this month
+            </span>
+          )}
         </div>
 
         <BarChart bars={bars} color={chartColor} />
