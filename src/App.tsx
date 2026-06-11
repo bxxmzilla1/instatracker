@@ -63,6 +63,7 @@ export default function App() {
   const [accountsLoading, setAccountsLoading] = useState(false);
   const [view, setView] = useState<'dashboard' | 'accounts' | 'employee'>('dashboard');
   const [showCredentials, setShowCredentials] = useState(false);
+  const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
   const [session, setSession] = useState<Session | null>(() => loadSession());
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [employeesOpen, setEmployeesOpen] = useState(true);
@@ -718,12 +719,12 @@ export default function App() {
                   </h3>
                   <div className="story-strip">
                     {selectedAccount.stories.map((story) => (
-                      <a
+                      <button
                         key={story.id}
+                        type="button"
                         className="story-thumb"
-                        href={`https://www.instagram.com/stories/${selectedAccount.username}/`}
-                        target="_blank"
-                        rel="noreferrer"
+                        onClick={() => story.thumbnailUrl && setFullscreenImage(story.thumbnailUrl)}
+                        disabled={!story.thumbnailUrl}
                       >
                         {story.thumbnailUrl ? (
                           <img src={proxiedImage(story.thumbnailUrl)} alt="Story" loading="lazy" />
@@ -731,7 +732,7 @@ export default function App() {
                           <span className="story-thumb__placeholder">▶</span>
                         )}
                         {story.isVideo && <span className="story-thumb__badge">▶</span>}
-                      </a>
+                      </button>
                     ))}
                   </div>
                 </div>
@@ -780,6 +781,25 @@ export default function App() {
               </p>
               <AccountCredentials account={selectedAccount} onSave={handleSaveCredentials} />
             </div>
+          </div>
+        )}
+
+        {fullscreenImage && (
+          <div className="lightbox" onClick={() => setFullscreenImage(null)}>
+            <button
+              type="button"
+              className="lightbox__close"
+              onClick={() => setFullscreenImage(null)}
+              aria-label="Close"
+            >
+              ✕
+            </button>
+            <img
+              className="lightbox__img"
+              src={proxiedImage(fullscreenImage)}
+              alt="Story"
+              onClick={(e) => e.stopPropagation()}
+            />
           </div>
         )}
 
