@@ -50,5 +50,20 @@ create index if not exists reel_snapshots_username_idx
   on reel_snapshots (username);
 
 -- This app uses the anon key from the browser. The passcode screen gates the UI.
--- Row Level Security is left disabled for simplicity (single-user personal tool).
--- For stricter access, enable RLS and add policies that match your auth setup.
+-- The app needs the anon role to read/write these tables. Run the block below so
+-- it works whether or not Row Level Security is enabled on your project.
+
+alter table accounts enable row level security;
+alter table follower_snapshots enable row level security;
+alter table reel_snapshots enable row level security;
+
+drop policy if exists "allow anon all" on accounts;
+drop policy if exists "allow anon all" on follower_snapshots;
+drop policy if exists "allow anon all" on reel_snapshots;
+
+create policy "allow anon all" on accounts
+  for all to anon using (true) with check (true);
+create policy "allow anon all" on follower_snapshots
+  for all to anon using (true) with check (true);
+create policy "allow anon all" on reel_snapshots
+  for all to anon using (true) with check (true);
