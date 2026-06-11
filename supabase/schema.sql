@@ -80,3 +80,16 @@ create policy "allow anon all" on reel_snapshots
   for all to anon using (true) with check (true);
 create policy "allow anon all" on employees
   for all to anon using (true) with check (true);
+
+-- Storage bucket for cached profile pictures, reel thumbnails, and story images.
+insert into storage.buckets (id, name, public)
+values ('media', 'media', true)
+on conflict (id) do nothing;
+
+drop policy if exists "media anon read" on storage.objects;
+drop policy if exists "media anon write" on storage.objects;
+
+create policy "media anon read" on storage.objects
+  for select to anon using (bucket_id = 'media');
+create policy "media anon write" on storage.objects
+  for all to anon using (bucket_id = 'media') with check (bucket_id = 'media');

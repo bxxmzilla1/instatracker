@@ -1,7 +1,12 @@
 export function proxiedImage(url?: string): string | undefined {
   if (!url) return undefined;
-  if (url.startsWith('/api/image')) return url;
-  return `/api/image?url=${encodeURIComponent(url)}`;
+  if (url.startsWith('data:') || url.startsWith('/api/image')) return url;
+  // Only Instagram CDN images need the server-side proxy (referrer/expiry).
+  if (/cdninstagram\.com|fbcdn\.net/i.test(url)) {
+    return `/api/image?url=${encodeURIComponent(url)}`;
+  }
+  // Already-cached (e.g. Supabase Storage) URLs load directly and fast.
+  return url;
 }
 
 export function formatCount(value: number): string {

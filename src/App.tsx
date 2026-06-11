@@ -22,6 +22,7 @@ import {
   updateAccount,
 } from './lib/db';
 import { latestByReel } from './lib/dashboard';
+import { cacheImage, imgKey } from './lib/media';
 import { formatCount, formatDate, proxiedImage } from './lib/format';
 import type {
   Employee,
@@ -204,19 +205,40 @@ export default function App() {
       const now = Date.now();
       const existing = accounts.find((a) => a.username === profile.username.toLowerCase());
       const defaultOwner = session?.role === 'employee' ? session.username : 'admin';
+      const handle = profile.username.toLowerCase();
+
+      // Cache all images into Supabase Storage so they load fast and never expire.
+      const [cachedProfilePic, cachedStories, cachedReels] = await Promise.all([
+        cacheImage(profile.profilePicUrl, `profiles/${imgKey(handle)}.jpg`),
+        Promise.all(
+          stories.map(async (story) => ({
+            ...story,
+            thumbnailUrl: await cacheImage(
+              story.thumbnailUrl,
+              `stories/${imgKey(handle)}-${imgKey(story.id)}.jpg`,
+            ),
+          })),
+        ),
+        Promise.all(
+          reels.map(async (reel) => ({
+            ...reel,
+            thumbnailUrl: await cacheImage(reel.thumbnailUrl, `reels/${imgKey(reel.id)}.jpg`),
+          })),
+        ),
+      ]);
 
       const account: TrackedAccount = {
-        username: profile.username.toLowerCase(),
+        username: handle,
         addedAt: existing?.addedAt ?? now,
         fullName: profile.fullName,
         bio: profile.biography,
-        profilePicUrl: profile.profilePicUrl,
+        profilePicUrl: cachedProfilePic,
         isVerified: profile.isVerified,
         lastFollowers: profile.followers,
         lastFollowing: profile.following,
         lastMediaCount: profile.mediaCount,
         lastCheckedAt: now,
-        stories,
+        stories: cachedStories,
         owner: existing?.owner ?? defaultOwner,
         loginUsername: existing?.loginUsername,
         loginPassword: existing?.loginPassword,
@@ -232,9 +254,9 @@ export default function App() {
         capturedAt: now,
       });
 
-      if (reels.length > 0) {
+      if (cachedReels.length > 0) {
         await saveReelSnapshots(
-          reels.map((reel) => ({
+          cachedReels.map((reel) => ({
             id: reel.id,
             username: account.username,
             shortcode: reel.shortcode,
