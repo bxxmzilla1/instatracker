@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import type { FollowerSnapshot, ReelSnapshot, TrackedAccount } from '../types';
 import {
   computeStats,
-  currentMonthLabel,
+  monthLabel,
   monthlyFollowerBars,
   monthlyReelViewBars,
 } from '../lib/dashboard';
@@ -19,21 +19,30 @@ type Metric = 'views' | 'followers';
 
 export function Dashboard({ accounts, reelSnapshots, followerSnapshots }: Props) {
   const [metric, setMetric] = useState<Metric>('views');
+  const [monthOffset, setMonthOffset] = useState(0);
 
   const stats = useMemo(
     () => computeStats(accounts, reelSnapshots),
     [accounts, reelSnapshots],
   );
 
+  const viewDate = useMemo(() => {
+    const d = new Date();
+    d.setDate(1);
+    d.setMonth(d.getMonth() + monthOffset);
+    return d;
+  }, [monthOffset]);
+  const year = viewDate.getFullYear();
+  const month = viewDate.getMonth();
+
   const bars = useMemo(
     () =>
       metric === 'views'
-        ? monthlyReelViewBars(reelSnapshots)
-        : monthlyFollowerBars(followerSnapshots),
-    [metric, reelSnapshots, followerSnapshots],
+        ? monthlyReelViewBars(reelSnapshots, year, month)
+        : monthlyFollowerBars(followerSnapshots, year, month),
+    [metric, reelSnapshots, followerSnapshots, year, month],
   );
 
-  const monthLabel = currentMonthLabel();
   const currentTotal = metric === 'views' ? stats.totalReelViews : stats.totalFollowers;
   const recorded = bars.filter((bar) => !bar.isFuture && bar.value > 0);
   const hasMonthGain = recorded.length >= 2;
@@ -80,7 +89,26 @@ export function Dashboard({ accounts, reelSnapshots, followerSnapshots }: Props)
               Followers
             </button>
           </div>
-          <span className="dashboard__month">{monthLabel}</span>
+          <div className="month-nav">
+            <button
+              type="button"
+              className="month-nav__btn"
+              onClick={() => setMonthOffset((o) => o - 1)}
+              aria-label="Previous month"
+            >
+              ‹
+            </button>
+            <span className="month-nav__label">{monthLabel(year, month)}</span>
+            <button
+              type="button"
+              className="month-nav__btn"
+              onClick={() => setMonthOffset((o) => o + 1)}
+              disabled={monthOffset >= 0}
+              aria-label="Next month"
+            >
+              ›
+            </button>
+          </div>
         </div>
 
         <div className="trend-chart__summary">
@@ -93,7 +121,7 @@ export function Dashboard({ accounts, reelSnapshots, followerSnapshots }: Props)
           )}
         </div>
 
-        <BarChart bars={bars} color={chartColor} />
+        <BarChart bars={bars} color={chartColor} showValues />
       </div>
 
       <div className="dashboard__highlights">

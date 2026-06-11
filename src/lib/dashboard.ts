@@ -197,23 +197,35 @@ function buildMonthlyBars(rows: SeriesRow[], year?: number, month?: number): Day
   return bars;
 }
 
-export function monthlyReelViewBars(snapshots: ReelSnapshot[]): DayBar[] {
+export function monthlyReelViewBars(
+  snapshots: ReelSnapshot[],
+  year?: number,
+  month?: number,
+): DayBar[] {
   return buildMonthlyBars(
     snapshots.map((snapshot) => ({
       id: snapshot.id,
       capturedAt: snapshot.capturedAt,
       value: snapshot.views,
     })),
+    year,
+    month,
   );
 }
 
-export function monthlyFollowerBars(snapshots: FollowerSnapshot[]): DayBar[] {
+export function monthlyFollowerBars(
+  snapshots: FollowerSnapshot[],
+  year?: number,
+  month?: number,
+): DayBar[] {
   return buildMonthlyBars(
     snapshots.map((snapshot) => ({
       id: snapshot.username,
       capturedAt: snapshot.capturedAt,
       value: snapshot.followers,
     })),
+    year,
+    month,
   );
 }
 
