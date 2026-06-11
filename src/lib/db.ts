@@ -22,22 +22,38 @@ let dbPromise: Promise<IDBPDatabase<InstatrackerDB>> | null = null;
 
 function getDb() {
   if (!dbPromise) {
-    dbPromise = openDB<InstatrackerDB>('instatracker-v1', 1, {
-      upgrade(db) {
-        db.createObjectStore('accounts', { keyPath: 'username' });
-        const followerStore = db.createObjectStore('followerHistory', {
-          keyPath: 'capturedAt',
-          autoIncrement: true,
-        });
-        followerStore.createIndex('by-username', 'username');
-        followerStore.createIndex('by-date', 'capturedAt');
+    dbPromise = openDB<InstatrackerDB>('instatracker-v1', 2, {
+      upgrade(db, oldVersion) {
+        if (!db.objectStoreNames.contains('accounts')) {
+          db.createObjectStore('accounts', { keyPath: 'username' });
+        }
 
-        const reelStore = db.createObjectStore('reelSnapshots', {
-          keyPath: 'capturedAt',
-          autoIncrement: true,
-        });
-        reelStore.createIndex('by-username', 'username');
-        reelStore.createIndex('by-reel', 'id');
+        // v1 used `capturedAt` as the primary key, which collides when many
+        // reels share the same refresh timestamp. Recreate with autoIncrement.
+        if (oldVersion < 2) {
+          if (db.objectStoreNames.contains('followerHistory')) {
+            db.deleteObjectStore('followerHistory');
+          }
+          if (db.objectStoreNames.contains('reelSnapshots')) {
+            db.deleteObjectStore('reelSnapshots');
+          }
+        }
+
+        if (!db.objectStoreNames.contains('followerHistory')) {
+          const followerStore = db.createObjectStore('followerHistory', {
+            autoIncrement: true,
+          });
+          followerStore.createIndex('by-username', 'username');
+          followerStore.createIndex('by-date', 'capturedAt');
+        }
+
+        if (!db.objectStoreNames.contains('reelSnapshots')) {
+          const reelStore = db.createObjectStore('reelSnapshots', {
+            autoIncrement: true,
+          });
+          reelStore.createIndex('by-username', 'username');
+          reelStore.createIndex('by-reel', 'id');
+        }
       },
     });
   }
