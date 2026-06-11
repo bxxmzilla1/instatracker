@@ -71,7 +71,7 @@ export function ReelCard({ history, addedAt }: Props) {
         </div>
       </div>
       <button type="button" className="reel-card__stats" onClick={openStats}>
-        Monthly views
+        Views Stats
       </button>
       <a href={reelUrl} target="_blank" rel="noreferrer" className="reel-card__watch">
         Watch Reel
