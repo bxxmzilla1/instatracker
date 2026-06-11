@@ -26,14 +26,13 @@ export function ReelCard({ history }: Props) {
           />
         </a>
       )}
-      <div className="reel-card__header">
-        <span className="reel-card__code">/reel/{history.shortcode}</span>
-        {viewDelta && (
+      {viewDelta && (
+        <div className="reel-card__header">
           <span className={viewDelta.startsWith('+') ? 'delta delta--up' : viewDelta === '0' ? 'delta' : 'delta delta--down'}>
             {viewDelta} views
           </span>
-        )}
-      </div>
+        </div>
+      )}
 
       {history.caption && <p className="reel-card__caption">{history.caption}</p>}
       <div className="reel-card__metrics">
