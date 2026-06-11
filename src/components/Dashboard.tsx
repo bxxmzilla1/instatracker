@@ -73,11 +73,6 @@ export function Dashboard({ accounts, reelSnapshots, followerSnapshots }: Props)
 
   return (
     <section className="panel dashboard">
-      {selectedBar && (
-        <p className="dashboard__asof">
-          Showing data as of {monthLabel(year, month).split(' ')[0]} {selectedBar.day}
-        </p>
-      )}
       <div className="dashboard__stats">
         <div className="stat-card">
           <span className="stat-card__label">Total Followers</span>
@@ -111,20 +106,14 @@ export function Dashboard({ accounts, reelSnapshots, followerSnapshots }: Props)
             <button
               type="button"
               className={metric === 'views' ? 'toggle toggle--active' : 'toggle'}
-              onClick={() => {
-                setMetric('views');
-                setSelectedDay(null);
-              }}
+              onClick={() => setMetric('views')}
             >
               Reel Views
             </button>
             <button
               type="button"
               className={metric === 'followers' ? 'toggle toggle--active' : 'toggle'}
-              onClick={() => {
-                setMetric('followers');
-                setSelectedDay(null);
-              }}
+              onClick={() => setMetric('followers')}
             >
               Followers
             </button>
@@ -133,10 +122,7 @@ export function Dashboard({ accounts, reelSnapshots, followerSnapshots }: Props)
             <button
               type="button"
               className="month-nav__btn"
-              onClick={() => {
-                setMonthOffset((o) => o - 1);
-                setSelectedDay(null);
-              }}
+              onClick={() => setMonthOffset((o) => o - 1)}
               aria-label="Previous month"
             >
               ‹
@@ -145,10 +131,7 @@ export function Dashboard({ accounts, reelSnapshots, followerSnapshots }: Props)
             <button
               type="button"
               className="month-nav__btn"
-              onClick={() => {
-                setMonthOffset((o) => o + 1);
-                setSelectedDay(null);
-              }}
+              onClick={() => setMonthOffset((o) => o + 1)}
               disabled={monthOffset >= 0}
               aria-label="Next month"
             >

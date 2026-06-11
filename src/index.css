@@ -1115,13 +1115,6 @@ button:disabled {
 }
 
 /* Dashboard */
-.dashboard__asof {
-  margin: 0 0 0.75rem;
-  color: var(--accent);
-  font-size: 0.85rem;
-  font-weight: 600;
-}
-
 .dashboard__stats {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
@@ -1257,7 +1250,15 @@ button:disabled {
 }
 
 .bar-chart__col--clickable:hover .bar-chart__bar-wrap {
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--accent);
+}
+
+.bar-chart__col--clickable:hover .bar-chart__bar {
+  background: #000 !important;
+}
+
+.bar-chart__col--clickable:hover .bar-chart__value {
+  color: #000;
 }
 
 .bar-chart__col--selected .bar-chart__bar-wrap {
