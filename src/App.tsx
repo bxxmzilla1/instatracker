@@ -190,7 +190,7 @@ export default function App() {
 
       {!apiReady && (
         <div className="banner banner--warn">
-          Add your RapidAPI key to <code>.env</code> as <code>RAPIDAPI_KEY</code>, then restart the server.
+          Add <code>RAPIDAPI_KEY</code> in Vercel Environment Variables to enable reel tracking. Profile stats use Instagram directly.
         </div>
       )}
 

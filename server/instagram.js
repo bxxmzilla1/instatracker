@@ -1,7 +1,12 @@
 export const RAPIDAPI_HOST = 'instagram120.p.rapidapi.com';
 
+const WEB_PROFILE_URLS = [
+  'https://www.instagram.com/api/v1/users/web_profile_info/',
+  'https://i.instagram.com/api/v1/users/web_profile_info/',
+];
+
 export function normalizeUsername(username) {
-  return username.trim().replace(/^@/, '');
+  return username.trim().replace(/^@/, '').toLowerCase();
 }
 
 function extractApiError(data) {
@@ -38,11 +43,24 @@ function hasProfilePayload(data) {
   );
 }
 
+function buildWebHeaders(username) {
+  return {
+    accept: '*/*',
+    'accept-language': 'en-US,en;q=0.9',
+    'x-ig-app-id': '936619743392459',
+    'x-requested-with': 'XMLHttpRequest',
+    'user-agent':
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    referer: `https://www.instagram.com/${username}/`,
+    origin: 'https://www.instagram.com',
+  };
+}
+
 export async function callInstagram(endpoint, body) {
   const apiKey = process.env.RAPIDAPI_KEY;
 
   if (!apiKey) {
-    throw new Error('RAPIDAPI_KEY is not set. Add it to your environment variables.');
+    throw new Error('RAPIDAPI_KEY is not set. Add it in Vercel Environment Variables.');
   }
 
   const response = await fetch(`https://${RAPIDAPI_HOST}${endpoint}`, {
@@ -71,61 +89,89 @@ export async function callInstagram(endpoint, body) {
 
 async function fetchWebProfile(username) {
   const normalized = normalizeUsername(username);
-  const response = await fetch(
-    `https://www.instagram.com/api/v1/users/web_profile_info/?username=${encodeURIComponent(normalized)}`,
-    {
-      headers: {
-        'x-ig-app-id': '936619743392459',
-        'x-requested-with': 'XMLHttpRequest',
-        'user-agent': 'Mozilla/5.0',
-      },
-    },
-  );
-
-  const data = await response.json().catch(() => ({}));
-
-  if (!response.ok) {
-    if (response.status === 404) {
-      throw new Error(`@${normalized} was not found. Check the username or account visibility.`);
-    }
-    throw new Error(extractApiError(data) || `Profile lookup failed (${response.status})`);
-  }
-
-  if (!data?.data?.user) {
-    throw new Error(`@${normalized} was not found or the account is private.`);
-  }
-
-  return data;
-}
-
-export async function fetchInstagramProfile(username) {
-  const body = { username: normalizeUsername(username) };
-  const endpoints = ['/api/instagram/userInfo', '/api/instagram/profile'];
   let lastError = null;
 
-  for (const endpoint of endpoints) {
+  for (const baseUrl of WEB_PROFILE_URLS) {
     try {
-      const data = await callInstagram(endpoint, body);
+      const response = await fetch(
+        `${baseUrl}?username=${encodeURIComponent(normalized)}`,
+        { headers: buildWebHeaders(normalized) },
+      );
+
+      const data = await response.json().catch(() => ({}));
+
+      if (response.status === 404) {
+        throw new Error(`@${normalized} was not found. Check the username.`);
+      }
+
+      if (!response.ok) {
+        throw new Error(
+          extractApiError(data) || `Instagram profile lookup failed (${response.status})`,
+        );
+      }
+
+      if (data?.data?.user) {
+        return data;
+      }
+
+      throw new Error(`@${normalized} was not found or the account is private.`);
+    } catch (err) {
+      lastError = err;
+    }
+  }
+
+  throw lastError ?? new Error('Could not load profile from Instagram.');
+}
+
+async function fetchRapidApiProfile(username) {
+  const normalized = normalizeUsername(username);
+  const attempts = [
+    { endpoint: '/api/instagram/userInfo', body: { username: normalized } },
+    { endpoint: '/api/instagram/profile', body: { username: normalized } },
+    {
+      endpoint: '/api/instagram/profile',
+      body: { url: `https://www.instagram.com/${normalized}/` },
+    },
+  ];
+
+  let lastError = null;
+
+  for (const attempt of attempts) {
+    try {
+      const data = await callInstagram(attempt.endpoint, attempt.body);
       if (hasProfilePayload(data)) return data;
       lastError = new Error('Profile response did not include user data');
     } catch (err) {
       lastError = err;
-      const message = err.message?.toLowerCase() ?? '';
-      const retryable =
-        message.includes('download link') ||
-        message.includes('not found') ||
-        message.includes('no user') ||
-        message.includes('failed');
-
-      if (!retryable) throw err;
     }
   }
 
+  throw lastError ?? new Error('RapidAPI profile lookup failed.');
+}
+
+export async function fetchInstagramProfile(username) {
+  const errors = [];
+
   try {
     return await fetchWebProfile(username);
-  } catch (webError) {
-    throw lastError ?? webError;
+  } catch (err) {
+    errors.push(`Instagram: ${err.message}`);
   }
+
+  if (process.env.RAPIDAPI_KEY) {
+    try {
+      return await fetchRapidApiProfile(username);
+    } catch (err) {
+      errors.push(`RapidAPI: ${err.message}`);
+    }
+  } else {
+    errors.push('RapidAPI: RAPIDAPI_KEY is not configured');
+  }
+
+  throw new Error(
+    errors.join(' | ') ||
+      'Could not load profile. Verify the username is public and try again.',
+  );
 }
 
 export async function fetchInstagramReels(username, maxId) {
@@ -137,7 +183,9 @@ export async function fetchInstagramReels(username, maxId) {
   } catch (err) {
     const message = err.message?.toLowerCase() ?? '';
     if (message.includes('download link')) {
-      throw new Error('Reels could not be loaded right now. Profile data may still be available — try refresh again later.');
+      throw new Error(
+        'Reels could not be loaded right now. Profile data may still be available — try refresh again later.',
+      );
     }
     throw err;
   }
