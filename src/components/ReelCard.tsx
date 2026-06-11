@@ -49,16 +49,6 @@ export function ReelCard({ history }: Props) {
           <strong>{latest ? formatCount(latest.comments) : '—'}</strong>
         </div>
       </div>
-      {history.snapshots.length > 1 && (
-        <div className="sparkline" aria-hidden>
-          {history.snapshots.map((snap, i) => {
-            const max = Math.max(...history.snapshots.map((s) => s.views), 1);
-            const height = Math.max(12, Math.round((snap.views / max) * 100));
-            return <span key={i} style={{ height: `${height}%` }} />;
-          })}
-        </div>
-      )}
-
       <a href={reelUrl} target="_blank" rel="noreferrer" className="reel-card__watch">
         Watch Reel
       </a>
