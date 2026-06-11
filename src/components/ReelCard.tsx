@@ -6,9 +6,10 @@ import { BarChart } from './BarChart';
 
 interface Props {
   history: ReelHistory;
+  addedAt?: number;
 }
 
-export function ReelCard({ history }: Props) {
+export function ReelCard({ history, addedAt }: Props) {
   const latest = history.snapshots.at(-1);
   const [thumbError, setThumbError] = useState(false);
   const [showStats, setShowStats] = useState(false);
@@ -30,11 +31,11 @@ export function ReelCard({ history }: Props) {
     [history.snapshots, year, month],
   );
 
-  const postedDay = useMemo(() => {
-    if (!history.takenAt) return undefined;
-    const d = new Date(history.takenAt * 1000);
+  const addedDay = useMemo(() => {
+    if (!addedAt) return undefined;
+    const d = new Date(addedAt);
     return d.getFullYear() === year && d.getMonth() === month ? d.getDate() : undefined;
-  }, [history.takenAt, year, month]);
+  }, [addedAt, year, month]);
 
   function openStats() {
     setMonthOffset(0);
@@ -117,7 +118,7 @@ export function ReelCard({ history }: Props) {
               <span className="delta">total views</span>
             </div>
 
-            <BarChart bars={monthlyBars} postedDay={postedDay} showValues />
+            <BarChart bars={monthlyBars} markedDay={addedDay} markedLabel="added" showValues />
           </div>
         </div>
       )}

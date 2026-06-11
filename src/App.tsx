@@ -754,7 +754,11 @@ export default function App() {
                 ) : (
                   <div className="reel-grid">
                     {reelHistories.map((history) => (
-                      <ReelCard key={history.reelId} history={history} />
+                      <ReelCard
+                        key={history.reelId}
+                        history={history}
+                        addedAt={selectedAccount.addedAt}
+                      />
                     ))}
                   </div>
                 )}

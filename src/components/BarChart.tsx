@@ -4,11 +4,18 @@ import { formatCount } from '../lib/format';
 interface Props {
   bars: DayBar[];
   color?: string;
-  postedDay?: number;
+  markedDay?: number;
+  markedLabel?: string;
   showValues?: boolean;
 }
 
-export function BarChart({ bars, color = '#d4af37', postedDay, showValues }: Props) {
+export function BarChart({
+  bars,
+  color = '#d4af37',
+  markedDay,
+  markedLabel = 'added',
+  showValues,
+}: Props) {
   const max = Math.max(...bars.map((bar) => bar.value), 1);
 
   return (
@@ -16,15 +23,15 @@ export function BarChart({ bars, color = '#d4af37', postedDay, showValues }: Pro
       <div className="bar-chart__bars">
         {bars.map((bar) => {
           const height = bar.value > 0 ? Math.max(3, (bar.value / max) * 100) : 0;
-          const isPosted = postedDay === bar.day;
+          const isMarked = markedDay === bar.day;
           return (
             <div
               key={bar.day}
               className={`bar-chart__col ${bar.isToday ? 'bar-chart__col--today' : ''} ${
-                isPosted ? 'bar-chart__col--posted' : ''
+                isMarked ? 'bar-chart__col--posted' : ''
               }`}
               title={`Day ${bar.day}: ${formatCount(bar.value)} views${
-                isPosted ? ' · posted' : ''
+                isMarked ? ` · ${markedLabel}` : ''
               }${bar.isFuture ? ' (upcoming)' : ''}`}
             >
               <div className="bar-chart__bar-wrap">
@@ -37,7 +44,7 @@ export function BarChart({ bars, color = '#d4af37', postedDay, showValues }: Pro
                 />
               </div>
               <span className="bar-chart__label">{bar.day}</span>
-              {isPosted && <span className="bar-chart__posted">posted</span>}
+              {isMarked && <span className="bar-chart__posted">{markedLabel}</span>}
             </div>
           );
         })}
