@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { FollowerSnapshot, ReelSnapshot, TrackedAccount } from '../types';
 import {
+  computeCardStats,
   computeStats,
   monthLabel,
   monthlyFollowerBars,
@@ -44,28 +45,6 @@ export function Dashboard({ accounts, reelSnapshots, followerSnapshots }: Props)
     [metric, reelSnapshots, followerSnapshots, year, month],
   );
 
-  const currentTotal = metric === 'views' ? stats.totalReelViews : stats.totalFollowers;
-
-  const newAccountsThisMonth = useMemo(() => {
-    const now = new Date();
-    const y = now.getFullYear();
-    const m = now.getMonth();
-    return accounts.filter((account) => {
-      const d = new Date(account.addedAt);
-      return d.getFullYear() === y && d.getMonth() === m;
-    }).length;
-  }, [accounts]);
-
-  const bannedThisMonth = useMemo(() => {
-    const now = new Date();
-    const y = now.getFullYear();
-    const m = now.getMonth();
-    return accounts.filter((account) => {
-      if (!account.banned || !account.bannedAt) return false;
-      const d = new Date(account.bannedAt);
-      return d.getFullYear() === y && d.getMonth() === m;
-    }).length;
-  }, [accounts]);
   const recorded = bars.filter((bar) => !bar.isFuture && bar.value > 0);
   const hasMonthGain = recorded.length >= 2;
   const monthGain = hasMonthGain ? recorded[recorded.length - 1].value - recorded[0].value : 0;
@@ -75,36 +54,54 @@ export function Dashboard({ accounts, reelSnapshots, followerSnapshots }: Props)
   const selectedBar = selectedDay ? bars.find((b) => b.day === selectedDay) ?? null : null;
   const metricNoun = metric === 'views' ? 'views' : 'followers';
 
+  const asOf = selectedDay
+    ? new Date(year, month, selectedDay, 23, 59, 59, 999).getTime()
+    : undefined;
+
+  const card = useMemo(() => {
+    const windowStart = new Date(year, month, 1).getTime();
+    const windowEnd =
+      asOf ?? (monthOffset === 0 ? Date.now() : new Date(year, month + 1, 1).getTime() - 1);
+    return computeCardStats(accounts, reelSnapshots, followerSnapshots, asOf, windowStart, windowEnd);
+  }, [accounts, reelSnapshots, followerSnapshots, asOf, year, month, monthOffset]);
+
+  const currentTotal = metric === 'views' ? card.totalReelViews : card.totalFollowers;
+
   function toggleDay(day: number) {
     setSelectedDay((current) => (current === day ? null : day));
   }
 
   return (
     <section className="panel dashboard">
+      {selectedBar && (
+        <p className="dashboard__asof">
+          Showing data as of {monthLabel(year, month).split(' ')[0]} {selectedBar.day}
+        </p>
+      )}
       <div className="dashboard__stats">
         <div className="stat-card">
           <span className="stat-card__label">Total Followers</span>
-          <strong className="stat-card__value">{formatCount(stats.totalFollowers)}</strong>
+          <strong className="stat-card__value">{formatCount(card.totalFollowers)}</strong>
         </div>
         <div className="stat-card">
           <span className="stat-card__label">Total Reel Views</span>
-          <strong className="stat-card__value">{formatCount(stats.totalReelViews)}</strong>
+          <strong className="stat-card__value">{formatCount(card.totalReelViews)}</strong>
         </div>
         <div className="stat-card">
           <span className="stat-card__label">Total Accounts</span>
-          <strong className="stat-card__value">{formatCount(stats.accountCount)}</strong>
+          <strong className="stat-card__value">{formatCount(card.totalAccounts)}</strong>
         </div>
         <div className="stat-card">
           <span className="stat-card__label">New Accounts</span>
-          <strong className="stat-card__value">{formatCount(newAccountsThisMonth)}</strong>
+          <strong className="stat-card__value">{formatCount(card.newAccounts)}</strong>
         </div>
         <div className="stat-card">
           <span className="stat-card__label">Banned Accounts</span>
-          <strong className="stat-card__value">{formatCount(bannedThisMonth)}</strong>
+          <strong className="stat-card__value">{formatCount(card.bannedAccounts)}</strong>
         </div>
         <div className="stat-card">
           <span className="stat-card__label">Total Reels</span>
-          <strong className="stat-card__value">{formatCount(stats.reelCount)}</strong>
+          <strong className="stat-card__value">{formatCount(card.totalReels)}</strong>
         </div>
       </div>
 

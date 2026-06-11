@@ -1115,6 +1115,13 @@ button:disabled {
 }
 
 /* Dashboard */
+.dashboard__asof {
+  margin: 0 0 0.75rem;
+  color: var(--accent);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
 .dashboard__stats {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));

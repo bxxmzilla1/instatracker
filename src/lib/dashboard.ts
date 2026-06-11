@@ -29,6 +29,82 @@ export interface DashboardStats {
   topReel?: TopReel;
 }
 
+export interface CardStats {
+  totalFollowers: number;
+  totalReelViews: number;
+  totalAccounts: number;
+  totalReels: number;
+  newAccounts: number;
+  bannedAccounts: number;
+}
+
+function latestUpTo<T extends { capturedAt: number }>(rows: T[], asOf?: number): T | undefined {
+  let best: T | undefined;
+  for (const row of rows) {
+    if (asOf !== undefined && row.capturedAt > asOf) continue;
+    if (!best || row.capturedAt >= best.capturedAt) best = row;
+  }
+  return best;
+}
+
+/**
+ * Computes the dashboard card values. When `asOf` is set, totals reflect the last
+ * saved data up to that timestamp; otherwise they reflect the latest known data.
+ * `windowStart`/`windowEnd` bound the New/Banned counts.
+ */
+export function computeCardStats(
+  accounts: TrackedAccount[],
+  reelSnapshots: ReelSnapshot[],
+  followerSnapshots: FollowerSnapshot[],
+  asOf: number | undefined,
+  windowStart: number,
+  windowEnd: number,
+): CardStats {
+  const reelGroups = new Map<string, ReelSnapshot[]>();
+  for (const snapshot of reelSnapshots) {
+    const arr = reelGroups.get(snapshot.id);
+    if (arr) arr.push(snapshot);
+    else reelGroups.set(snapshot.id, [snapshot]);
+  }
+
+  let totalReelViews = 0;
+  let totalReels = 0;
+  for (const snaps of reelGroups.values()) {
+    const latest = latestUpTo(snaps, asOf);
+    if (latest) {
+      totalReelViews += latest.views;
+      totalReels += 1;
+    }
+  }
+
+  let totalFollowers = 0;
+  if (asOf === undefined) {
+    totalFollowers = accounts.reduce((sum, account) => sum + (account.lastFollowers ?? 0), 0);
+  } else {
+    const followerGroups = new Map<string, FollowerSnapshot[]>();
+    for (const snapshot of followerSnapshots) {
+      const arr = followerGroups.get(snapshot.username);
+      if (arr) arr.push(snapshot);
+      else followerGroups.set(snapshot.username, [snapshot]);
+    }
+    for (const account of accounts) {
+      const latest = latestUpTo(followerGroups.get(account.username) ?? [], asOf);
+      if (latest) totalFollowers += latest.followers;
+    }
+  }
+
+  const totalAccounts =
+    asOf === undefined ? accounts.length : accounts.filter((a) => a.addedAt <= asOf).length;
+  const newAccounts = accounts.filter(
+    (a) => a.addedAt >= windowStart && a.addedAt <= windowEnd,
+  ).length;
+  const bannedAccounts = accounts.filter(
+    (a) => a.banned && a.bannedAt && a.bannedAt >= windowStart && a.bannedAt <= windowEnd,
+  ).length;
+
+  return { totalFollowers, totalReelViews, totalAccounts, totalReels, newAccounts, bannedAccounts };
+}
+
 export function latestByReel(snapshots: ReelSnapshot[]): ReelSnapshot[] {
   const map = new Map<string, ReelSnapshot>();
   for (const snapshot of snapshots) {
