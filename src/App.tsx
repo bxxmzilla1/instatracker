@@ -16,6 +16,7 @@ import {
   saveReelSnapshots,
   updateAccount,
 } from './lib/db';
+import { latestByReel } from './lib/dashboard';
 import { formatCount, formatDate, proxiedImage } from './lib/format';
 import type {
   FollowerSnapshot,
@@ -48,6 +49,14 @@ export default function App() {
   useEffect(() => {
     selectedUsernameRef.current = selectedUsername;
   }, [selectedUsername]);
+
+  const viewsByUsername = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const reel of latestByReel(allReelSnapshots)) {
+      map.set(reel.username, (map.get(reel.username) ?? 0) + reel.views);
+    }
+    return map;
+  }, [allReelSnapshots]);
 
   const loadAccounts = useCallback(async () => {
     const rows = await getAccounts();
@@ -284,6 +293,7 @@ export default function App() {
                   key={account.username}
                   account={account}
                   hasStory={Boolean(account.stories && account.stories.length > 0)}
+                  totalViews={viewsByUsername.get(account.username) ?? 0}
                   selected={account.username === selectedUsername}
                   refreshing={refreshing === account.username}
                   followerDelta={
@@ -326,6 +336,10 @@ export default function App() {
                 <div className="metric-card">
                   <span>Posts</span>
                   <strong>{selectedAccount.lastMediaCount !== undefined ? formatCount(selectedAccount.lastMediaCount) : '—'}</strong>
+                </div>
+                <div className="metric-card">
+                  <span>Reel Views</span>
+                  <strong>{formatCount(viewsByUsername.get(selectedAccount.username) ?? 0)}</strong>
                 </div>
                 <div className="metric-card">
                   <span>Last check</span>

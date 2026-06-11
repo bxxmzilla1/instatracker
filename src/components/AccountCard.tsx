@@ -5,6 +5,7 @@ import { formatCount, formatDelta, formatRelative, proxiedImage } from '../lib/f
 interface Props {
   account: TrackedAccount;
   followerDelta?: number;
+  totalViews?: number;
   selected?: boolean;
   refreshing?: boolean;
   hasStory?: boolean;
@@ -16,6 +17,7 @@ interface Props {
 export function AccountCard({
   account,
   followerDelta,
+  totalViews,
   selected,
   refreshing,
   hasStory,
@@ -57,6 +59,9 @@ export function AccountCard({
                 {delta}
               </span>
             )}
+          </div>
+          <div className="account-card__stats">
+            <span>{formatCount(totalViews ?? 0)} reel views</span>
           </div>
           {account.lastCheckedAt && (
             <p className="account-card__meta">Updated {formatRelative(account.lastCheckedAt)}</p>
