@@ -84,9 +84,8 @@ export function Dashboard({ accounts, reelSnapshots, followerSnapshots, employee
   const employeeCardValue = useMemo(() => {
     if (!employees) return null;
     if (selectedDay) {
-      const dayStart = new Date(year, month, selectedDay, 0, 0, 0, 0).getTime();
       const dayEnd = new Date(year, month, selectedDay, 23, 59, 59, 999).getTime();
-      return employees.filter((e) => e.createdAt >= dayStart && e.createdAt <= dayEnd).length;
+      return employees.filter((e) => e.createdAt <= dayEnd).length;
     }
     return employees.length;
   }, [employees, selectedDay, year, month]);
@@ -112,9 +111,7 @@ export function Dashboard({ accounts, reelSnapshots, followerSnapshots, employee
         </div>
         {employees && (
           <div className="stat-card">
-            <span className="stat-card__label">
-              {selectedBar ? 'New Employees' : 'Total Employees'}
-            </span>
+            <span className="stat-card__label">Total Employees</span>
             <strong className="stat-card__value">{formatCount(employeeCardValue ?? 0)}</strong>
           </div>
         )}
