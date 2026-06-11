@@ -3,6 +3,7 @@ import type { FollowerSnapshot, ReelSnapshot, TrackedAccount } from '../types';
 import {
   computeCardStats,
   computeStats,
+  countNewReels,
   dailyFollowerBars,
   dailyReelViewBars,
   monthLabel,
@@ -69,6 +70,7 @@ export function Dashboard({ accounts, reelSnapshots, followerSnapshots }: Props)
         bannedAccounts: accounts.filter(
           (a) => a.banned && a.bannedAt && a.bannedAt >= dayStart && a.bannedAt <= dayEnd,
         ).length,
+        newReels: countNewReels(reelSnapshots, dayStart, dayEnd),
       };
     }
     const windowStart = new Date(year, month, 1).getTime();
@@ -108,6 +110,10 @@ export function Dashboard({ accounts, reelSnapshots, followerSnapshots }: Props)
         <div className="stat-card">
           <span className="stat-card__label">Total Reels</span>
           <strong className="stat-card__value">{formatCount(card.totalReels)}</strong>
+        </div>
+        <div className="stat-card">
+          <span className="stat-card__label">New Reels</span>
+          <strong className="stat-card__value">{formatCount(card.newReels)}</strong>
         </div>
       </div>
 

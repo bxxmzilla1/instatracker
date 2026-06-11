@@ -36,6 +36,27 @@ export interface CardStats {
   totalReels: number;
   newAccounts: number;
   bannedAccounts: number;
+  newReels: number;
+}
+
+/** Counts reels whose first captured snapshot falls within [start, end]. */
+export function countNewReels(
+  reelSnapshots: ReelSnapshot[],
+  start: number,
+  end: number,
+): number {
+  const firstSeen = new Map<string, number>();
+  for (const snapshot of reelSnapshots) {
+    const current = firstSeen.get(snapshot.id);
+    if (current === undefined || snapshot.capturedAt < current) {
+      firstSeen.set(snapshot.id, snapshot.capturedAt);
+    }
+  }
+  let count = 0;
+  for (const t of firstSeen.values()) {
+    if (t >= start && t <= end) count += 1;
+  }
+  return count;
 }
 
 function latestUpTo<T extends { capturedAt: number }>(rows: T[], asOf?: number): T | undefined {
@@ -101,8 +122,17 @@ export function computeCardStats(
   const bannedAccounts = accounts.filter(
     (a) => a.banned && a.bannedAt && a.bannedAt >= windowStart && a.bannedAt <= windowEnd,
   ).length;
+  const newReels = countNewReels(reelSnapshots, windowStart, windowEnd);
 
-  return { totalFollowers, totalReelViews, totalAccounts, totalReels, newAccounts, bannedAccounts };
+  return {
+    totalFollowers,
+    totalReelViews,
+    totalAccounts,
+    totalReels,
+    newAccounts,
+    bannedAccounts,
+    newReels,
+  };
 }
 
 export function latestByReel(snapshots: ReelSnapshot[]): ReelSnapshot[] {
