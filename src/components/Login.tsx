@@ -1,34 +1,17 @@
-import { FormEvent, useEffect, useState } from 'react';
-import { clearSavedCredentials, loadCredentials, saveCredentials } from '../lib/credentials';
+import { FormEvent, useState } from 'react';
 
 interface Props {
   onSuccess: () => void;
 }
 
 export function Login({ onSuccess }: Props) {
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [remember, setRemember] = useState(true);
+  const [passcode, setPasscode] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let active = true;
-    loadCredentials().then((creds) => {
-      if (active && creds) {
-        setUsername(creds.username);
-        setPassword(creds.password);
-        setRemember(true);
-      }
-    });
-    return () => {
-      active = false;
-    };
-  }, []);
-
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
-    if (!password.trim()) return;
+    if (!passcode.trim()) return;
 
     setLoading(true);
     setError(null);
@@ -37,21 +20,16 @@ export function Login({ onSuccess }: Props) {
       const response = await fetch('/api/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ password: passcode }),
       });
 
       if (response.ok) {
-        if (remember) {
-          await saveCredentials({ username, password });
-        } else {
-          await clearSavedCredentials();
-        }
         onSuccess();
         return;
       }
 
       const data = await response.json().catch(() => ({}));
-      setError(data.error || 'Incorrect credentials');
+      setError(data.error || 'Incorrect passcode');
     } catch {
       setError('Could not reach the server. Try again.');
     } finally {
@@ -72,39 +50,22 @@ export function Login({ onSuccess }: Props) {
           </span>
           <h1>Dr. Bossing</h1>
         </div>
-        <p className="login__subtitle">Sign in to continue</p>
-
-        <input
-          type="text"
-          className="login__input"
-          placeholder="Username"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          autoComplete="username"
-        />
+        <p className="login__subtitle">Enter your passcode to continue</p>
 
         <input
           type="password"
           className="login__input"
-          placeholder="Password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
+          placeholder="Passcode"
+          value={passcode}
+          onChange={(e) => setPasscode(e.target.value)}
+          autoFocus
           autoComplete="current-password"
         />
 
-        <label className="login__remember">
-          <input
-            type="checkbox"
-            checked={remember}
-            onChange={(e) => setRemember(e.target.checked)}
-          />
-          Save login credentials
-        </label>
-
         {error && <p className="login__error">{error}</p>}
 
-        <button type="submit" className="login__button" disabled={loading || !password.trim()}>
-          {loading ? 'Signing in…' : 'Sign in'}
+        <button type="submit" className="login__button" disabled={loading || !passcode.trim()}>
+          {loading ? 'Checking…' : 'Unlock'}
         </button>
       </form>
     </div>

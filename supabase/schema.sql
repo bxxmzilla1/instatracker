@@ -12,8 +12,14 @@ create table if not exists accounts (
   last_following bigint,
   last_media_count bigint,
   last_checked_at bigint,
-  stories jsonb default '[]'::jsonb
+  stories jsonb default '[]'::jsonb,
+  login_username text,
+  login_password text
 );
+
+-- If the accounts table already exists, add the credential columns:
+alter table accounts add column if not exists login_username text;
+alter table accounts add column if not exists login_password text;
 
 create table if not exists follower_snapshots (
   id bigint generated always as identity primary key,
@@ -42,14 +48,6 @@ create table if not exists reel_snapshots (
 
 create index if not exists reel_snapshots_username_idx
   on reel_snapshots (username);
-
--- Stores the saved login credentials (single row) when "Save login credentials" is on.
-create table if not exists credentials (
-  id bigint primary key,
-  username text,
-  password text,
-  updated_at bigint
-);
 
 -- This app uses the anon key from the browser. The passcode screen gates the UI.
 -- Row Level Security is left disabled for simplicity (single-user personal tool).

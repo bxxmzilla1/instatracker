@@ -558,6 +558,67 @@ button:disabled {
   margin-bottom: 1.5rem;
 }
 
+/* Account credentials */
+.cred-note {
+  margin: -0.5rem 0 0.85rem;
+  color: var(--faint);
+  font-size: 0.85rem;
+}
+
+.cred-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  max-width: 560px;
+}
+
+.cred-form__input {
+  flex: 1;
+  min-width: 180px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.7rem 0.9rem;
+  color: var(--text);
+  outline: none;
+}
+
+.cred-form__input:focus {
+  border-color: var(--accent);
+}
+
+.cred-form__password {
+  position: relative;
+  flex: 1;
+  min-width: 180px;
+  display: flex;
+}
+
+.cred-form__password .cred-form__input {
+  width: 100%;
+  padding-right: 3.5rem;
+}
+
+.cred-form__toggle {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  color: var(--muted);
+  padding: 0.3rem 0.55rem;
+  font-size: 0.8rem;
+}
+
+.cred-form__toggle:hover {
+  background: var(--surface-3);
+  color: var(--text);
+}
+
+.cred-form > button[type='submit'] {
+  flex-basis: 100%;
+}
+
 /* Stories */
 .story-pill {
   display: inline-block;

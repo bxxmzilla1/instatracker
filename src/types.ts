@@ -17,6 +17,8 @@ export interface TrackedAccount {
   lastMediaCount?: number;
   lastCheckedAt?: number;
   stories?: StoryPreview[];
+  loginUsername?: string;
+  loginPassword?: string;
 }
 
 export interface FollowerSnapshot {

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AddAccountForm } from './components/AddAccountForm';
 import { AccountCard } from './components/AccountCard';
+import { AccountCredentials } from './components/AccountCredentials';
 import { Dashboard } from './components/Dashboard';
 import { Login } from './components/Login';
 import { ReelCard } from './components/ReelCard';
@@ -147,10 +148,11 @@ export default function App() {
       }
 
       const now = Date.now();
+      const existing = accounts.find((a) => a.username === profile.username.toLowerCase());
 
       const account: TrackedAccount = {
         username: profile.username.toLowerCase(),
-        addedAt: accounts.find((a) => a.username === profile.username.toLowerCase())?.addedAt ?? now,
+        addedAt: existing?.addedAt ?? now,
         fullName: profile.fullName,
         bio: profile.biography,
         profilePicUrl: profile.profilePicUrl,
@@ -160,6 +162,8 @@ export default function App() {
         lastMediaCount: profile.mediaCount,
         lastCheckedAt: now,
         stories,
+        loginUsername: existing?.loginUsername,
+        loginPassword: existing?.loginPassword,
       };
 
       await updateAccount(account);
@@ -218,6 +222,17 @@ export default function App() {
     await loadAccounts();
     setSelectedUsername(normalized);
     await refreshAccount(normalized);
+  }
+
+  async function handleSaveCredentials(loginUsername: string, loginPassword: string) {
+    if (!selectedAccount) return;
+    const updated: TrackedAccount = {
+      ...selectedAccount,
+      loginUsername: loginUsername || undefined,
+      loginPassword: loginPassword || undefined,
+    };
+    await updateAccount(updated);
+    await loadAccounts();
   }
 
   async function handleRemove(username: string) {
@@ -470,6 +485,12 @@ export default function App() {
                   </div>
                 </div>
               )}
+
+              <div className="section-block">
+                <h3>Account credentials</h3>
+                <p className="cred-note">Stored privately for this account in your database.</p>
+                <AccountCredentials account={selectedAccount} onSave={handleSaveCredentials} />
+              </div>
 
               <div className="section-block">
                 <h3>Reels ({reelHistories.length})</h3>

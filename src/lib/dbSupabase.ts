@@ -19,6 +19,8 @@ interface AccountRow {
   last_media_count: number | null;
   last_checked_at: number | null;
   stories: unknown;
+  login_username: string | null;
+  login_password: string | null;
 }
 
 interface ReelRow {
@@ -54,6 +56,8 @@ function toAccount(row: AccountRow): TrackedAccount {
     lastMediaCount: row.last_media_count ?? undefined,
     lastCheckedAt: row.last_checked_at ?? undefined,
     stories: Array.isArray(row.stories) ? (row.stories as TrackedAccount['stories']) : [],
+    loginUsername: row.login_username ?? undefined,
+    loginPassword: row.login_password ?? undefined,
   };
 }
 
@@ -70,6 +74,8 @@ function fromAccount(account: TrackedAccount): AccountRow {
     last_media_count: account.lastMediaCount ?? null,
     last_checked_at: account.lastCheckedAt ?? null,
     stories: account.stories ?? [],
+    login_username: account.loginUsername ?? null,
+    login_password: account.loginPassword ?? null,
   };
 }
 
