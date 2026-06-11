@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import type { FollowerSnapshot, ReelSnapshot, TrackedAccount } from '../types';
+import type { Employee, FollowerSnapshot, ReelSnapshot, TrackedAccount } from '../types';
 import {
   computeCardStats,
   computeStats,
@@ -16,11 +16,12 @@ interface Props {
   accounts: TrackedAccount[];
   reelSnapshots: ReelSnapshot[];
   followerSnapshots: FollowerSnapshot[];
+  employees?: Employee[];
 }
 
 type Metric = 'views' | 'followers';
 
-export function Dashboard({ accounts, reelSnapshots, followerSnapshots }: Props) {
+export function Dashboard({ accounts, reelSnapshots, followerSnapshots, employees }: Props) {
   const [metric, setMetric] = useState<Metric>('views');
   const [monthOffset, setMonthOffset] = useState(0);
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
@@ -80,6 +81,16 @@ export function Dashboard({ accounts, reelSnapshots, followerSnapshots }: Props)
 
   const currentTotal = metric === 'views' ? card.totalReelViews : card.totalFollowers;
 
+  const employeeCardValue = useMemo(() => {
+    if (!employees) return null;
+    if (selectedDay) {
+      const dayStart = new Date(year, month, selectedDay, 0, 0, 0, 0).getTime();
+      const dayEnd = new Date(year, month, selectedDay, 23, 59, 59, 999).getTime();
+      return employees.filter((e) => e.createdAt >= dayStart && e.createdAt <= dayEnd).length;
+    }
+    return employees.length;
+  }, [employees, selectedDay, year, month]);
+
   function toggleDay(day: number) {
     setSelectedDay((current) => (current === day ? null : day));
   }
@@ -99,6 +110,14 @@ export function Dashboard({ accounts, reelSnapshots, followerSnapshots }: Props)
           <span className="stat-card__label">Total Accounts</span>
           <strong className="stat-card__value">{formatCount(card.totalAccounts)}</strong>
         </div>
+        {employees && (
+          <div className="stat-card">
+            <span className="stat-card__label">
+              {selectedBar ? 'New Employees' : 'Total Employees'}
+            </span>
+            <strong className="stat-card__value">{formatCount(employeeCardValue ?? 0)}</strong>
+          </div>
+        )}
         <div className="stat-card">
           <span className="stat-card__label">New Accounts</span>
           <strong className="stat-card__value">{formatCount(card.newAccounts)}</strong>
