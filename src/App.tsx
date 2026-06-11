@@ -42,6 +42,7 @@ export default function App() {
   const [allReelSnapshots, setAllReelSnapshots] = useState<ReelSnapshot[]>([]);
   const [allFollowerSnapshots, setAllFollowerSnapshots] = useState<FollowerSnapshot[]>([]);
   const [view, setView] = useState<'dashboard' | 'accounts'>('dashboard');
+  const [showCredentials, setShowCredentials] = useState(false);
   const [authed, setAuthed] = useState(
     () => localStorage.getItem('drbossing_auth') === '1',
   );
@@ -415,13 +416,22 @@ export default function App() {
                 <div>
                   <h2>@{selectedAccount.username}</h2>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => refreshAccount(selectedAccount.username)}
-                  disabled={refreshing === selectedAccount.username}
-                >
-                  {refreshing === selectedAccount.username ? 'Refreshing…' : 'Refresh now'}
-                </button>
+                <div className="detail-header__actions">
+                  <button
+                    type="button"
+                    className="btn--ghost"
+                    onClick={() => setShowCredentials(true)}
+                  >
+                    Credentials
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => refreshAccount(selectedAccount.username)}
+                    disabled={refreshing === selectedAccount.username}
+                  >
+                    {refreshing === selectedAccount.username ? 'Refreshing…' : 'Refresh now'}
+                  </button>
+                </div>
               </div>
 
               <div className="metric-grid">
@@ -491,12 +501,6 @@ export default function App() {
               )}
 
               <div className="section-block">
-                <h3>Account credentials</h3>
-                <p className="cred-note">Stored privately for this account in your database.</p>
-                <AccountCredentials account={selectedAccount} onSave={handleSaveCredentials} />
-              </div>
-
-              <div className="section-block">
                 <h3>Reels ({reelHistories.length})</h3>
                 {reelHistories.length === 0 ? (
                   <p className="empty-note">No reels captured yet. Refresh to pull the latest reels and view counts.</p>
@@ -518,6 +522,28 @@ export default function App() {
             </section>
             </div>
           </>
+        )}
+
+        {showCredentials && selectedAccount && (
+          <div className="modal" onClick={() => setShowCredentials(false)}>
+            <div className="modal__card" onClick={(e) => e.stopPropagation()}>
+              <div className="modal__head">
+                <h3>Account credentials</h3>
+                <button
+                  type="button"
+                  className="modal__close"
+                  onClick={() => setShowCredentials(false)}
+                  aria-label="Close"
+                >
+                  ✕
+                </button>
+              </div>
+              <p className="cred-note">
+                Stored privately for @{selectedAccount.username} in your database.
+              </p>
+              <AccountCredentials account={selectedAccount} onSave={handleSaveCredentials} />
+            </div>
+          </div>
         )}
       </main>
     </div>
