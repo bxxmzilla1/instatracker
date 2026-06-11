@@ -54,6 +54,17 @@ export function Dashboard({ accounts, reelSnapshots, followerSnapshots }: Props)
       return d.getFullYear() === y && d.getMonth() === m;
     }).length;
   }, [accounts]);
+
+  const bannedThisMonth = useMemo(() => {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = now.getMonth();
+    return accounts.filter((account) => {
+      if (!account.banned || !account.bannedAt) return false;
+      const d = new Date(account.bannedAt);
+      return d.getFullYear() === y && d.getMonth() === m;
+    }).length;
+  }, [accounts]);
   const recorded = bars.filter((bar) => !bar.isFuture && bar.value > 0);
   const hasMonthGain = recorded.length >= 2;
   const monthGain = hasMonthGain ? recorded[recorded.length - 1].value - recorded[0].value : 0;
@@ -78,6 +89,10 @@ export function Dashboard({ accounts, reelSnapshots, followerSnapshots }: Props)
         <div className="stat-card">
           <span className="stat-card__label">New Accounts</span>
           <strong className="stat-card__value">{formatCount(newAccountsThisMonth)}</strong>
+        </div>
+        <div className="stat-card">
+          <span className="stat-card__label">Banned Accounts</span>
+          <strong className="stat-card__value">{formatCount(bannedThisMonth)}</strong>
         </div>
         <div className="stat-card">
           <span className="stat-card__label">Total Reels</span>

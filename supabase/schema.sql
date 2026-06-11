@@ -22,6 +22,8 @@ alter table accounts add column if not exists login_username text;
 alter table accounts add column if not exists login_password text;
 alter table accounts add column if not exists auth_secret text;
 alter table accounts add column if not exists owner text;
+alter table accounts add column if not exists banned boolean default false;
+alter table accounts add column if not exists banned_at bigint;
 
 -- Employees (sub-accounts created by the admin).
 create table if not exists employees (

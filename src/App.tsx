@@ -244,6 +244,8 @@ export default function App() {
         loginUsername: existing?.loginUsername,
         loginPassword: existing?.loginPassword,
         authSecret: existing?.authSecret,
+        banned: existing?.banned,
+        bannedAt: existing?.bannedAt,
       };
 
       await updateAccount(account);
@@ -350,6 +352,18 @@ export default function App() {
       loginUsername: loginUsername || undefined,
       loginPassword: loginPassword || undefined,
       authSecret: authSecret || undefined,
+    };
+    await updateAccount(updated);
+    await loadAccounts();
+  }
+
+  async function handleToggleBanned() {
+    if (!selectedAccount) return;
+    const banned = !selectedAccount.banned;
+    const updated: TrackedAccount = {
+      ...selectedAccount,
+      banned,
+      bannedAt: banned ? Date.now() : undefined,
     };
     await updateAccount(updated);
     await loadAccounts();
@@ -670,6 +684,13 @@ export default function App() {
                     onClick={() => setShowCredentials(true)}
                   >
                     Credentials
+                  </button>
+                  <button
+                    type="button"
+                    className={selectedAccount.banned ? 'btn--danger-active' : 'btn--danger'}
+                    onClick={handleToggleBanned}
+                  >
+                    {selectedAccount.banned ? 'Banned ✓' : 'Banned'}
                   </button>
                   <button
                     type="button"

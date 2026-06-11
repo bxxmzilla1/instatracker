@@ -29,6 +29,8 @@ interface AccountRow {
   login_password: string | null;
   auth_secret: string | null;
   owner: string | null;
+  banned: boolean | null;
+  banned_at: number | null;
 }
 
 interface ReelRow {
@@ -69,6 +71,8 @@ function toAccount(row: AccountRow): TrackedAccount {
     loginPassword: row.login_password ?? undefined,
     authSecret: row.auth_secret ?? undefined,
     owner: row.owner ?? undefined,
+    banned: row.banned ?? undefined,
+    bannedAt: row.banned_at ?? undefined,
   };
 }
 
@@ -89,6 +93,8 @@ function fromAccount(account: TrackedAccount): AccountRow {
     login_password: account.loginPassword ?? null,
     auth_secret: account.authSecret ?? null,
     owner: account.owner ?? null,
+    banned: account.banned ?? false,
+    banned_at: account.bannedAt ?? null,
   };
 }
 

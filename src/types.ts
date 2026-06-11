@@ -32,6 +32,8 @@ export interface TrackedAccount {
   loginUsername?: string;
   loginPassword?: string;
   authSecret?: string;
+  banned?: boolean;
+  bannedAt?: number;
 }
 
 export interface FollowerSnapshot {

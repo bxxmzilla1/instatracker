@@ -379,6 +379,26 @@ button:disabled {
   background: var(--surface-3);
 }
 
+.btn--danger {
+  background: transparent;
+  color: var(--red);
+  border: 1px solid var(--red);
+}
+
+.btn--danger:hover {
+  background: rgba(248, 113, 113, 0.12);
+}
+
+.btn--danger-active {
+  background: var(--red);
+  color: #1a0a0a;
+  border: 1px solid var(--red);
+}
+
+.btn--danger-active:hover {
+  background: #ef4444;
+}
+
 /* Banners */
 .banner {
   padding: 0.85rem 1rem;
