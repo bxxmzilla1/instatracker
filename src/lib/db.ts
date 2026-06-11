@@ -98,6 +98,16 @@ export async function getFollowerHistory(username: string): Promise<FollowerSnap
   return rows.sort((a, b) => a.capturedAt - b.capturedAt);
 }
 
+export async function getAllReelSnapshots(): Promise<ReelSnapshot[]> {
+  const db = await getDb();
+  return db.getAll('reelSnapshots');
+}
+
+export async function getAllFollowerSnapshots(): Promise<FollowerSnapshot[]> {
+  const db = await getDb();
+  return db.getAll('followerHistory');
+}
+
 export async function saveReelSnapshots(snapshots: ReelSnapshot[]): Promise<void> {
   const db = await getDb();
   const tx = db.transaction('reelSnapshots', 'readwrite');

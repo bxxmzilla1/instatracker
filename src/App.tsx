@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AddAccountForm } from './components/AddAccountForm';
 import { AccountCard } from './components/AccountCard';
+import { Dashboard } from './components/Dashboard';
 import { ReelCard } from './components/ReelCard';
 import { checkHealth, fetchProfile, fetchReels, fetchStories } from './lib/api';
 import {
   addAccount,
   getAccounts,
+  getAllFollowerSnapshots,
+  getAllReelSnapshots,
   getFollowerHistory,
   getReelHistories,
   removeAccount,
@@ -18,6 +21,7 @@ import type {
   FollowerSnapshot,
   ParsedReel,
   ReelHistory,
+  ReelSnapshot,
   StoryPreview,
   TrackedAccount,
 } from './types';
@@ -32,6 +36,8 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
   const [apiReady, setApiReady] = useState(true);
+  const [allReelSnapshots, setAllReelSnapshots] = useState<ReelSnapshot[]>([]);
+  const [allFollowerSnapshots, setAllFollowerSnapshots] = useState<FollowerSnapshot[]>([]);
 
   const selectedAccount = useMemo(
     () => accounts.find((a) => a.username === selectedUsername) ?? null,
@@ -50,6 +56,15 @@ export default function App() {
       setSelectedUsername(rows[0].username);
     }
   }, [selectedUsername]);
+
+  const loadDashboardData = useCallback(async () => {
+    const [reels, followers] = await Promise.all([
+      getAllReelSnapshots(),
+      getAllFollowerSnapshots(),
+    ]);
+    setAllReelSnapshots(reels);
+    setAllFollowerSnapshots(followers);
+  }, []);
 
   const loadAccountDetails = useCallback(async (username: string) => {
     const [followers, reels] = await Promise.all([
@@ -70,6 +85,7 @@ export default function App() {
         const health = await checkHealth();
         setApiReady(health.hasKey);
         await loadAccounts();
+        await loadDashboardData();
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to initialize');
       } finally {
@@ -77,7 +93,7 @@ export default function App() {
       }
     }
     init();
-  }, [loadAccounts]);
+  }, [loadAccounts, loadDashboardData]);
 
   useEffect(() => {
     if (selectedUsername) {
@@ -157,6 +173,7 @@ export default function App() {
       }
 
       await loadAccounts();
+      await loadDashboardData();
       const isViewingThisAccount =
         !selectedUsernameRef.current || selectedUsernameRef.current === account.username;
       if (isViewingThisAccount) {
@@ -195,6 +212,7 @@ export default function App() {
     setSelectedUsername(remaining[0]?.username ?? null);
     setFollowerHistory([]);
     setReelHistories([]);
+    await loadDashboardData();
   }
 
   const previousFollowers = followerHistory.length > 1
@@ -223,6 +241,14 @@ export default function App() {
 
       {error && <div className="banner banner--error">{error}</div>}
       {warning && !error && <div className="banner banner--warn">{warning}</div>}
+
+      {accounts.length > 0 && (
+        <Dashboard
+          accounts={accounts}
+          reelSnapshots={allReelSnapshots}
+          followerSnapshots={allFollowerSnapshots}
+        />
+      )}
 
       <section className="panel">
         <h2>Add account</h2>
