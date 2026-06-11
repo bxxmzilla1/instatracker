@@ -117,8 +117,10 @@ export async function getReelHistories(username: string): Promise<ReelHistory[]>
       reelId: row.id,
       username: row.username,
       shortcode: row.shortcode,
+      thumbnailUrl: row.thumbnailUrl,
       snapshots: [],
     };
+    if (row.thumbnailUrl) existing.thumbnailUrl = row.thumbnailUrl;
     existing.snapshots.push({
       views: row.views,
       likes: row.likes,

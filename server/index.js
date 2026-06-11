@@ -8,6 +8,7 @@ import {
   fetchInstagramReels,
   hasValidApiKey,
 } from './instagram.js';
+import { fetchImage } from './image.js';
 
 dotenv.config();
 
@@ -44,6 +45,18 @@ app.post('/api/reels', async (req, res) => {
     res.json(data);
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/image', async (req, res) => {
+  try {
+    const { url } = req.query;
+    const { contentType, buffer } = await fetchImage(url);
+    res.set('Content-Type', contentType);
+    res.set('Cache-Control', 'public, max-age=86400');
+    res.send(buffer);
+  } catch (err) {
+    res.status(err.statusCode || 502).json({ error: err.message });
   }
 });
 

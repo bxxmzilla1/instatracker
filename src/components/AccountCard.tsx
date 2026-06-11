@@ -1,5 +1,6 @@
+import { useState } from 'react';
 import type { TrackedAccount } from '../types';
-import { formatCount, formatDelta, formatRelative } from '../lib/format';
+import { formatCount, formatDelta, formatRelative, proxiedImage } from '../lib/format';
 
 interface Props {
   account: TrackedAccount;
@@ -21,13 +22,20 @@ export function AccountCard({
   onRemove,
 }: Props) {
   const delta = formatDelta(account.lastFollowers ?? 0, followerDelta);
+  const [imgError, setImgError] = useState(false);
+  const showImage = Boolean(account.profilePicUrl) && !imgError;
 
   return (
     <article className={`account-card ${selected ? 'account-card--selected' : ''}`}>
       <button type="button" className="account-card__main" onClick={onSelect}>
         <div className="account-card__avatar">
-          {account.profilePicUrl ? (
-            <img src={account.profilePicUrl} alt="" loading="lazy" />
+          {showImage ? (
+            <img
+              src={proxiedImage(account.profilePicUrl)}
+              alt={`@${account.username}`}
+              loading="lazy"
+              onError={() => setImgError(true)}
+            />
           ) : (
             <span>{account.username.slice(0, 1).toUpperCase()}</span>
           )}
