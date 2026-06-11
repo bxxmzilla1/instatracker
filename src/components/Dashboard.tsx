@@ -39,14 +39,10 @@ export function Dashboard({ accounts, reelSnapshots, followerSnapshots }: Props)
   const monthGain =
     recorded.length >= 2 ? recorded[recorded.length - 1].value - recorded[0].value : 0;
 
-  const chartColor = metric === 'views' ? '#dd2a7b' : '#8134af';
+  const chartColor = metric === 'views' ? '#6366f1' : '#14b8a6';
 
   return (
     <section className="panel dashboard">
-      <div className="panel__head">
-        <h2>Dashboard</h2>
-      </div>
-
       <div className="dashboard__stats">
         <div className="stat-card">
           <span className="stat-card__label">Total Followers</span>

@@ -24,10 +24,7 @@ export function BarChart({ bars, color = '#dd2a7b' }: Props) {
               <div className="bar-chart__bar-wrap">
                 <span
                   className="bar-chart__bar"
-                  style={{
-                    height: `${height}%`,
-                    background: `linear-gradient(180deg, ${color}, ${color}55)`,
-                  }}
+                  style={{ height: `${height}%`, background: color }}
                 />
               </div>
               <span className="bar-chart__label">{showLabel ? bar.day : ''}</span>

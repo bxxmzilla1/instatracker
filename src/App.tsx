@@ -39,6 +39,7 @@ export default function App() {
   const [apiReady, setApiReady] = useState(true);
   const [allReelSnapshots, setAllReelSnapshots] = useState<ReelSnapshot[]>([]);
   const [allFollowerSnapshots, setAllFollowerSnapshots] = useState<FollowerSnapshot[]>([]);
+  const [view, setView] = useState<'dashboard' | 'accounts'>('dashboard');
 
   const selectedAccount = useMemo(
     () => accounts.find((a) => a.username === selectedUsername) ?? null,
@@ -233,55 +234,106 @@ export default function App() {
   }
 
   return (
-    <div className="app">
-      <header className="header">
-        <div>
-          <p className="eyebrow">Instagram analytics</p>
-          <h1>Instatracker</h1>
-          <p className="subtitle">Track followers and reel views over time</p>
+    <div className="app-shell">
+      <aside className="sidebar">
+        <div className="sidebar__brand">
+          <span className="sidebar__logo" aria-hidden>
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2">
+              <rect x="3" y="3" width="18" height="18" rx="5" />
+              <circle cx="12" cy="12" r="4" />
+              <circle cx="17.5" cy="6.5" r="1.2" fill="currentColor" stroke="none" />
+            </svg>
+          </span>
+          <span className="sidebar__name">Instatracker</span>
         </div>
-      </header>
 
-      {!apiReady && (
-        <div className="banner banner--warn">
-          Set <code>RAPIDAPI_KEY</code> in Vercel for the Instagram Followers/Following/Stories/Info API, then redeploy.
-        </div>
-      )}
+        <nav className="sidebar__nav">
+          <button
+            type="button"
+            className={view === 'dashboard' ? 'nav-item nav-item--active' : 'nav-item'}
+            onClick={() => setView('dashboard')}
+          >
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
+              <rect x="3" y="3" width="7" height="9" rx="1.5" />
+              <rect x="14" y="3" width="7" height="5" rx="1.5" />
+              <rect x="14" y="12" width="7" height="9" rx="1.5" />
+              <rect x="3" y="16" width="7" height="5" rx="1.5" />
+            </svg>
+            Dashboard
+          </button>
+          <button
+            type="button"
+            className={view === 'accounts' ? 'nav-item nav-item--active' : 'nav-item'}
+            onClick={() => setView('accounts')}
+          >
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="9" cy="8" r="3.2" />
+              <path d="M3.5 19c0-3 2.7-5 5.5-5s5.5 2 5.5 5" />
+              <path d="M16 5.2a3 3 0 0 1 0 5.6" />
+              <path d="M18 14c2.2.4 3.8 2.2 3.8 4.6" />
+            </svg>
+            Accounts
+            {accounts.length > 0 && <span className="nav-item__count">{accounts.length}</span>}
+          </button>
+        </nav>
+      </aside>
 
-      {error && <div className="banner banner--error">{error}</div>}
-      {warning && !error && <div className="banner banner--warn">{warning}</div>}
+      <main className="main">
+        <header className="topbar">
+          <h1>{view === 'dashboard' ? 'Dashboard' : 'Accounts'}</h1>
+          {view === 'accounts' && accounts.length > 0 && (
+            <button
+              type="button"
+              className="btn btn--ghost"
+              disabled={Boolean(refreshing)}
+              onClick={async () => {
+                for (const account of accounts) {
+                  await refreshAccount(account.username);
+                }
+              }}
+            >
+              Refresh all
+            </button>
+          )}
+        </header>
 
-      {accounts.length > 0 && (
-        <Dashboard
-          accounts={accounts}
-          reelSnapshots={allReelSnapshots}
-          followerSnapshots={allFollowerSnapshots}
-        />
-      )}
+        {!apiReady && (
+          <div className="banner banner--warn">
+            Set <code>RAPIDAPI_KEY</code> in Vercel for the Instagram Followers/Following/Stories/Info API, then redeploy.
+          </div>
+        )}
 
-      <section className="panel">
-        <h2>Add account</h2>
-        <AddAccountForm onAdd={handleAdd} disabled={!apiReady || Boolean(refreshing)} />
-      </section>
+        {error && <div className="banner banner--error">{error}</div>}
+        {warning && !error && <div className="banner banner--warn">{warning}</div>}
 
-      <div className="layout">
-        <section className="panel panel--sidebar">
+        {view === 'dashboard' &&
+          (accounts.length > 0 ? (
+            <Dashboard
+              accounts={accounts}
+              reelSnapshots={allReelSnapshots}
+              followerSnapshots={allFollowerSnapshots}
+            />
+          ) : (
+            <section className="panel empty-detail">
+              <h2>No accounts yet</h2>
+              <p>Go to Accounts to add an Instagram username and start tracking.</p>
+              <button type="button" className="btn" onClick={() => setView('accounts')}>
+                Go to Accounts
+              </button>
+            </section>
+          ))}
+
+        {view === 'accounts' && (
+          <>
+            <section className="panel">
+              <h2>Add account</h2>
+              <AddAccountForm onAdd={handleAdd} disabled={!apiReady || Boolean(refreshing)} />
+            </section>
+
+            <div className="layout">
+              <section className="panel panel--sidebar">
           <div className="panel__head">
             <h2>Tracked ({accounts.length})</h2>
-            {accounts.length > 0 && (
-              <button
-                type="button"
-                className="link-btn"
-                disabled={Boolean(refreshing)}
-                onClick={async () => {
-                  for (const account of accounts) {
-                    await refreshAccount(account.username);
-                  }
-                }}
-              >
-                Refresh all
-              </button>
-            )}
           </div>
 
           {accounts.length === 0 ? (
@@ -409,8 +461,11 @@ export default function App() {
               <p>Choose a tracked profile to see follower trends and reel performance.</p>
             </div>
           )}
-        </section>
-      </div>
+            </section>
+            </div>
+          </>
+        )}
+      </main>
     </div>
   );
 }
