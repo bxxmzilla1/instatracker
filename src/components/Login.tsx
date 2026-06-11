@@ -7,7 +7,7 @@ interface Props {
 }
 
 export function Login({ onSuccess }: Props) {
-  const [tab, setTab] = useState<'admin' | 'employee'>('admin');
+  const [tab, setTab] = useState<'admin' | 'employee'>('employee');
   const [passcode, setPasscode] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -77,16 +77,6 @@ export function Login({ onSuccess }: Props) {
         <div className="login__tabs">
           <button
             type="button"
-            className={tab === 'admin' ? 'login__tab login__tab--active' : 'login__tab'}
-            onClick={() => {
-              setTab('admin');
-              setError(null);
-            }}
-          >
-            Admin
-          </button>
-          <button
-            type="button"
             className={tab === 'employee' ? 'login__tab login__tab--active' : 'login__tab'}
             onClick={() => {
               setTab('employee');
@@ -94,6 +84,16 @@ export function Login({ onSuccess }: Props) {
             }}
           >
             Employee
+          </button>
+          <button
+            type="button"
+            className={tab === 'admin' ? 'login__tab login__tab--active' : 'login__tab'}
+            onClick={() => {
+              setTab('admin');
+              setError(null);
+            }}
+          >
+            Admin
           </button>
         </div>
 
