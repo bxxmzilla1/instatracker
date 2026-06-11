@@ -320,3 +320,106 @@ export function monthlyViewBarsForReel(
     month,
   );
 }
+
+/** Per-day gain (delta vs the previous day's cumulative total). */
+export function dailyGainBars(rows: SeriesRow[], year?: number, month?: number): DayBar[] {
+  const now = new Date();
+  const y = year ?? now.getFullYear();
+  const m = month ?? now.getMonth();
+  const isCurrent = y === now.getFullYear() && m === now.getMonth();
+  const isPast = y < now.getFullYear() || (y === now.getFullYear() && m < now.getMonth());
+  const daysInMonth = new Date(y, m + 1, 0).getDate();
+  const today = isCurrent ? now.getDate() : isPast ? daysInMonth : 0;
+
+  const byId = new Map<string, SeriesRow[]>();
+  for (const row of rows) {
+    const arr = byId.get(row.id);
+    if (arr) arr.push(row);
+    else byId.set(row.id, [row]);
+  }
+  const totalAsOf = (t: number) => {
+    let total = 0;
+    for (const snaps of byId.values()) {
+      const latest = latestUpTo(snaps, t);
+      if (latest) total += latest.value;
+    }
+    return total;
+  };
+
+  const bars: DayBar[] = [];
+  let prevTotal = totalAsOf(new Date(y, m, 1).getTime() - 1);
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    let value = 0;
+    if (day <= today) {
+      const endOfDay = new Date(y, m, day, 23, 59, 59, 999).getTime();
+      const total = totalAsOf(endOfDay);
+      value = total - prevTotal;
+      prevTotal = total;
+    }
+    bars.push({ day, value, isFuture: day > today, isToday: isCurrent && day === today });
+  }
+  return bars;
+}
+
+export function dailyReelViewBars(
+  snapshots: ReelSnapshot[],
+  year?: number,
+  month?: number,
+): DayBar[] {
+  return dailyGainBars(
+    snapshots.map((s) => ({ id: s.id, capturedAt: s.capturedAt, value: s.views })),
+    year,
+    month,
+  );
+}
+
+export function dailyFollowerBars(
+  snapshots: FollowerSnapshot[],
+  year?: number,
+  month?: number,
+): DayBar[] {
+  return dailyGainBars(
+    snapshots.map((s) => ({ id: s.username, capturedAt: s.capturedAt, value: s.followers })),
+    year,
+    month,
+  );
+}
+
+/** Cumulative totals as of a timestamp. */
+export function totalsAsOf(
+  accounts: TrackedAccount[],
+  reelSnapshots: ReelSnapshot[],
+  followerSnapshots: FollowerSnapshot[],
+  asOf: number,
+): { views: number; followers: number; reels: number; accounts: number } {
+  const reelGroups = new Map<string, ReelSnapshot[]>();
+  for (const s of reelSnapshots) {
+    const arr = reelGroups.get(s.id);
+    if (arr) arr.push(s);
+    else reelGroups.set(s.id, [s]);
+  }
+  let views = 0;
+  let reels = 0;
+  for (const snaps of reelGroups.values()) {
+    const latest = latestUpTo(snaps, asOf);
+    if (latest) {
+      views += latest.views;
+      reels += 1;
+    }
+  }
+
+  const followerGroups = new Map<string, FollowerSnapshot[]>();
+  for (const s of followerSnapshots) {
+    const arr = followerGroups.get(s.username);
+    if (arr) arr.push(s);
+    else followerGroups.set(s.username, [s]);
+  }
+  let followers = 0;
+  for (const account of accounts) {
+    const latest = latestUpTo(followerGroups.get(account.username) ?? [], asOf);
+    if (latest) followers += latest.followers;
+  }
+
+  const accountsCount = accounts.filter((a) => a.addedAt <= asOf).length;
+  return { views, followers, reels, accounts: accountsCount };
+}

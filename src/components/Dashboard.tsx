@@ -3,9 +3,10 @@ import type { FollowerSnapshot, ReelSnapshot, TrackedAccount } from '../types';
 import {
   computeCardStats,
   computeStats,
+  dailyFollowerBars,
+  dailyReelViewBars,
   monthLabel,
-  monthlyFollowerBars,
-  monthlyReelViewBars,
+  totalsAsOf,
 } from '../lib/dashboard';
 import { formatCount, proxiedImage } from '../lib/format';
 import { BarChart } from './BarChart';
@@ -40,30 +41,40 @@ export function Dashboard({ accounts, reelSnapshots, followerSnapshots }: Props)
   const bars = useMemo(
     () =>
       metric === 'views'
-        ? monthlyReelViewBars(reelSnapshots, year, month)
-        : monthlyFollowerBars(followerSnapshots, year, month),
+        ? dailyReelViewBars(reelSnapshots, year, month)
+        : dailyFollowerBars(followerSnapshots, year, month),
     [metric, reelSnapshots, followerSnapshots, year, month],
   );
 
-  const recorded = bars.filter((bar) => !bar.isFuture && bar.value > 0);
-  const hasMonthGain = recorded.length >= 2;
-  const monthGain = hasMonthGain ? recorded[recorded.length - 1].value - recorded[0].value : 0;
+  const monthGain = bars.reduce((sum, bar) => (bar.isFuture ? sum : sum + bar.value), 0);
+  const hasMonthGain = bars.some((bar) => !bar.isFuture && bar.value !== 0);
 
   const chartColor = metric === 'views' ? '#d4af37' : '#b8860b';
 
   const selectedBar = selectedDay ? bars.find((b) => b.day === selectedDay) ?? null : null;
   const metricNoun = metric === 'views' ? 'views' : 'followers';
 
-  const asOf = selectedDay
-    ? new Date(year, month, selectedDay, 23, 59, 59, 999).getTime()
-    : undefined;
-
   const card = useMemo(() => {
+    if (selectedDay) {
+      const dayStart = new Date(year, month, selectedDay, 0, 0, 0, 0).getTime();
+      const dayEnd = new Date(year, month, selectedDay, 23, 59, 59, 999).getTime();
+      const cur = totalsAsOf(accounts, reelSnapshots, followerSnapshots, dayEnd);
+      const prev = totalsAsOf(accounts, reelSnapshots, followerSnapshots, dayStart - 1);
+      return {
+        totalFollowers: cur.followers - prev.followers,
+        totalReelViews: cur.views - prev.views,
+        totalAccounts: cur.accounts,
+        totalReels: cur.reels,
+        newAccounts: accounts.filter((a) => a.addedAt >= dayStart && a.addedAt <= dayEnd).length,
+        bannedAccounts: accounts.filter(
+          (a) => a.banned && a.bannedAt && a.bannedAt >= dayStart && a.bannedAt <= dayEnd,
+        ).length,
+      };
+    }
     const windowStart = new Date(year, month, 1).getTime();
-    const windowEnd =
-      asOf ?? (monthOffset === 0 ? Date.now() : new Date(year, month + 1, 1).getTime() - 1);
-    return computeCardStats(accounts, reelSnapshots, followerSnapshots, asOf, windowStart, windowEnd);
-  }, [accounts, reelSnapshots, followerSnapshots, asOf, year, month, monthOffset]);
+    const windowEnd = monthOffset === 0 ? Date.now() : new Date(year, month + 1, 1).getTime() - 1;
+    return computeCardStats(accounts, reelSnapshots, followerSnapshots, undefined, windowStart, windowEnd);
+  }, [accounts, reelSnapshots, followerSnapshots, selectedDay, year, month, monthOffset]);
 
   const currentTotal = metric === 'views' ? card.totalReelViews : card.totalFollowers;
 
@@ -143,9 +154,12 @@ export function Dashboard({ accounts, reelSnapshots, followerSnapshots }: Props)
         <div className="trend-chart__summary">
           {selectedBar ? (
             <>
-              <strong>{formatCount(selectedBar.value)}</strong>
+              <strong>
+                {selectedBar.value > 0 ? '+' : ''}
+                {formatCount(selectedBar.value)}
+              </strong>
               <span className="delta">
-                {metricNoun} on {monthLabel(year, month).split(' ')[0]} {selectedBar.day}
+                {metricNoun} gained on {monthLabel(year, month).split(' ')[0]} {selectedBar.day}
               </span>
             </>
           ) : (
@@ -154,7 +168,7 @@ export function Dashboard({ accounts, reelSnapshots, followerSnapshots }: Props)
               {hasMonthGain && (
                 <span className={monthGain > 0 ? 'delta delta--up' : monthGain < 0 ? 'delta delta--down' : 'delta'}>
                   {monthGain > 0 ? '+' : ''}
-                  {formatCount(monthGain)} this month
+                  {formatCount(monthGain)} gained this month
                 </span>
               )}
             </>
