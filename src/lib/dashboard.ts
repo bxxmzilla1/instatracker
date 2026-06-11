@@ -208,3 +208,15 @@ export function monthlyFollowerBars(snapshots: FollowerSnapshot[]): DayBar[] {
     })),
   );
 }
+
+export function monthlyViewBarsForReel(
+  snapshots: { views: number; capturedAt: number }[],
+): DayBar[] {
+  return buildMonthlyBars(
+    snapshots.map((snapshot) => ({
+      id: 'reel',
+      capturedAt: snapshot.capturedAt,
+      value: snapshot.views,
+    })),
+  );
+}

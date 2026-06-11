@@ -644,6 +644,10 @@ button:disabled {
   padding: 1.5rem;
 }
 
+.modal__card--wide {
+  width: min(820px, 100%);
+}
+
 .modal__head {
   display: flex;
   align-items: center;
@@ -989,9 +993,26 @@ button:disabled {
   margin-bottom: 0.15rem;
 }
 
+.reel-card__stats {
+  display: block;
+  width: 100%;
+  margin-top: 0.85rem;
+  text-align: center;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.6rem 1rem;
+}
+
+.reel-card__stats:hover {
+  background: var(--surface-3);
+}
+
 .reel-card__watch {
   display: block;
-  margin-top: 0.85rem;
+  margin-top: 0.6rem;
   text-align: center;
   text-decoration: none;
   font-weight: 600;
