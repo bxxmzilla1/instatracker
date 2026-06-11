@@ -1250,15 +1250,16 @@ button:disabled {
 }
 
 .bar-chart__col--clickable:hover .bar-chart__bar-wrap {
-  background: var(--accent);
+  background: rgba(212, 175, 55, 0.08);
 }
 
 .bar-chart__col--clickable:hover .bar-chart__bar {
-  background: #000 !important;
+  filter: brightness(1.15);
+  box-shadow: 0 0 12px rgba(212, 175, 55, 0.45);
 }
 
 .bar-chart__col--clickable:hover .bar-chart__value {
-  color: #000;
+  color: var(--accent-hover);
 }
 
 .bar-chart__col--selected .bar-chart__bar-wrap {
