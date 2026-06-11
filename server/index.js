@@ -24,12 +24,13 @@ app.get('/api/health', (_req, res) => {
 });
 
 app.post('/api/login', (req, res) => {
-  const { passcode } = req.body ?? {};
+  const { passcode, password } = req.body ?? {};
+  const provided = typeof password === 'string' ? password : passcode;
   const expected = process.env.APP_PASSCODE || 'heavenzy1997@gmail.com';
-  if (typeof passcode === 'string' && passcode === expected) {
+  if (typeof provided === 'string' && provided === expected) {
     return res.json({ ok: true });
   }
-  return res.status(401).json({ ok: false, error: 'Incorrect passcode' });
+  return res.status(401).json({ ok: false, error: 'Incorrect credentials' });
 });
 
 app.post('/api/profile', async (req, res) => {

@@ -43,6 +43,14 @@ create table if not exists reel_snapshots (
 create index if not exists reel_snapshots_username_idx
   on reel_snapshots (username);
 
+-- Stores the saved login credentials (single row) when "Save login credentials" is on.
+create table if not exists credentials (
+  id bigint primary key,
+  username text,
+  password text,
+  updated_at bigint
+);
+
 -- This app uses the anon key from the browser. The passcode screen gates the UI.
 -- Row Level Security is left disabled for simplicity (single-user personal tool).
 -- For stricter access, enable RLS and add policies that match your auth setup.

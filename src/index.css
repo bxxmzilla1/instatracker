@@ -5,19 +5,20 @@
   color: var(--text);
   background: var(--bg);
 
-  --bg: #0c0d10;
-  --surface: #15171c;
-  --surface-2: #1a1d23;
-  --surface-3: #20242b;
-  --border: rgba(255, 255, 255, 0.07);
-  --border-strong: rgba(255, 255, 255, 0.14);
-  --text: #e6e8ec;
-  --muted: #9aa0aa;
-  --faint: #6b7280;
-  --accent: #6366f1;
-  --accent-hover: #535bf2;
-  --accent-soft: rgba(99, 102, 241, 0.14);
-  --green: #22c55e;
+  --bg: #050505;
+  --surface: #0f0f0f;
+  --surface-2: #161513;
+  --surface-3: #201d16;
+  --border: rgba(212, 175, 55, 0.12);
+  --border-strong: rgba(212, 175, 55, 0.35);
+  --text: #f5f1e6;
+  --muted: #b6ac96;
+  --faint: #8a8270;
+  --accent: #d4af37;
+  --accent-hover: #e6c453;
+  --accent-soft: rgba(212, 175, 55, 0.14);
+  --on-accent: #0a0a0a;
+  --green: #4ade80;
   --red: #f87171;
   --radius: 14px;
 }
@@ -135,7 +136,7 @@ code {
 
 .nav-item--active .nav-item__count {
   background: var(--accent);
-  color: white;
+  color: var(--on-accent);
 }
 
 .sidebar__lock {
@@ -190,6 +191,21 @@ code {
   border-color: var(--accent);
 }
 
+.login__remember {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.login__remember input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+}
+
 .login__error {
   margin: 0;
   color: var(--red);
@@ -225,7 +241,8 @@ button {
   border-radius: 10px;
   padding: 0.6rem 1rem;
   background: var(--accent);
-  color: white;
+  color: var(--on-accent);
+  font-weight: 600;
   cursor: pointer;
   transition: background 0.15s ease, opacity 0.15s ease;
 }
@@ -549,7 +566,7 @@ button:disabled {
   margin-left: 0.4rem;
   border-radius: 999px;
   background: var(--accent);
-  color: white;
+  color: var(--on-accent);
   font-size: 0.78rem;
   text-align: center;
   vertical-align: middle;
@@ -662,7 +679,7 @@ button:disabled {
   text-align: center;
   text-decoration: none;
   font-weight: 600;
-  color: white;
+  color: var(--on-accent);
   background: var(--accent);
   border-radius: 10px;
   padding: 0.6rem 1rem;
@@ -772,7 +789,7 @@ button:disabled {
 .toggle--active,
 .toggle--active:hover {
   background: var(--accent);
-  color: white;
+  color: var(--on-accent);
 }
 
 .dashboard__month {

@@ -9,11 +9,11 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['icon.svg'],
       manifest: {
-        name: 'Instatracker',
-        short_name: 'Instatracker',
+        name: 'Dr. Bossing',
+        short_name: 'Dr. Bossing',
         description: 'Track Instagram followers and reel views over time',
-        theme_color: '#0f0f12',
-        background_color: '#0f0f12',
+        theme_color: '#050505',
+        background_color: '#050505',
         display: 'standalone',
         start_url: '/',
         icons: [

@@ -42,7 +42,7 @@ export default function App() {
   const [allFollowerSnapshots, setAllFollowerSnapshots] = useState<FollowerSnapshot[]>([]);
   const [view, setView] = useState<'dashboard' | 'accounts'>('dashboard');
   const [authed, setAuthed] = useState(
-    () => localStorage.getItem('instatracker_auth') === '1',
+    () => localStorage.getItem('drbossing_auth') === '1',
   );
 
   const selectedAccount = useMemo(
@@ -238,7 +238,7 @@ export default function App() {
     return (
       <Login
         onSuccess={() => {
-          localStorage.setItem('instatracker_auth', '1');
+          localStorage.setItem('drbossing_auth', '1');
           setAuthed(true);
         }}
       />
@@ -246,11 +246,11 @@ export default function App() {
   }
 
   if (loading) {
-    return <div className="app app--centered"><p>Loading Instatracker…</p></div>;
+    return <div className="app app--centered"><p>Loading Dr. Bossing…</p></div>;
   }
 
   function handleLock() {
-    localStorage.removeItem('instatracker_auth');
+    localStorage.removeItem('drbossing_auth');
     setAuthed(false);
   }
 
@@ -265,7 +265,7 @@ export default function App() {
               <circle cx="17.5" cy="6.5" r="1.2" fill="currentColor" stroke="none" />
             </svg>
           </span>
-          <span className="sidebar__name">Instatracker</span>
+          <span className="sidebar__name">Dr. Bossing</span>
         </div>
 
         <nav className="sidebar__nav">

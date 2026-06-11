@@ -39,7 +39,7 @@ export function Dashboard({ accounts, reelSnapshots, followerSnapshots }: Props)
   const hasMonthGain = recorded.length >= 2;
   const monthGain = hasMonthGain ? recorded[recorded.length - 1].value - recorded[0].value : 0;
 
-  const chartColor = metric === 'views' ? '#6366f1' : '#14b8a6';
+  const chartColor = metric === 'views' ? '#d4af37' : '#b8860b';
 
   return (
     <section className="panel dashboard">

@@ -5,12 +5,13 @@ export default function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { passcode } = req.body ?? {};
+  const { passcode, password } = req.body ?? {};
+  const provided = typeof password === 'string' ? password : passcode;
   const expected = process.env.APP_PASSCODE || DEFAULT_PASSCODE;
 
-  if (typeof passcode === 'string' && passcode === expected) {
+  if (typeof provided === 'string' && provided === expected) {
     return res.status(200).json({ ok: true });
   }
 
-  return res.status(401).json({ ok: false, error: 'Incorrect passcode' });
+  return res.status(401).json({ ok: false, error: 'Incorrect credentials' });
 }

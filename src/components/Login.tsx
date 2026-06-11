@@ -1,17 +1,34 @@
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
+import { clearSavedCredentials, loadCredentials, saveCredentials } from '../lib/credentials';
 
 interface Props {
   onSuccess: () => void;
 }
 
 export function Login({ onSuccess }: Props) {
-  const [passcode, setPasscode] = useState('');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [remember, setRemember] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  useEffect(() => {
+    let active = true;
+    loadCredentials().then((creds) => {
+      if (active && creds) {
+        setUsername(creds.username);
+        setPassword(creds.password);
+        setRemember(true);
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
-    if (!passcode.trim()) return;
+    if (!password.trim()) return;
 
     setLoading(true);
     setError(null);
@@ -20,16 +37,21 @@ export function Login({ onSuccess }: Props) {
       const response = await fetch('/api/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ passcode }),
+        body: JSON.stringify({ username, password }),
       });
 
       if (response.ok) {
+        if (remember) {
+          await saveCredentials({ username, password });
+        } else {
+          await clearSavedCredentials();
+        }
         onSuccess();
         return;
       }
 
       const data = await response.json().catch(() => ({}));
-      setError(data.error || 'Incorrect passcode');
+      setError(data.error || 'Incorrect credentials');
     } catch {
       setError('Could not reach the server. Try again.');
     } finally {
@@ -48,24 +70,41 @@ export function Login({ onSuccess }: Props) {
               <circle cx="17.5" cy="6.5" r="1.2" fill="currentColor" stroke="none" />
             </svg>
           </span>
-          <h1>Instatracker</h1>
+          <h1>Dr. Bossing</h1>
         </div>
-        <p className="login__subtitle">Enter your passcode to continue</p>
+        <p className="login__subtitle">Sign in to continue</p>
+
+        <input
+          type="text"
+          className="login__input"
+          placeholder="Username"
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+          autoComplete="username"
+        />
 
         <input
           type="password"
           className="login__input"
-          placeholder="Passcode"
-          value={passcode}
-          onChange={(e) => setPasscode(e.target.value)}
-          autoFocus
+          placeholder="Password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
           autoComplete="current-password"
         />
 
+        <label className="login__remember">
+          <input
+            type="checkbox"
+            checked={remember}
+            onChange={(e) => setRemember(e.target.checked)}
+          />
+          Save login credentials
+        </label>
+
         {error && <p className="login__error">{error}</p>}
 
-        <button type="submit" className="login__button" disabled={loading || !passcode.trim()}>
-          {loading ? 'Checking…' : 'Unlock'}
+        <button type="submit" className="login__button" disabled={loading || !password.trim()}>
+          {loading ? 'Signing in…' : 'Sign in'}
         </button>
       </form>
     </div>
