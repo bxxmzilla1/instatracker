@@ -21,6 +21,7 @@ interface AccountRow {
   stories: unknown;
   login_username: string | null;
   login_password: string | null;
+  auth_secret: string | null;
 }
 
 interface ReelRow {
@@ -58,6 +59,7 @@ function toAccount(row: AccountRow): TrackedAccount {
     stories: Array.isArray(row.stories) ? (row.stories as TrackedAccount['stories']) : [],
     loginUsername: row.login_username ?? undefined,
     loginPassword: row.login_password ?? undefined,
+    authSecret: row.auth_secret ?? undefined,
   };
 }
 
@@ -76,6 +78,7 @@ function fromAccount(account: TrackedAccount): AccountRow {
     stories: account.stories ?? [],
     login_username: account.loginUsername ?? null,
     login_password: account.loginPassword ?? null,
+    auth_secret: account.authSecret ?? null,
   };
 }
 

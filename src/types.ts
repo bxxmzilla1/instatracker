@@ -19,6 +19,7 @@ export interface TrackedAccount {
   stories?: StoryPreview[];
   loginUsername?: string;
   loginPassword?: string;
+  authSecret?: string;
 }
 
 export interface FollowerSnapshot {

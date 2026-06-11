@@ -165,6 +165,7 @@ export default function App() {
         stories,
         loginUsername: existing?.loginUsername,
         loginPassword: existing?.loginPassword,
+        authSecret: existing?.authSecret,
       };
 
       await updateAccount(account);
@@ -229,12 +230,17 @@ export default function App() {
     }
   }
 
-  async function handleSaveCredentials(loginUsername: string, loginPassword: string) {
+  async function handleSaveCredentials(
+    loginUsername: string,
+    loginPassword: string,
+    authSecret: string,
+  ) {
     if (!selectedAccount) return;
     const updated: TrackedAccount = {
       ...selectedAccount,
       loginUsername: loginUsername || undefined,
       loginPassword: loginPassword || undefined,
+      authSecret: authSecret || undefined,
     };
     await updateAccount(updated);
     await loadAccounts();

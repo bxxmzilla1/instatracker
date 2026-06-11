@@ -20,6 +20,7 @@ create table if not exists accounts (
 -- If the accounts table already exists, add the credential columns:
 alter table accounts add column if not exists login_username text;
 alter table accounts add column if not exists login_password text;
+alter table accounts add column if not exists auth_secret text;
 
 create table if not exists follower_snapshots (
   id bigint generated always as identity primary key,
