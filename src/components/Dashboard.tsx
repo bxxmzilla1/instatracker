@@ -44,6 +44,16 @@ export function Dashboard({ accounts, reelSnapshots, followerSnapshots }: Props)
   );
 
   const currentTotal = metric === 'views' ? stats.totalReelViews : stats.totalFollowers;
+
+  const newAccountsThisMonth = useMemo(() => {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = now.getMonth();
+    return accounts.filter((account) => {
+      const d = new Date(account.addedAt);
+      return d.getFullYear() === y && d.getMonth() === m;
+    }).length;
+  }, [accounts]);
   const recorded = bars.filter((bar) => !bar.isFuture && bar.value > 0);
   const hasMonthGain = recorded.length >= 2;
   const monthGain = hasMonthGain ? recorded[recorded.length - 1].value - recorded[0].value : 0;
@@ -62,8 +72,12 @@ export function Dashboard({ accounts, reelSnapshots, followerSnapshots }: Props)
           <strong className="stat-card__value">{formatCount(stats.totalReelViews)}</strong>
         </div>
         <div className="stat-card">
-          <span className="stat-card__label">Accounts</span>
+          <span className="stat-card__label">Total Accounts</span>
           <strong className="stat-card__value">{formatCount(stats.accountCount)}</strong>
+        </div>
+        <div className="stat-card">
+          <span className="stat-card__label">New Accounts</span>
+          <strong className="stat-card__value">{formatCount(newAccountsThisMonth)}</strong>
         </div>
         <div className="stat-card">
           <span className="stat-card__label">Total Reels</span>
