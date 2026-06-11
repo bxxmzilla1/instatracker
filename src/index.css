@@ -382,6 +382,7 @@ button:disabled {
 
 .account-card--selected {
   border-color: var(--accent);
+  background: var(--accent-soft);
 }
 
 .account-card__main {
