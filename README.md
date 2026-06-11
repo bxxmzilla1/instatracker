@@ -6,11 +6,31 @@ Uses the [Instagram API Followers/Following/Stories/Info](https://rapidapi.com/h
 
 ## Features
 
+- Passcode-protected login screen
+- Sidebar dashboard with total followers, reel views, accounts, and a monthly bar chart
 - Add Instagram usernames to a watchlist
-- Track follower count over time with history charts
+- Track follower count and reel views over time
 - Fetch reels and monitor view, like, and comment counts
+- Top profile / top reel highlights
 - Installable PWA with offline UI support
-- Data stored locally in the browser (IndexedDB)
+- Data stored in **Supabase** (falls back to local browser storage if not configured)
+
+## Login passcode
+
+The app opens to a passcode screen. The passcode is verified server-side against the
+`APP_PASSCODE` environment variable, defaulting to `heavenzy1997@gmail.com`.
+Set `APP_PASSCODE` in Vercel to change it.
+
+## Supabase setup
+
+1. Create a project at [supabase.com](https://supabase.com).
+2. In **SQL Editor**, run the contents of [`supabase/schema.sql`](supabase/schema.sql).
+3. In **Project Settings → API**, copy the **Project URL** and the **anon public** key.
+4. Set these environment variables (locally in `.env`, and in Vercel):
+   - `VITE_SUPABASE_URL`
+   - `VITE_SUPABASE_ANON_KEY`
+
+If these are not set, the app automatically falls back to local browser storage (IndexedDB).
 
 ## Local development
 
@@ -29,6 +49,9 @@ Edit `.env`:
 
 ```
 RAPIDAPI_KEY=your_actual_key
+APP_PASSCODE=heavenzy1997@gmail.com
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
 ```
 
 ### 3. Run locally
@@ -63,10 +86,11 @@ Do not commit `.env` — it is already in `.gitignore`.
 1. Push this repo to GitHub.
 2. Go to [vercel.com/new](https://vercel.com/new) and import the repository.
 3. Vercel auto-detects the Vite app via `vercel.json`.
-4. Add an environment variable:
-   - **Name:** `RAPIDAPI_KEY`
-   - **Value:** your real RapidAPI key for **Instagram API Followers/Following/Stories/Info**
-   - **Environments:** Production, Preview, Development
+4. Add these environment variables (Production, Preview, Development):
+   - `RAPIDAPI_KEY` — your RapidAPI key for **Instagram API Followers/Following/Stories/Info**
+   - `APP_PASSCODE` — the login passcode (defaults to `heavenzy1997@gmail.com`)
+   - `VITE_SUPABASE_URL` — your Supabase project URL
+   - `VITE_SUPABASE_ANON_KEY` — your Supabase anon public key
 5. Click **Deploy**.
 6. Use your **production URL** (`instatracker.vercel.app`), not preview links. Preview URLs with Vercel Deployment Protection return 401 for PWA assets.
 

@@ -23,6 +23,15 @@ app.get('/api/health', (_req, res) => {
   res.json({ ok: true, hasKey: hasValidApiKey() });
 });
 
+app.post('/api/login', (req, res) => {
+  const { passcode } = req.body ?? {};
+  const expected = process.env.APP_PASSCODE || 'heavenzy1997@gmail.com';
+  if (typeof passcode === 'string' && passcode === expected) {
+    return res.json({ ok: true });
+  }
+  return res.status(401).json({ ok: false, error: 'Incorrect passcode' });
+});
+
 app.post('/api/profile', async (req, res) => {
   try {
     const { username } = req.body;
