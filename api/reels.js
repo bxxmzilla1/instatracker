@@ -1,4 +1,4 @@
-import { callInstagram, normalizeUsername } from '../server/instagram.js';
+import { fetchInstagramReels } from '../server/instagram.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -12,10 +12,7 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'username is required' });
     }
 
-    const body = { username: normalizeUsername(username) };
-    if (maxId) body.maxId = maxId;
-
-    const data = await callInstagram('/api/instagram/reels', body);
+    const data = await fetchInstagramReels(username, maxId);
     res.status(200).json(data);
   } catch (err) {
     res.status(500).json({ error: err.message });

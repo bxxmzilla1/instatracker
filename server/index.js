@@ -3,7 +3,11 @@ import dotenv from 'dotenv';
 import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { callInstagram, normalizeUsername } from './instagram.js';
+import {
+  fetchInstagramProfile,
+  fetchInstagramReels,
+  normalizeUsername,
+} from './instagram.js';
 
 dotenv.config();
 
@@ -25,9 +29,7 @@ app.post('/api/profile', async (req, res) => {
     if (!username?.trim()) {
       return res.status(400).json({ error: 'username is required' });
     }
-    const data = await callInstagram('/api/instagram/profile', {
-      username: normalizeUsername(username),
-    });
+    const data = await fetchInstagramProfile(username);
     res.json(data);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -40,9 +42,7 @@ app.post('/api/reels', async (req, res) => {
     if (!username?.trim()) {
       return res.status(400).json({ error: 'username is required' });
     }
-    const body = { username: normalizeUsername(username) };
-    if (maxId) body.maxId = maxId;
-    const data = await callInstagram('/api/instagram/reels', body);
+    const data = await fetchInstagramReels(username, maxId);
     res.json(data);
   } catch (err) {
     res.status(500).json({ error: err.message });

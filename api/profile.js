@@ -1,4 +1,4 @@
-import { callInstagram, normalizeUsername } from '../server/instagram.js';
+import { fetchInstagramProfile } from '../server/instagram.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -12,10 +12,7 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'username is required' });
     }
 
-    const data = await callInstagram('/api/instagram/profile', {
-      username: normalizeUsername(username),
-    });
-
+    const data = await fetchInstagramProfile(username);
     res.status(200).json(data);
   } catch (err) {
     res.status(500).json({ error: err.message });

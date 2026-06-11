@@ -15,7 +15,7 @@ import {
   updateAccount,
 } from './lib/db';
 import { formatCount, formatDate } from './lib/format';
-import type { FollowerSnapshot, ReelHistory, TrackedAccount } from './types';
+import type { FollowerSnapshot, ParsedReel, ReelHistory, TrackedAccount } from './types';
 
 export default function App() {
   const [accounts, setAccounts] = useState<TrackedAccount[]>([]);
@@ -25,6 +25,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [warning, setWarning] = useState<string | null>(null);
   const [apiReady, setApiReady] = useState(true);
 
   const selectedAccount = useMemo(
@@ -77,10 +78,20 @@ export default function App() {
   async function refreshAccount(username: string) {
     setRefreshing(username);
     setError(null);
+    setWarning(null);
 
     try {
       const profile = await fetchProfile(username);
-      const { reels } = await fetchReels(username);
+      let reels: ParsedReel[] = [];
+      let reelsWarning: string | null = null;
+
+      try {
+        const reelsResponse = await fetchReels(username);
+        reels = reelsResponse.reels;
+      } catch (reelsError) {
+        reelsWarning = reelsError instanceof Error ? reelsError.message : 'Could not load reels';
+      }
+
       const now = Date.now();
 
       const account: TrackedAccount = {
@@ -125,6 +136,8 @@ export default function App() {
         setSelectedUsername(account.username);
         await loadAccountDetails(account.username);
       }
+
+      setWarning(reelsWarning);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Refresh failed');
     } finally {
@@ -134,6 +147,7 @@ export default function App() {
 
   async function handleAdd(username: string) {
     setError(null);
+    setWarning(null);
     const normalized = username.toLowerCase();
 
     if (accounts.some((a) => a.username === normalized)) {
@@ -181,6 +195,7 @@ export default function App() {
       )}
 
       {error && <div className="banner banner--error">{error}</div>}
+      {warning && !error && <div className="banner banner--warn">{warning}</div>}
 
       <section className="panel">
         <h2>Add account</h2>

@@ -22,6 +22,9 @@ export function parseProfileResponse(data: unknown, username: string): ParsedPro
   const root = (data as Record<string, unknown>) ?? {};
   const result = (root.result ?? root.data ?? root.user ?? root) as Record<string, unknown>;
   const user = (result.user ?? result) as Record<string, unknown>;
+  const edgeFollowedBy = user.edge_followed_by as Record<string, unknown> | undefined;
+  const edgeFollow = user.edge_follow as Record<string, unknown> | undefined;
+  const edgeMedia = user.edge_owner_to_timeline_media as Record<string, unknown> | undefined;
 
   return {
     username: pickString(user.username, result.username, username).toLowerCase() || username.toLowerCase(),
@@ -35,19 +38,19 @@ export function parseProfileResponse(data: unknown, username: string): ParsedPro
     followers: pickNumber(
       user.follower_count,
       user.followers,
-      user.edge_followed_by?.count,
+      edgeFollowedBy?.count,
       result.follower_count,
     ),
     following: pickNumber(
       user.following_count,
       user.following,
-      user.edge_follow?.count,
+      edgeFollow?.count,
       result.following_count,
     ),
     mediaCount: pickNumber(
       user.media_count,
       user.posts,
-      user.edge_owner_to_timeline_media?.count,
+      edgeMedia?.count,
       result.media_count,
     ),
     isVerified: Boolean(user.is_verified ?? user.isVerified ?? result.is_verified),
