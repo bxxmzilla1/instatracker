@@ -5,8 +5,22 @@ const WEB_PROFILE_URLS = [
   'https://i.instagram.com/api/v1/users/web_profile_info/',
 ];
 
+const INVALID_API_KEYS = new Set([
+  '',
+  'undefined',
+  'null',
+  'your_rapidapi_key_here',
+  'your_actual_key',
+]);
+
 export function normalizeUsername(username) {
   return username.trim().replace(/^@/, '').toLowerCase();
+}
+
+export function hasValidApiKey() {
+  const key = process.env.RAPIDAPI_KEY?.trim();
+  if (!key) return false;
+  return !INVALID_API_KEYS.has(key.toLowerCase());
 }
 
 function extractApiError(data) {
@@ -57,10 +71,10 @@ function buildWebHeaders(username) {
 }
 
 export async function callInstagram(endpoint, body) {
-  const apiKey = process.env.RAPIDAPI_KEY;
-
-  if (!apiKey) {
-    throw new Error('RAPIDAPI_KEY is not set. Add it in Vercel Environment Variables.');
+  if (!hasValidApiKey()) {
+    throw new Error(
+      'RAPIDAPI_KEY is missing or invalid. Add your real RapidAPI key in Vercel Environment Variables.',
+    );
   }
 
   const response = await fetch(`https://${RAPIDAPI_HOST}${endpoint}`, {
@@ -68,7 +82,7 @@ export async function callInstagram(endpoint, body) {
     headers: {
       'Content-Type': 'application/json',
       'x-rapidapi-host': RAPIDAPI_HOST,
-      'x-rapidapi-key': apiKey,
+      'x-rapidapi-key': process.env.RAPIDAPI_KEY.trim(),
     },
     body: JSON.stringify(body),
   });
@@ -104,6 +118,10 @@ async function fetchWebProfile(username) {
         throw new Error(`@${normalized} was not found. Check the username.`);
       }
 
+      if (response.status === 429) {
+        throw new Error('Instagram rate-limited this request. Wait a minute and try again.');
+      }
+
       if (!response.ok) {
         throw new Error(
           extractApiError(data) || `Instagram profile lookup failed (${response.status})`,
@@ -127,11 +145,8 @@ async function fetchRapidApiProfile(username) {
   const normalized = normalizeUsername(username);
   const attempts = [
     { endpoint: '/api/instagram/userInfo', body: { username: normalized } },
+    { endpoint: '/api/instagram/profile', body: { username: normalized, maxId: '' } },
     { endpoint: '/api/instagram/profile', body: { username: normalized } },
-    {
-      endpoint: '/api/instagram/profile',
-      body: { url: `https://www.instagram.com/${normalized}/` },
-    },
   ];
 
   let lastError = null;
@@ -143,6 +158,8 @@ async function fetchRapidApiProfile(username) {
       lastError = new Error('Profile response did not include user data');
     } catch (err) {
       lastError = err;
+      const message = err.message?.toLowerCase() ?? '';
+      if (message.includes('invalid') && message.includes('key')) throw err;
     }
   }
 
@@ -152,20 +169,20 @@ async function fetchRapidApiProfile(username) {
 export async function fetchInstagramProfile(username) {
   const errors = [];
 
-  try {
-    return await fetchWebProfile(username);
-  } catch (err) {
-    errors.push(`Instagram: ${err.message}`);
-  }
-
-  if (process.env.RAPIDAPI_KEY) {
+  if (hasValidApiKey()) {
     try {
       return await fetchRapidApiProfile(username);
     } catch (err) {
       errors.push(`RapidAPI: ${err.message}`);
     }
   } else {
-    errors.push('RapidAPI: RAPIDAPI_KEY is not configured');
+    errors.push('RapidAPI: RAPIDAPI_KEY is missing or still set to a placeholder value');
+  }
+
+  try {
+    return await fetchWebProfile(username);
+  } catch (err) {
+    errors.push(`Instagram: ${err.message}`);
   }
 
   throw new Error(
@@ -175,8 +192,10 @@ export async function fetchInstagramProfile(username) {
 }
 
 export async function fetchInstagramReels(username, maxId) {
-  const body = { username: normalizeUsername(username) };
-  if (maxId) body.maxId = maxId;
+  const body = {
+    username: normalizeUsername(username),
+    maxId: maxId || '',
+  };
 
   try {
     return await callInstagram('/api/instagram/reels', body);

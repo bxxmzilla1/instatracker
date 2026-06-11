@@ -65,9 +65,10 @@ Do not commit `.env` — it is already in `.gitignore`.
 3. Vercel auto-detects the Vite app via `vercel.json`.
 4. Add an environment variable:
    - **Name:** `RAPIDAPI_KEY`
-   - **Value:** your RapidAPI key
+   - **Value:** your real RapidAPI key from the [Instagram120 dashboard](https://rapidapi.com/3205/api/instagram120) (not `undefined` or a placeholder)
    - **Environments:** Production, Preview, Development
 5. Click **Deploy**.
+6. Use your **production URL** (`instatracker.vercel.app`), not preview links. Preview URLs with Vercel Deployment Protection return 401 for PWA assets.
 
 ### Option B: Vercel CLI
 

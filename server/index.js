@@ -6,7 +6,7 @@ import { fileURLToPath } from 'url';
 import {
   fetchInstagramProfile,
   fetchInstagramReels,
-  normalizeUsername,
+  hasValidApiKey,
 } from './instagram.js';
 
 dotenv.config();
@@ -14,13 +14,11 @@ dotenv.config();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = process.env.PORT || 3001;
-const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY;
-
 app.use(cors());
 app.use(express.json());
 
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, hasKey: Boolean(RAPIDAPI_KEY) });
+  res.json({ ok: true, hasKey: hasValidApiKey() });
 });
 
 app.post('/api/profile', async (req, res) => {
@@ -59,7 +57,7 @@ if (process.env.NODE_ENV === 'production') {
 
 app.listen(PORT, () => {
   console.log(`Instatracker server running on http://localhost:${PORT}`);
-  if (!RAPIDAPI_KEY) {
-    console.warn('Warning: RAPIDAPI_KEY is missing. Set it in .env to fetch Instagram data.');
+  if (!hasValidApiKey()) {
+    console.warn('Warning: RAPIDAPI_KEY is missing or invalid. Set it in .env to fetch Instagram data.');
   }
 });
