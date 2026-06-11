@@ -200,18 +200,58 @@ code {
   font-size: 1.5rem;
 }
 
-.trend-chart__svg {
-  width: 100%;
-  height: 160px;
-  display: block;
+.dashboard__month {
+  color: #a1a1aa;
+  font-size: 0.9rem;
+  align-self: center;
 }
 
-.trend-chart__axis {
+.bar-chart__bars {
   display: flex;
-  justify-content: space-between;
+  align-items: flex-end;
+  gap: 3px;
+  height: 180px;
+  margin-top: 0.5rem;
+}
+
+.bar-chart__col {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.bar-chart__col--today .bar-chart__label {
+  color: #f4b8d0;
+  font-weight: 600;
+}
+
+.bar-chart__bar-wrap {
+  flex: 1;
+  width: 100%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.bar-chart__bar {
+  width: 72%;
+  max-width: 20px;
+  min-height: 0;
+  border-radius: 6px 6px 3px 3px;
+  transition: height 0.3s ease;
+}
+
+.bar-chart__label {
+  margin-top: 6px;
+  font-size: 0.68rem;
   color: #71717a;
-  font-size: 0.8rem;
-  margin-top: 0.4rem;
+  white-space: nowrap;
+  height: 0.9rem;
 }
 
 .dashboard__highlights {

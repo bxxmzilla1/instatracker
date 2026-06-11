@@ -145,3 +145,66 @@ export function filterWindow(points: SeriesPoint[], windowMs: number): SeriesPoi
   const filtered = points.filter((point) => point.t >= cutoff);
   return filtered.length >= 2 ? filtered : points.slice(-Math.min(points.length, 2));
 }
+
+export interface DayBar {
+  day: number;
+  value: number;
+  isFuture: boolean;
+  isToday: boolean;
+}
+
+export function currentMonthLabel(): string {
+  return new Date().toLocaleString(undefined, { month: 'long', year: 'numeric' });
+}
+
+function buildMonthlyBars(rows: SeriesRow[]): DayBar[] {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth();
+  const today = now.getDate();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const monthStart = new Date(year, month, 1).getTime();
+  const monthEnd = new Date(year, month + 1, 1).getTime();
+
+  const monthRows = rows.filter(
+    (row) => row.capturedAt >= monthStart && row.capturedAt < monthEnd,
+  );
+  const points = buildCumulativeSeries(monthRows);
+
+  const bars: DayBar[] = [];
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    const endOfDay = new Date(year, month, day, 23, 59, 59, 999).getTime();
+    let value = 0;
+
+    if (day <= today) {
+      for (const point of points) {
+        if (point.t <= endOfDay) value = point.value;
+        else break;
+      }
+    }
+
+    bars.push({ day, value, isFuture: day > today, isToday: day === today });
+  }
+
+  return bars;
+}
+
+export function monthlyReelViewBars(snapshots: ReelSnapshot[]): DayBar[] {
+  return buildMonthlyBars(
+    snapshots.map((snapshot) => ({
+      id: snapshot.id,
+      capturedAt: snapshot.capturedAt,
+      value: snapshot.views,
+    })),
+  );
+}
+
+export function monthlyFollowerBars(snapshots: FollowerSnapshot[]): DayBar[] {
+  return buildMonthlyBars(
+    snapshots.map((snapshot) => ({
+      id: snapshot.username,
+      capturedAt: snapshot.capturedAt,
+      value: snapshot.followers,
+    })),
+  );
+}

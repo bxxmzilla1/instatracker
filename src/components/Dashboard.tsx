@@ -2,12 +2,12 @@ import { useMemo, useState } from 'react';
 import type { FollowerSnapshot, ReelSnapshot, TrackedAccount } from '../types';
 import {
   computeStats,
-  filterWindow,
-  followerSeries,
-  reelViewSeries,
+  currentMonthLabel,
+  monthlyFollowerBars,
+  monthlyReelViewBars,
 } from '../lib/dashboard';
 import { formatCount, proxiedImage } from '../lib/format';
-import { TrendChart } from './TrendChart';
+import { BarChart } from './BarChart';
 
 interface Props {
   accounts: TrackedAccount[];
@@ -16,27 +16,28 @@ interface Props {
 }
 
 type Metric = 'views' | 'followers';
-type Period = 'day' | 'week' | 'month';
-
-const PERIOD_MS: Record<Period, number> = {
-  day: 24 * 60 * 60 * 1000,
-  week: 7 * 24 * 60 * 60 * 1000,
-  month: 30 * 24 * 60 * 60 * 1000,
-};
 
 export function Dashboard({ accounts, reelSnapshots, followerSnapshots }: Props) {
   const [metric, setMetric] = useState<Metric>('views');
-  const [period, setPeriod] = useState<Period>('week');
 
   const stats = useMemo(
     () => computeStats(accounts, reelSnapshots),
     [accounts, reelSnapshots],
   );
 
-  const series = useMemo(() => {
-    const base = metric === 'views' ? reelViewSeries(reelSnapshots) : followerSeries(followerSnapshots);
-    return filterWindow(base, PERIOD_MS[period]);
-  }, [metric, period, reelSnapshots, followerSnapshots]);
+  const bars = useMemo(
+    () =>
+      metric === 'views'
+        ? monthlyReelViewBars(reelSnapshots)
+        : monthlyFollowerBars(followerSnapshots),
+    [metric, reelSnapshots, followerSnapshots],
+  );
+
+  const monthLabel = currentMonthLabel();
+  const currentTotal = metric === 'views' ? stats.totalReelViews : stats.totalFollowers;
+  const recorded = bars.filter((bar) => !bar.isFuture && bar.value > 0);
+  const monthGain =
+    recorded.length >= 2 ? recorded[recorded.length - 1].value - recorded[0].value : 0;
 
   const chartColor = metric === 'views' ? '#dd2a7b' : '#8134af';
 
@@ -83,21 +84,18 @@ export function Dashboard({ accounts, reelSnapshots, followerSnapshots }: Props)
               Followers
             </button>
           </div>
-          <div className="toggle-group">
-            {(['day', 'week', 'month'] as Period[]).map((value) => (
-              <button
-                key={value}
-                type="button"
-                className={period === value ? 'toggle toggle--active' : 'toggle'}
-                onClick={() => setPeriod(value)}
-              >
-                {value === 'day' ? 'Day' : value === 'week' ? 'Week' : 'Month'}
-              </button>
-            ))}
-          </div>
+          <span className="dashboard__month">{monthLabel}</span>
         </div>
 
-        <TrendChart points={series} color={chartColor} />
+        <div className="trend-chart__summary">
+          <strong>{formatCount(currentTotal)}</strong>
+          <span className={monthGain > 0 ? 'delta delta--up' : monthGain < 0 ? 'delta delta--down' : 'delta'}>
+            {monthGain > 0 ? '+' : ''}
+            {formatCount(monthGain)} this month
+          </span>
+        </div>
+
+        <BarChart bars={bars} color={chartColor} />
       </div>
 
       <div className="dashboard__highlights">
