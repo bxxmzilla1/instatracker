@@ -17,10 +17,18 @@ create table if not exists accounts (
   login_password text
 );
 
--- If the accounts table already exists, add the credential columns:
+-- If the accounts table already exists, add the credential/owner columns:
 alter table accounts add column if not exists login_username text;
 alter table accounts add column if not exists login_password text;
 alter table accounts add column if not exists auth_secret text;
+alter table accounts add column if not exists owner text;
+
+-- Employees (sub-accounts created by the admin).
+create table if not exists employees (
+  username text primary key,
+  password text,
+  created_at bigint
+);
 
 create table if not exists follower_snapshots (
   id bigint generated always as identity primary key,
@@ -57,14 +65,18 @@ create index if not exists reel_snapshots_username_idx
 alter table accounts enable row level security;
 alter table follower_snapshots enable row level security;
 alter table reel_snapshots enable row level security;
+alter table employees enable row level security;
 
 drop policy if exists "allow anon all" on accounts;
 drop policy if exists "allow anon all" on follower_snapshots;
 drop policy if exists "allow anon all" on reel_snapshots;
+drop policy if exists "allow anon all" on employees;
 
 create policy "allow anon all" on accounts
   for all to anon using (true) with check (true);
 create policy "allow anon all" on follower_snapshots
   for all to anon using (true) with check (true);
 create policy "allow anon all" on reel_snapshots
+  for all to anon using (true) with check (true);
+create policy "allow anon all" on employees
   for all to anon using (true) with check (true);

@@ -9,6 +9,7 @@ interface Props {
   selected?: boolean;
   refreshing?: boolean;
   hasStory?: boolean;
+  ownerTag?: string;
   onSelect: () => void;
   onRefresh: () => void;
   onRemove: () => void;
@@ -19,6 +20,7 @@ export function AccountCard({
   selected,
   refreshing,
   hasStory,
+  ownerTag,
   onSelect,
   onRefresh,
   onRemove,
@@ -41,9 +43,12 @@ export function AccountCard({
             <span>{account.username.slice(0, 1).toUpperCase()}</span>
           )}
         </div>
-        <div className="account-card__title">
-          <strong>@{account.username}</strong>
-          {account.isVerified && <span className="badge">✓</span>}
+        <div className="account-card__title-wrap">
+          <div className="account-card__title">
+            <strong>@{account.username}</strong>
+            {account.isVerified && <span className="badge">✓</span>}
+          </div>
+          {ownerTag && <span className="owner-tag">{ownerTag}</span>}
         </div>
       </button>
       <div className="account-card__actions">

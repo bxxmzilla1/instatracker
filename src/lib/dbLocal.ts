@@ -1,10 +1,20 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
-import type { FollowerSnapshot, ReelHistory, ReelSnapshot, TrackedAccount } from '../types';
+import type {
+  Employee,
+  FollowerSnapshot,
+  ReelHistory,
+  ReelSnapshot,
+  TrackedAccount,
+} from '../types';
 
 interface InstatrackerDB extends DBSchema {
   accounts: {
     key: string;
     value: TrackedAccount;
+  };
+  employees: {
+    key: string;
+    value: Employee;
   };
   followerHistory: {
     key: number;
@@ -22,10 +32,14 @@ let dbPromise: Promise<IDBPDatabase<InstatrackerDB>> | null = null;
 
 function getDb() {
   if (!dbPromise) {
-    dbPromise = openDB<InstatrackerDB>('instatracker-v1', 2, {
+    dbPromise = openDB<InstatrackerDB>('instatracker-v1', 3, {
       upgrade(db, oldVersion) {
         if (!db.objectStoreNames.contains('accounts')) {
           db.createObjectStore('accounts', { keyPath: 'username' });
+        }
+
+        if (!db.objectStoreNames.contains('employees')) {
+          db.createObjectStore('employees', { keyPath: 'username' });
         }
 
         if (oldVersion < 2) {
@@ -58,10 +72,33 @@ function getDb() {
   return dbPromise;
 }
 
-export async function getAccounts(): Promise<TrackedAccount[]> {
+export async function getAccounts(owner?: string): Promise<TrackedAccount[]> {
   const db = await getDb();
-  const accounts = await db.getAll('accounts');
+  let accounts = await db.getAll('accounts');
+
+  if (owner === 'admin') {
+    accounts = accounts.filter((a) => !a.owner || a.owner === 'admin');
+  } else if (owner !== undefined) {
+    accounts = accounts.filter((a) => a.owner === owner);
+  }
+
   return accounts.sort((a, b) => b.addedAt - a.addedAt);
+}
+
+export async function getEmployees(): Promise<Employee[]> {
+  const db = await getDb();
+  const employees = await db.getAll('employees');
+  return employees.sort((a, b) => a.createdAt - b.createdAt);
+}
+
+export async function addEmployee(employee: Employee): Promise<void> {
+  const db = await getDb();
+  await db.put('employees', employee);
+}
+
+export async function deleteEmployee(username: string): Promise<void> {
+  const db = await getDb();
+  await db.delete('employees', username);
 }
 
 export async function addAccount(account: TrackedAccount): Promise<void> {

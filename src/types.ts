@@ -5,9 +5,21 @@ export interface StoryPreview {
   expiringAt?: number;
 }
 
+export interface Employee {
+  username: string;
+  password: string;
+  createdAt: number;
+}
+
+export interface Session {
+  role: 'admin' | 'employee';
+  username: string;
+}
+
 export interface TrackedAccount {
   username: string;
   addedAt: number;
+  owner?: string;
   fullName?: string;
   bio?: string;
   profilePicUrl?: string;

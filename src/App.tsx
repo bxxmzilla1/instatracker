@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AddAccountForm } from './components/AddAccountForm';
 import { AccountCard } from './components/AccountCard';
 import { AccountCredentials } from './components/AccountCredentials';
@@ -8,9 +8,12 @@ import { ReelCard } from './components/ReelCard';
 import { checkHealth, fetchProfile, fetchReels, fetchStories } from './lib/api';
 import {
   addAccount,
+  addEmployee,
+  deleteEmployee,
   getAccounts,
   getAllFollowerSnapshots,
   getAllReelSnapshots,
+  getEmployees,
   getFollowerHistory,
   getReelHistories,
   removeAccount,
@@ -21,13 +24,28 @@ import {
 import { latestByReel } from './lib/dashboard';
 import { formatCount, formatDate, proxiedImage } from './lib/format';
 import type {
+  Employee,
   FollowerSnapshot,
   ParsedReel,
   ReelHistory,
   ReelSnapshot,
+  Session,
   StoryPreview,
   TrackedAccount,
 } from './types';
+
+function loadSession(): Session | null {
+  try {
+    const raw = localStorage.getItem('drbossing_session');
+    if (raw) return JSON.parse(raw) as Session;
+  } catch {
+    // ignore
+  }
+  if (localStorage.getItem('drbossing_auth') === '1') {
+    return { role: 'admin', username: 'admin' };
+  }
+  return null;
+}
 
 export default function App() {
   const [accounts, setAccounts] = useState<TrackedAccount[]>([]);
@@ -41,11 +59,24 @@ export default function App() {
   const [apiReady, setApiReady] = useState(true);
   const [allReelSnapshots, setAllReelSnapshots] = useState<ReelSnapshot[]>([]);
   const [allFollowerSnapshots, setAllFollowerSnapshots] = useState<FollowerSnapshot[]>([]);
-  const [view, setView] = useState<'dashboard' | 'accounts'>('dashboard');
+  const [view, setView] = useState<'dashboard' | 'accounts' | 'employee'>('dashboard');
   const [showCredentials, setShowCredentials] = useState(false);
-  const [authed, setAuthed] = useState(
-    () => localStorage.getItem('drbossing_auth') === '1',
-  );
+  const [session, setSession] = useState<Session | null>(() => loadSession());
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [employeesOpen, setEmployeesOpen] = useState(true);
+  const [selectedEmployee, setSelectedEmployee] = useState<string | null>(null);
+  const [showAddEmployee, setShowAddEmployee] = useState(false);
+  const [newEmpUsername, setNewEmpUsername] = useState('');
+  const [newEmpPassword, setNewEmpPassword] = useState('');
+
+  const isAdmin = session?.role === 'admin';
+
+  const ownerFilter = useMemo(() => {
+    if (!session) return undefined;
+    if (session.role === 'employee') return session.username;
+    if (view === 'employee') return selectedEmployee ?? '__none__';
+    return undefined;
+  }, [session, view, selectedEmployee]);
 
   const selectedAccount = useMemo(
     () => accounts.find((a) => a.username === selectedUsername) ?? null,
@@ -66,12 +97,9 @@ export default function App() {
   }, [allReelSnapshots]);
 
   const loadAccounts = useCallback(async () => {
-    const rows = await getAccounts();
+    const rows = await getAccounts(ownerFilter);
     setAccounts(rows);
-    if (!selectedUsername && rows.length > 0) {
-      setSelectedUsername(rows[0].username);
-    }
-  }, [selectedUsername]);
+  }, [ownerFilter]);
 
   const loadDashboardData = useCallback(async () => {
     const [reels, followers] = await Promise.all([
@@ -96,13 +124,15 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!authed) return;
+    if (!session) return;
     async function init() {
       try {
         const health = await checkHealth();
         setApiReady(health.hasKey);
-        await loadAccounts();
         await loadDashboardData();
+        if (session?.role === 'admin') {
+          setEmployees(await getEmployees());
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to initialize');
       } finally {
@@ -110,11 +140,30 @@ export default function App() {
       }
     }
     init();
-  }, [authed, loadAccounts, loadDashboardData]);
+  }, [session, loadDashboardData]);
+
+  useEffect(() => {
+    if (!session) return;
+    let active = true;
+    (async () => {
+      const rows = await getAccounts(ownerFilter);
+      if (!active) return;
+      setAccounts(rows);
+      setSelectedUsername((current) =>
+        rows.some((r) => r.username === current) ? current : rows[0]?.username ?? null,
+      );
+    })();
+    return () => {
+      active = false;
+    };
+  }, [session, ownerFilter]);
 
   useEffect(() => {
     if (selectedUsername) {
       loadAccountDetails(selectedUsername);
+    } else {
+      setFollowerHistory([]);
+      setReelHistories([]);
     }
   }, [selectedUsername, loadAccountDetails]);
 
@@ -163,6 +212,7 @@ export default function App() {
         lastMediaCount: profile.mediaCount,
         lastCheckedAt: now,
         stories,
+        owner: existing?.owner,
         loginUsername: existing?.loginUsername,
         loginPassword: existing?.loginPassword,
         authSecret: existing?.authSecret,
@@ -220,13 +270,43 @@ export default function App() {
       return;
     }
 
+    const owner = session?.role === 'employee' ? session.username : 'admin';
+
     try {
-      await addAccount({ username: normalized, addedAt: Date.now() });
+      await addAccount({ username: normalized, addedAt: Date.now(), owner });
       await loadAccounts();
       setSelectedUsername(normalized);
       await refreshAccount(normalized);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not add this account.');
+    }
+  }
+
+  async function handleAddEmployee(event: FormEvent) {
+    event.preventDefault();
+    const username = newEmpUsername.trim().toLowerCase();
+    if (!username || !newEmpPassword.trim()) return;
+    if (employees.some((e) => e.username === username)) {
+      setError(`Employee "${username}" already exists`);
+      return;
+    }
+    try {
+      await addEmployee({ username, password: newEmpPassword, createdAt: Date.now() });
+      setEmployees(await getEmployees());
+      setNewEmpUsername('');
+      setNewEmpPassword('');
+      setShowAddEmployee(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not add employee.');
+    }
+  }
+
+  async function handleDeleteEmployee(username: string) {
+    await deleteEmployee(username);
+    setEmployees(await getEmployees());
+    if (selectedEmployee === username) {
+      setSelectedEmployee(null);
+      setView('accounts');
     }
   }
 
@@ -260,12 +340,29 @@ export default function App() {
     ? followerHistory.at(-2)?.followers
     : undefined;
 
-  if (!authed) {
+  const visibleUsernames = useMemo(
+    () => new Set(accounts.map((a) => a.username)),
+    [accounts],
+  );
+  const scopedReelSnapshots = useMemo(
+    () => allReelSnapshots.filter((s) => visibleUsernames.has(s.username)),
+    [allReelSnapshots, visibleUsernames],
+  );
+  const scopedFollowerSnapshots = useMemo(
+    () => allFollowerSnapshots.filter((s) => visibleUsernames.has(s.username)),
+    [allFollowerSnapshots, visibleUsernames],
+  );
+
+  if (!session) {
     return (
       <Login
-        onSuccess={() => {
-          localStorage.setItem('drbossing_auth', '1');
-          setAuthed(true);
+        onSuccess={(next) => {
+          localStorage.setItem('drbossing_session', JSON.stringify(next));
+          localStorage.removeItem('drbossing_auth');
+          setLoading(true);
+          setView('dashboard');
+          setSelectedEmployee(null);
+          setSession(next);
         }}
       />
     );
@@ -276,9 +373,21 @@ export default function App() {
   }
 
   function handleLock() {
+    localStorage.removeItem('drbossing_session');
     localStorage.removeItem('drbossing_auth');
-    setAuthed(false);
+    setSession(null);
+    setEmployees([]);
+    setSelectedEmployee(null);
   }
+
+  const topbarTitle =
+    view === 'dashboard'
+      ? 'Dashboard'
+      : view === 'employee'
+        ? `Employee · ${selectedEmployee ?? ''}`
+        : 'Accounts';
+
+  const showAddForm = view === 'accounts';
 
   return (
     <div className="app-shell">
@@ -298,7 +407,10 @@ export default function App() {
           <button
             type="button"
             className={view === 'dashboard' ? 'nav-item nav-item--active' : 'nav-item'}
-            onClick={() => setView('dashboard')}
+            onClick={() => {
+              setSelectedEmployee(null);
+              setView('dashboard');
+            }}
           >
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
               <rect x="3" y="3" width="7" height="9" rx="1.5" />
@@ -311,7 +423,10 @@ export default function App() {
           <button
             type="button"
             className={view === 'accounts' ? 'nav-item nav-item--active' : 'nav-item'}
-            onClick={() => setView('accounts')}
+            onClick={() => {
+              setSelectedEmployee(null);
+              setView('accounts');
+            }}
           >
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
               <circle cx="9" cy="8" r="3.2" />
@@ -320,8 +435,57 @@ export default function App() {
               <path d="M18 14c2.2.4 3.8 2.2 3.8 4.6" />
             </svg>
             Accounts
-            {accounts.length > 0 && <span className="nav-item__count">{accounts.length}</span>}
           </button>
+
+          {isAdmin && (
+            <div className="sidebar__group">
+              <button
+                type="button"
+                className="nav-item"
+                onClick={() => setEmployeesOpen((v) => !v)}
+              >
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="9" cy="8" r="3.2" />
+                  <path d="M3.5 19c0-3 2.7-5 5.5-5s5.5 2 5.5 5" />
+                  <path d="M16 5.2a3 3 0 0 1 0 5.6" />
+                  <path d="M18 14c2.2.4 3.8 2.2 3.8 4.6" />
+                </svg>
+                Employees
+                <span className={`nav-item__chevron ${employeesOpen ? 'nav-item__chevron--open' : ''}`}>
+                  ›
+                </span>
+              </button>
+
+              {employeesOpen && (
+                <div className="sidebar__sub">
+                  <button
+                    type="button"
+                    className="nav-subitem nav-subitem--add"
+                    onClick={() => setShowAddEmployee(true)}
+                  >
+                    + Add new employee
+                  </button>
+                  {employees.map((employee) => (
+                    <button
+                      key={employee.username}
+                      type="button"
+                      className={
+                        view === 'employee' && selectedEmployee === employee.username
+                          ? 'nav-subitem nav-subitem--active'
+                          : 'nav-subitem'
+                      }
+                      onClick={() => {
+                        setSelectedEmployee(employee.username);
+                        setView('employee');
+                      }}
+                    >
+                      {employee.username}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </nav>
 
         <button type="button" className="nav-item sidebar__lock" onClick={handleLock}>
@@ -335,21 +499,32 @@ export default function App() {
 
       <main className="main">
         <header className="topbar">
-          <h1>{view === 'dashboard' ? 'Dashboard' : 'Accounts'}</h1>
-          {view === 'accounts' && accounts.length > 0 && (
-            <button
-              type="button"
-              className="btn btn--ghost"
-              disabled={Boolean(refreshing)}
-              onClick={async () => {
-                for (const account of accounts) {
-                  await refreshAccount(account.username);
-                }
-              }}
-            >
-              Refresh all
-            </button>
-          )}
+          <h1>{topbarTitle}</h1>
+          <div className="topbar__actions">
+            {view === 'employee' && selectedEmployee && (
+              <button
+                type="button"
+                className="btn btn--ghost"
+                onClick={() => handleDeleteEmployee(selectedEmployee)}
+              >
+                Remove employee
+              </button>
+            )}
+            {(view === 'accounts' || view === 'employee') && accounts.length > 0 && (
+              <button
+                type="button"
+                className="btn btn--ghost"
+                disabled={Boolean(refreshing)}
+                onClick={async () => {
+                  for (const account of accounts) {
+                    await refreshAccount(account.username);
+                  }
+                }}
+              >
+                Refresh all
+              </button>
+            )}
+          </div>
         </header>
 
         {!apiReady && (
@@ -365,8 +540,8 @@ export default function App() {
           (accounts.length > 0 ? (
             <Dashboard
               accounts={accounts}
-              reelSnapshots={allReelSnapshots}
-              followerSnapshots={allFollowerSnapshots}
+              reelSnapshots={scopedReelSnapshots}
+              followerSnapshots={scopedFollowerSnapshots}
             />
           ) : (
             <section className="panel empty-detail">
@@ -378,12 +553,14 @@ export default function App() {
             </section>
           ))}
 
-        {view === 'accounts' && (
+        {(view === 'accounts' || view === 'employee') && (
           <>
-            <section className="panel">
-              <h2>Add account</h2>
-              <AddAccountForm onAdd={handleAdd} disabled={!apiReady || Boolean(refreshing)} />
-            </section>
+            {showAddForm && (
+              <section className="panel">
+                <h2>Add account</h2>
+                <AddAccountForm onAdd={handleAdd} disabled={!apiReady || Boolean(refreshing)} />
+              </section>
+            )}
 
             <div className="layout">
               <section className="panel panel--sidebar">
@@ -392,7 +569,11 @@ export default function App() {
           </div>
 
           {accounts.length === 0 ? (
-            <p className="empty-note">No accounts yet. Add a username above to start tracking.</p>
+            <p className="empty-note">
+              {view === 'employee'
+                ? 'This employee has not added any accounts yet.'
+                : 'No accounts yet. Add a username above to start tracking.'}
+            </p>
           ) : (
             <div className="account-list">
               {accounts.map((account) => (
@@ -401,6 +582,11 @@ export default function App() {
                   account={account}
                   hasStory={Boolean(account.stories && account.stories.length > 0)}
                   totalViews={viewsByUsername.get(account.username) ?? 0}
+                  ownerTag={
+                    isAdmin && account.owner && account.owner !== 'admin'
+                      ? account.owner
+                      : undefined
+                  }
                   selected={account.username === selectedUsername}
                   refreshing={refreshing === account.username}
                   followerDelta={
@@ -549,6 +735,58 @@ export default function App() {
               </p>
               <AccountCredentials account={selectedAccount} onSave={handleSaveCredentials} />
             </div>
+          </div>
+        )}
+
+        {showAddEmployee && (
+          <div className="modal" onClick={() => setShowAddEmployee(false)}>
+            <form
+              className="modal__card"
+              onClick={(e) => e.stopPropagation()}
+              onSubmit={handleAddEmployee}
+            >
+              <div className="modal__head">
+                <h3>Add new employee</h3>
+                <button
+                  type="button"
+                  className="modal__close"
+                  onClick={() => setShowAddEmployee(false)}
+                  aria-label="Close"
+                >
+                  ✕
+                </button>
+              </div>
+              <p className="cred-note">
+                Create a sub-account that can add and track its own Instagram accounts.
+              </p>
+              <div className="cred-form">
+                <label className="cred-field">
+                  <span className="cred-field__label">Username</span>
+                  <input
+                    className="cred-form__input"
+                    placeholder="employee username"
+                    value={newEmpUsername}
+                    onChange={(e) => setNewEmpUsername(e.target.value)}
+                    autoComplete="off"
+                    spellCheck={false}
+                  />
+                </label>
+                <label className="cred-field">
+                  <span className="cred-field__label">Password</span>
+                  <input
+                    className="cred-form__input"
+                    type="text"
+                    placeholder="password"
+                    value={newEmpPassword}
+                    onChange={(e) => setNewEmpPassword(e.target.value)}
+                    autoComplete="off"
+                  />
+                </label>
+                <button type="submit" disabled={!newEmpUsername.trim() || !newEmpPassword.trim()}>
+                  Create employee
+                </button>
+              </div>
+            </form>
           </div>
         )}
       </main>

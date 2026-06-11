@@ -15,4 +15,7 @@ export const {
   saveReelSnapshots,
   getAllReelSnapshots,
   getReelHistories,
+  getEmployees,
+  addEmployee,
+  deleteEmployee,
 } = impl;

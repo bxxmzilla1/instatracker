@@ -1,6 +1,12 @@
 import { supabase } from './supabase';
 import { groupReelHistories } from './dbLocal';
-import type { FollowerSnapshot, ReelHistory, ReelSnapshot, TrackedAccount } from '../types';
+import type {
+  Employee,
+  FollowerSnapshot,
+  ReelHistory,
+  ReelSnapshot,
+  TrackedAccount,
+} from '../types';
 
 function client() {
   if (!supabase) throw new Error('Supabase is not configured.');
@@ -22,6 +28,7 @@ interface AccountRow {
   login_username: string | null;
   login_password: string | null;
   auth_secret: string | null;
+  owner: string | null;
 }
 
 interface ReelRow {
@@ -60,6 +67,7 @@ function toAccount(row: AccountRow): TrackedAccount {
     loginUsername: row.login_username ?? undefined,
     loginPassword: row.login_password ?? undefined,
     authSecret: row.auth_secret ?? undefined,
+    owner: row.owner ?? undefined,
   };
 }
 
@@ -79,6 +87,7 @@ function fromAccount(account: TrackedAccount): AccountRow {
     login_username: account.loginUsername ?? null,
     login_password: account.loginPassword ?? null,
     auth_secret: account.authSecret ?? null,
+    owner: account.owner ?? null,
   };
 }
 
@@ -106,13 +115,47 @@ function toFollowerSnapshot(row: FollowerRow): FollowerSnapshot {
   };
 }
 
-export async function getAccounts(): Promise<TrackedAccount[]> {
-  const { data, error } = await client()
-    .from('accounts')
-    .select('*')
-    .order('added_at', { ascending: false });
+export async function getAccounts(owner?: string): Promise<TrackedAccount[]> {
+  let query = client().from('accounts').select('*').order('added_at', { ascending: false });
+
+  if (owner === 'admin') {
+    query = query.or('owner.eq.admin,owner.is.null');
+  } else if (owner !== undefined) {
+    query = query.eq('owner', owner);
+  }
+
+  const { data, error } = await query;
   if (error) throw new Error(error.message);
   return (data as AccountRow[]).map(toAccount);
+}
+
+export async function getEmployees(): Promise<Employee[]> {
+  const { data, error } = await client()
+    .from('employees')
+    .select('*')
+    .order('created_at', { ascending: true });
+  if (error) throw new Error(error.message);
+  return (data as { username: string; password: string | null; created_at: number | null }[]).map(
+    (row) => ({
+      username: row.username,
+      password: row.password ?? '',
+      createdAt: row.created_at ?? 0,
+    }),
+  );
+}
+
+export async function addEmployee(employee: Employee): Promise<void> {
+  const { error } = await client().from('employees').upsert({
+    username: employee.username,
+    password: employee.password,
+    created_at: employee.createdAt,
+  });
+  if (error) throw new Error(error.message);
+}
+
+export async function deleteEmployee(username: string): Promise<void> {
+  const { error } = await client().from('employees').delete().eq('username', username);
+  if (error) throw new Error(error.message);
 }
 
 export async function addAccount(account: TrackedAccount): Promise<void> {
