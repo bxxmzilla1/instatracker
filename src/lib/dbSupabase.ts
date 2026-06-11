@@ -3,6 +3,7 @@ import { groupReelHistories } from './dbLocal';
 import type {
   Employee,
   FollowerSnapshot,
+  License,
   ReelHistory,
   ReelSnapshot,
   TrackedAccount,
@@ -163,6 +164,38 @@ export async function addEmployee(employee: Employee): Promise<void> {
 
 export async function deleteEmployee(username: string): Promise<void> {
   const { error } = await client().from('employees').delete().eq('username', username);
+  if (error) throw new Error(error.message);
+}
+
+export async function getLicenses(employee?: string): Promise<License[]> {
+  let query = client().from('licenses').select('*').order('created_at', { ascending: true });
+  if (employee !== undefined) {
+    query = query.eq('employee', employee);
+  }
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+  return (data as { id: string; license: string | null; employee: string | null; created_at: number | null }[]).map(
+    (row) => ({
+      id: row.id,
+      license: row.license ?? '',
+      employee: row.employee ?? '',
+      createdAt: row.created_at ?? 0,
+    }),
+  );
+}
+
+export async function addLicense(license: License): Promise<void> {
+  const { error } = await client().from('licenses').upsert({
+    id: license.id,
+    license: license.license,
+    employee: license.employee,
+    created_at: license.createdAt,
+  });
+  if (error) throw new Error(error.message);
+}
+
+export async function deleteLicense(id: string): Promise<void> {
+  const { error } = await client().from('licenses').delete().eq('id', id);
   if (error) throw new Error(error.message);
 }
 

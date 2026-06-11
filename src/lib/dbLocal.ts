@@ -2,6 +2,7 @@ import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
 import type {
   Employee,
   FollowerSnapshot,
+  License,
   ReelHistory,
   ReelSnapshot,
   TrackedAccount,
@@ -15,6 +16,10 @@ interface InstatrackerDB extends DBSchema {
   employees: {
     key: string;
     value: Employee;
+  };
+  licenses: {
+    key: string;
+    value: License;
   };
   followerHistory: {
     key: number;
@@ -32,7 +37,7 @@ let dbPromise: Promise<IDBPDatabase<InstatrackerDB>> | null = null;
 
 function getDb() {
   if (!dbPromise) {
-    dbPromise = openDB<InstatrackerDB>('instatracker-v1', 3, {
+    dbPromise = openDB<InstatrackerDB>('instatracker-v1', 4, {
       upgrade(db, oldVersion) {
         if (!db.objectStoreNames.contains('accounts')) {
           db.createObjectStore('accounts', { keyPath: 'username' });
@@ -40,6 +45,10 @@ function getDb() {
 
         if (!db.objectStoreNames.contains('employees')) {
           db.createObjectStore('employees', { keyPath: 'username' });
+        }
+
+        if (!db.objectStoreNames.contains('licenses')) {
+          db.createObjectStore('licenses', { keyPath: 'id' });
         }
 
         if (oldVersion < 2) {
@@ -99,6 +108,25 @@ export async function addEmployee(employee: Employee): Promise<void> {
 export async function deleteEmployee(username: string): Promise<void> {
   const db = await getDb();
   await db.delete('employees', username);
+}
+
+export async function getLicenses(employee?: string): Promise<License[]> {
+  const db = await getDb();
+  let licenses = await db.getAll('licenses');
+  if (employee !== undefined) {
+    licenses = licenses.filter((l) => l.employee === employee);
+  }
+  return licenses.sort((a, b) => a.createdAt - b.createdAt);
+}
+
+export async function addLicense(license: License): Promise<void> {
+  const db = await getDb();
+  await db.put('licenses', license);
+}
+
+export async function deleteLicense(id: string): Promise<void> {
+  const db = await getDb();
+  await db.delete('licenses', id);
 }
 
 export async function addAccount(account: TrackedAccount): Promise<void> {

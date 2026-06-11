@@ -32,6 +32,14 @@ create table if not exists employees (
   created_at bigint
 );
 
+-- Blaze licenses assigned to employees.
+create table if not exists licenses (
+  id text primary key,
+  license text,
+  employee text,
+  created_at bigint
+);
+
 create table if not exists follower_snapshots (
   id bigint generated always as identity primary key,
   username text not null,
@@ -70,11 +78,13 @@ alter table accounts enable row level security;
 alter table follower_snapshots enable row level security;
 alter table reel_snapshots enable row level security;
 alter table employees enable row level security;
+alter table licenses enable row level security;
 
 drop policy if exists "allow anon all" on accounts;
 drop policy if exists "allow anon all" on follower_snapshots;
 drop policy if exists "allow anon all" on reel_snapshots;
 drop policy if exists "allow anon all" on employees;
+drop policy if exists "allow anon all" on licenses;
 
 create policy "allow anon all" on accounts
   for all to anon using (true) with check (true);
@@ -83,6 +93,8 @@ create policy "allow anon all" on follower_snapshots
 create policy "allow anon all" on reel_snapshots
   for all to anon using (true) with check (true);
 create policy "allow anon all" on employees
+  for all to anon using (true) with check (true);
+create policy "allow anon all" on licenses
   for all to anon using (true) with check (true);
 
 -- Storage bucket for cached profile pictures, reel thumbnails, and story images.

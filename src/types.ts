@@ -16,6 +16,13 @@ export interface Session {
   username: string;
 }
 
+export interface License {
+  id: string;
+  license: string;
+  employee: string;
+  createdAt: number;
+}
+
 export interface TrackedAccount {
   username: string;
   addedAt: number;

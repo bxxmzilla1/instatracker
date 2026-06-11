@@ -254,6 +254,66 @@ code {
   font-weight: 600;
 }
 
+/* Blaze License */
+.license-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.license-form .cred-form__input {
+  flex: 1;
+  min-width: 200px;
+}
+
+.license-form__select {
+  cursor: pointer;
+}
+
+.license-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.license-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.85rem 1rem;
+}
+
+.license-row__info {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.license-row__key {
+  color: var(--text);
+  font-size: 0.95rem;
+  word-break: break-all;
+}
+
+.license-row__delete {
+  background: transparent;
+  color: var(--faint);
+  padding: 0.4rem 0.6rem;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+.license-row__delete:hover {
+  background: var(--surface-3);
+  color: var(--red);
+}
+
 .owner-tag--detail {
   display: inline-block;
   margin-top: 0.4rem;

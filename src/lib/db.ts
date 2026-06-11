@@ -18,4 +18,7 @@ export const {
   getEmployees,
   addEmployee,
   deleteEmployee,
+  getLicenses,
+  addLicense,
+  deleteLicense,
 } = impl;

@@ -9,12 +9,15 @@ import { checkHealth, fetchProfile, fetchReels, fetchStories } from './lib/api';
 import {
   addAccount,
   addEmployee,
+  addLicense,
   deleteEmployee,
+  deleteLicense,
   getAccounts,
   getAllFollowerSnapshots,
   getAllReelSnapshots,
   getEmployees,
   getFollowerHistory,
+  getLicenses,
   getReelHistories,
   removeAccount,
   saveFollowerSnapshot,
@@ -27,6 +30,7 @@ import { formatCount, formatDate, proxiedImage } from './lib/format';
 import type {
   Employee,
   FollowerSnapshot,
+  License,
   ParsedReel,
   ReelHistory,
   ReelSnapshot,
@@ -61,7 +65,7 @@ export default function App() {
   const [allReelSnapshots, setAllReelSnapshots] = useState<ReelSnapshot[]>([]);
   const [allFollowerSnapshots, setAllFollowerSnapshots] = useState<FollowerSnapshot[]>([]);
   const [accountsLoading, setAccountsLoading] = useState(false);
-  const [view, setView] = useState<'dashboard' | 'accounts' | 'employee'>('dashboard');
+  const [view, setView] = useState<'dashboard' | 'accounts' | 'employee' | 'license'>('dashboard');
   const [showCredentials, setShowCredentials] = useState(false);
   const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
   const [session, setSession] = useState<Session | null>(() => loadSession());
@@ -71,6 +75,9 @@ export default function App() {
   const [showAddEmployee, setShowAddEmployee] = useState(false);
   const [newEmpUsername, setNewEmpUsername] = useState('');
   const [newEmpPassword, setNewEmpPassword] = useState('');
+  const [licenses, setLicenses] = useState<License[]>([]);
+  const [newLicense, setNewLicense] = useState('');
+  const [newLicenseEmployee, setNewLicenseEmployee] = useState('');
 
   const isAdmin = session?.role === 'admin';
 
@@ -104,6 +111,12 @@ export default function App() {
     setAccounts(rows);
   }, [ownerFilter]);
 
+  const loadLicenses = useCallback(async () => {
+    if (!session) return;
+    const filter = session.role === 'employee' ? session.username : undefined;
+    setLicenses(await getLicenses(filter));
+  }, [session]);
+
   const loadDashboardData = useCallback(async () => {
     const [reels, followers] = await Promise.all([
       getAllReelSnapshots(),
@@ -133,6 +146,7 @@ export default function App() {
         const health = await checkHealth();
         setApiReady(health.hasKey);
         await loadDashboardData();
+        await loadLicenses();
         if (session?.role === 'admin') {
           setEmployees(await getEmployees());
         }
@@ -143,7 +157,7 @@ export default function App() {
       }
     }
     init();
-  }, [session, loadDashboardData]);
+  }, [session, loadDashboardData, loadLicenses]);
 
   useEffect(() => {
     if (!session) return;
@@ -341,6 +355,31 @@ export default function App() {
     }
   }
 
+  async function handleAddLicense(event: FormEvent) {
+    event.preventDefault();
+    const license = newLicense.trim();
+    const employee = newLicenseEmployee.trim();
+    if (!license || !employee) return;
+    try {
+      await addLicense({
+        id: crypto.randomUUID(),
+        license,
+        employee,
+        createdAt: Date.now(),
+      });
+      await loadLicenses();
+      setNewLicense('');
+      setNewLicenseEmployee('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not add license.');
+    }
+  }
+
+  async function handleDeleteLicense(id: string) {
+    await deleteLicense(id);
+    await loadLicenses();
+  }
+
   async function handleSaveCredentials(
     loginUsername: string,
     loginPassword: string,
@@ -428,7 +467,9 @@ export default function App() {
       ? 'Dashboard'
       : view === 'employee'
         ? `Employee · ${selectedEmployee ?? ''}`
-        : 'Accounts';
+        : view === 'license'
+          ? 'Blaze License'
+          : 'Accounts';
 
   const showAddForm = view === 'accounts';
 
@@ -485,6 +526,20 @@ export default function App() {
               <path d="M18 14c2.2.4 3.8 2.2 3.8 4.6" />
             </svg>
             Accounts
+          </button>
+
+          <button
+            type="button"
+            className={view === 'license' ? 'nav-item nav-item--active' : 'nav-item'}
+            onClick={() => {
+              setSelectedEmployee(null);
+              setView('license');
+            }}
+          >
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M13 2 4.5 12.5h6L9 22l9.5-12h-6z" />
+            </svg>
+            Blaze License
           </button>
 
           {isAdmin && (
@@ -604,6 +659,73 @@ export default function App() {
               </button>
             </section>
           ))}
+
+        {view === 'license' && (
+          <>
+            {isAdmin && (
+              <section className="panel">
+                <h2>Add license</h2>
+                <form className="license-form" onSubmit={handleAddLicense}>
+                  <input
+                    className="cred-form__input"
+                    placeholder="License key"
+                    value={newLicense}
+                    onChange={(e) => setNewLicense(e.target.value)}
+                    autoComplete="off"
+                    spellCheck={false}
+                  />
+                  <select
+                    className="cred-form__input license-form__select"
+                    value={newLicenseEmployee}
+                    onChange={(e) => setNewLicenseEmployee(e.target.value)}
+                  >
+                    <option value="">Assign to employee…</option>
+                    {employees.map((employee) => (
+                      <option key={employee.username} value={employee.username}>
+                        {employee.username}
+                      </option>
+                    ))}
+                  </select>
+                  <button type="submit" disabled={!newLicense.trim() || !newLicenseEmployee}>
+                    Add license
+                  </button>
+                </form>
+              </section>
+            )}
+
+            <section className="panel">
+              <h2>{isAdmin ? `Licenses (${licenses.length})` : 'Your Blaze License'}</h2>
+              {licenses.length === 0 ? (
+                <p className="empty-note">
+                  {isAdmin
+                    ? 'No licenses yet. Add one above and assign it to an employee.'
+                    : 'No license assigned to you yet.'}
+                </p>
+              ) : (
+                <div className="license-list">
+                  {licenses.map((license) => (
+                    <div key={license.id} className="license-row">
+                      <div className="license-row__info">
+                        <code className="license-row__key">{license.license}</code>
+                        {isAdmin && <span className="owner-tag">{license.employee}</span>}
+                      </div>
+                      {isAdmin && (
+                        <button
+                          type="button"
+                          className="license-row__delete"
+                          onClick={() => handleDeleteLicense(license.id)}
+                          title="Delete license"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          </>
+        )}
 
         {(view === 'accounts' || view === 'employee') && (
           <>
