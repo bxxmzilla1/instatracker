@@ -307,8 +307,9 @@ button:disabled {
 
 .account-card__main {
   display: flex;
+  align-items: center;
   gap: 0.85rem;
-  padding: 0.9rem;
+  padding: 0.8rem 0.9rem;
   background: transparent;
   color: inherit;
   text-align: left;

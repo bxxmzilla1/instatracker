@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { TrackedAccount } from '../types';
-import { formatCount, formatDelta, formatRelative, proxiedImage } from '../lib/format';
+import { proxiedImage } from '../lib/format';
 
 interface Props {
   account: TrackedAccount;
@@ -16,8 +16,6 @@ interface Props {
 
 export function AccountCard({
   account,
-  followerDelta,
-  totalViews,
   selected,
   refreshing,
   hasStory,
@@ -25,7 +23,6 @@ export function AccountCard({
   onRefresh,
   onRemove,
 }: Props) {
-  const delta = formatDelta(account.lastFollowers ?? 0, followerDelta);
   const [imgError, setImgError] = useState(false);
   const showImage = Boolean(account.profilePicUrl) && !imgError;
 
@@ -44,28 +41,9 @@ export function AccountCard({
             <span>{account.username.slice(0, 1).toUpperCase()}</span>
           )}
         </div>
-        <div className="account-card__info">
-          <div className="account-card__title">
-            <strong>@{account.username}</strong>
-            {account.isVerified && <span className="badge">✓</span>}
-          </div>
-          {account.fullName && <p className="account-card__subtitle">{account.fullName}</p>}
-          <div className="account-card__stats">
-            <span>
-              {account.lastFollowers !== undefined ? formatCount(account.lastFollowers) : '—'} followers
-            </span>
-            {delta && (
-              <span className={delta.startsWith('+') ? 'delta delta--up' : delta === '0' ? 'delta' : 'delta delta--down'}>
-                {delta}
-              </span>
-            )}
-          </div>
-          <div className="account-card__stats">
-            <span>{formatCount(totalViews ?? 0)} reel views</span>
-          </div>
-          {account.lastCheckedAt && (
-            <p className="account-card__meta">Updated {formatRelative(account.lastCheckedAt)}</p>
-          )}
+        <div className="account-card__title">
+          <strong>@{account.username}</strong>
+          {account.isVerified && <span className="badge">✓</span>}
         </div>
       </button>
       <div className="account-card__actions">
