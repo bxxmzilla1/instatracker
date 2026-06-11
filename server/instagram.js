@@ -34,6 +34,18 @@ function extractApiError(data) {
   return null;
 }
 
+const MAX_ATTEMPTS = 4;
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRateLimited(status, message) {
+  if (status === 429 || status === 503) return true;
+  const lower = (message || '').toLowerCase();
+  return lower.includes('rate limit') || lower.includes('too many requests');
+}
+
 async function callInstagramGet(endpoint, params = {}) {
   if (!hasValidApiKey()) {
     throw new Error(
@@ -49,30 +61,46 @@ async function callInstagramGet(endpoint, params = {}) {
   }
 
   const url = `https://${RAPIDAPI_HOST}${endpoint}${query.size ? `?${query}` : ''}`;
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: {
-      'x-rapidapi-host': RAPIDAPI_HOST,
-      'x-rapidapi-key': process.env.RAPIDAPI_KEY.trim(),
-    },
-  });
+  let lastError = null;
 
-  const data = await response.json().catch(() => ({}));
-  const apiError = extractApiError(data);
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
+    if (attempt > 0) {
+      await sleep(700 * attempt);
+    }
 
-  if (!response.ok) {
-    throw new Error(apiError || `API request failed (${response.status})`);
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'x-rapidapi-host': RAPIDAPI_HOST,
+        'x-rapidapi-key': process.env.RAPIDAPI_KEY.trim(),
+      },
+    });
+
+    const data = await response.json().catch(() => ({}));
+    const apiError = extractApiError(data);
+
+    if (isRateLimited(response.status, apiError)) {
+      lastError = new Error('Instagram API is rate-limited. Retrying…');
+      continue;
+    }
+
+    if (!response.ok) {
+      throw new Error(apiError || `API request failed (${response.status})`);
+    }
+
+    if (data.success === false) {
+      lastError = new Error(apiError || 'Instagram API request failed');
+      continue;
+    }
+
+    if (apiError && data.success !== true) {
+      throw new Error(apiError);
+    }
+
+    return data;
   }
 
-  if (apiError) {
-    throw new Error(apiError);
-  }
-
-  if (data.success === false) {
-    throw new Error(apiError || 'Instagram API request failed');
-  }
-
-  return data;
+  throw lastError ?? new Error('Instagram API request failed after multiple attempts.');
 }
 
 export async function fetchInstagramProfile(username) {
