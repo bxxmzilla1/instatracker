@@ -47,6 +47,7 @@ export function AccountCard({
           <div className="account-card__title">
             <strong>@{account.username}</strong>
             {account.isVerified && <span className="badge">✓</span>}
+            {account.banned && <span className="banned-tag">Banned</span>}
           </div>
           {ownerTag && <span className="owner-tag">{ownerTag}</span>}
         </div>
