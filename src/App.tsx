@@ -592,6 +592,14 @@ export default function App() {
 
         {(view === 'accounts' || view === 'employee') && (
           <>
+            {view === 'employee' && !accountsLoading && accounts.length > 0 && (
+              <Dashboard
+                accounts={accounts}
+                reelSnapshots={scopedReelSnapshots}
+                followerSnapshots={scopedFollowerSnapshots}
+              />
+            )}
+
             {showAddForm && (
               <section className="panel">
                 <h2>Add account</h2>
