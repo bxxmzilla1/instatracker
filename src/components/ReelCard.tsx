@@ -27,20 +27,15 @@ export function ReelCard({ history }: Props) {
         </a>
       )}
       <div className="reel-card__header">
-        <a
-          href={`https://www.instagram.com/reel/${history.shortcode}/`}
-          target="_blank"
-          rel="noreferrer"
-          className="reel-card__code"
-        >
-          /reel/{history.shortcode}
-        </a>
+        <span className="reel-card__code">/reel/{history.shortcode}</span>
         {viewDelta && (
           <span className={viewDelta.startsWith('+') ? 'delta delta--up' : viewDelta === '0' ? 'delta' : 'delta delta--down'}>
             {viewDelta} views
           </span>
         )}
       </div>
+
+      {history.caption && <p className="reel-card__caption">{history.caption}</p>}
       <div className="reel-card__metrics">
         <div>
           <span className="label">Views</span>
@@ -64,6 +59,10 @@ export function ReelCard({ history }: Props) {
           })}
         </div>
       )}
+
+      <a href={reelUrl} target="_blank" rel="noreferrer" className="reel-card__watch">
+        Watch Reel
+      </a>
     </article>
   );
 }

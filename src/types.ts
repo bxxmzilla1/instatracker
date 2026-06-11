@@ -44,6 +44,7 @@ export interface ReelHistory {
   username: string;
   shortcode: string;
   thumbnailUrl?: string;
+  caption?: string;
   snapshots: { views: number; likes: number; comments: number; capturedAt: number }[];
 }
 

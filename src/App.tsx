@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AddAccountForm } from './components/AddAccountForm';
 import { AccountCard } from './components/AccountCard';
 import { FollowerChart } from './components/FollowerChart';
@@ -38,6 +38,11 @@ export default function App() {
     () => accounts.find((a) => a.username === selectedUsername) ?? null,
     [accounts, selectedUsername],
   );
+
+  const selectedUsernameRef = useRef<string | null>(null);
+  useEffect(() => {
+    selectedUsernameRef.current = selectedUsername;
+  }, [selectedUsername]);
 
   const loadAccounts = useCallback(async () => {
     const rows = await getAccounts();
@@ -153,7 +158,9 @@ export default function App() {
       }
 
       await loadAccounts();
-      if (selectedUsername === account.username || !selectedUsername) {
+      const isViewingThisAccount =
+        !selectedUsernameRef.current || selectedUsernameRef.current === account.username;
+      if (isViewingThisAccount) {
         setSelectedUsername(account.username);
         await loadAccountDetails(account.username);
       }
