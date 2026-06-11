@@ -146,7 +146,7 @@ export default function App() {
     if (!session) return;
     let active = true;
     (async () => {
-      const rows = await getAccounts(ownerFilter);
+      const [rows] = await Promise.all([getAccounts(ownerFilter), loadDashboardData()]);
       if (!active) return;
       setAccounts(rows);
       setSelectedUsername((current) =>
@@ -156,7 +156,7 @@ export default function App() {
     return () => {
       active = false;
     };
-  }, [session, ownerFilter]);
+  }, [session, ownerFilter, loadDashboardData]);
 
   useEffect(() => {
     if (selectedUsername) {
@@ -199,6 +199,7 @@ export default function App() {
 
       const now = Date.now();
       const existing = accounts.find((a) => a.username === profile.username.toLowerCase());
+      const defaultOwner = session?.role === 'employee' ? session.username : 'admin';
 
       const account: TrackedAccount = {
         username: profile.username.toLowerCase(),
@@ -212,7 +213,7 @@ export default function App() {
         lastMediaCount: profile.mediaCount,
         lastCheckedAt: now,
         stories,
-        owner: existing?.owner,
+        owner: existing?.owner ?? defaultOwner,
         loginUsername: existing?.loginUsername,
         loginPassword: existing?.loginPassword,
         authSecret: existing?.authSecret,
@@ -607,6 +608,11 @@ export default function App() {
               <div className="detail-header">
                 <div>
                   <h2>@{selectedAccount.username}</h2>
+                  {isAdmin && selectedAccount.owner && selectedAccount.owner !== 'admin' && (
+                    <span className="owner-tag owner-tag--detail">
+                      Added by {selectedAccount.owner}
+                    </span>
+                  )}
                 </div>
                 <div className="detail-header__actions">
                   <button

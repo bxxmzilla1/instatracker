@@ -245,6 +245,12 @@ code {
   font-size: 0.72rem;
 }
 
+.owner-tag--detail {
+  display: inline-block;
+  margin-top: 0.4rem;
+  font-size: 0.8rem;
+}
+
 .topbar__actions {
   display: flex;
   gap: 0.6rem;
