@@ -218,10 +218,14 @@ export default function App() {
       return;
     }
 
-    await addAccount({ username: normalized, addedAt: Date.now() });
-    await loadAccounts();
-    setSelectedUsername(normalized);
-    await refreshAccount(normalized);
+    try {
+      await addAccount({ username: normalized, addedAt: Date.now() });
+      await loadAccounts();
+      setSelectedUsername(normalized);
+      await refreshAccount(normalized);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not add this account.');
+    }
   }
 
   async function handleSaveCredentials(loginUsername: string, loginPassword: string) {
