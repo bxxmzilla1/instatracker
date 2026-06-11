@@ -1009,7 +1009,7 @@ button:disabled {
 
 .bar-chart__label {
   margin-top: 6px;
-  font-size: 0.68rem;
+  font-size: 0.6rem;
   color: var(--faint);
   white-space: nowrap;
   height: 0.9rem;

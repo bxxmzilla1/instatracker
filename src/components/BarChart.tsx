@@ -14,7 +14,6 @@ export function BarChart({ bars, color = '#dd2a7b' }: Props) {
       <div className="bar-chart__bars">
         {bars.map((bar) => {
           const height = bar.value > 0 ? Math.max(3, (bar.value / max) * 100) : 0;
-          const showLabel = bar.day % 2 === 1 || bar.isToday;
           return (
             <div
               key={bar.day}
@@ -27,7 +26,7 @@ export function BarChart({ bars, color = '#dd2a7b' }: Props) {
                   style={{ height: `${height}%`, background: color }}
                 />
               </div>
-              <span className="bar-chart__label">{showLabel ? bar.day : ''}</span>
+              <span className="bar-chart__label">{bar.day}</span>
             </div>
           );
         })}
