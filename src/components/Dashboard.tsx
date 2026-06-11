@@ -111,10 +111,12 @@ export function Dashboard({ accounts, reelSnapshots, followerSnapshots }: Props)
           <span className="stat-card__label">Total Reels</span>
           <strong className="stat-card__value">{formatCount(card.totalReels)}</strong>
         </div>
-        <div className="stat-card">
-          <span className="stat-card__label">New Reels</span>
-          <strong className="stat-card__value">{formatCount(card.newReels)}</strong>
-        </div>
+        {selectedBar && (
+          <div className="stat-card">
+            <span className="stat-card__label">New Reels</span>
+            <strong className="stat-card__value">{formatCount(card.newReels)}</strong>
+          </div>
+        )}
       </div>
 
       <div className="dashboard__chart">
