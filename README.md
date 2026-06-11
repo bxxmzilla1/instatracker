@@ -2,7 +2,7 @@
 
 A Progressive Web App to track Instagram accounts — followers, reels, and reel view counts over time.
 
-Uses the [Instagram120 API](https://rapidapi.com/3205/api/instagram120) on RapidAPI.
+Uses the [Instagram API Followers/Following/Stories/Info](https://rapidapi.com/hub) on RapidAPI.
 
 ## Features
 
@@ -16,7 +16,7 @@ Uses the [Instagram120 API](https://rapidapi.com/3205/api/instagram120) on Rapid
 
 ### 1. Get a RapidAPI key
 
-1. Sign up at [RapidAPI](https://rapidapi.com/) and subscribe to **Instagram120**.
+1. Sign up at [RapidAPI](https://rapidapi.com/) and subscribe to **Instagram API Followers/Following/Stories/Info**.
 2. Copy your API key from the RapidAPI dashboard.
 
 ### 2. Environment variables
@@ -65,7 +65,7 @@ Do not commit `.env` — it is already in `.gitignore`.
 3. Vercel auto-detects the Vite app via `vercel.json`.
 4. Add an environment variable:
    - **Name:** `RAPIDAPI_KEY`
-   - **Value:** your real RapidAPI key from the [Instagram120 dashboard](https://rapidapi.com/3205/api/instagram120) (not `undefined` or a placeholder)
+   - **Value:** your real RapidAPI key for **Instagram API Followers/Following/Stories/Info**
    - **Environments:** Production, Preview, Development
 5. Click **Deploy**.
 6. Use your **production URL** (`instatracker.vercel.app`), not preview links. Preview URLs with Vercel Deployment Protection return 401 for PWA assets.
@@ -86,8 +86,8 @@ When prompted, link the project and add `RAPIDAPI_KEY` in the Vercel dashboard u
 |------|---------|
 | `/` | Vite static build (`dist/`) |
 | `/api/health` | Vercel serverless function |
-| `/api/profile` | Vercel serverless function |
-| `/api/reels` | Vercel serverless function |
+| `/api/profile` | `GET /api/v1/user/profile` via RapidAPI |
+| `/api/reels` | `GET /api/v1/user/reels` via RapidAPI |
 | All other routes | SPA fallback to `index.html` |
 
 API logic is shared between local dev (`server/`) and Vercel (`api/`).
@@ -118,13 +118,13 @@ vercel.json    Vercel build and SPA routing config
 To use the Instagram MCP in Cursor, add this to `~/.cursor/mcp.json` and replace the API key:
 
 ```json
-"RapidAPI Hub - instagram": {
+"RapidAPI Hub - Instagram API Followers/Following/Stories/Info": {
   "command": "npx",
   "args": [
     "mcp-remote",
     "https://mcp.rapidapi.com",
     "--header",
-    "x-api-host: instagram120.p.rapidapi.com",
+    "x-api-host: instagram-api-followers-following-stories-info.p.rapidapi.com",
     "--header",
     "x-api-key:YOUR_RAPIDAPI_KEY_HERE"
   ]

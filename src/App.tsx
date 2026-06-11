@@ -190,7 +190,7 @@ export default function App() {
 
       {!apiReady && (
         <div className="banner banner--warn">
-          Set a real <code>RAPIDAPI_KEY</code> in Vercel Environment Variables (not <code>undefined</code> or a placeholder), then redeploy.
+          Set <code>RAPIDAPI_KEY</code> in Vercel for the Instagram Followers/Following/Stories/Info API, then redeploy.
         </div>
       )}
 

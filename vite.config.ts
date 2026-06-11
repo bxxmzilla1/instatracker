@@ -29,7 +29,7 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,ico,svg,woff2}'],
         runtimeCaching: [
           {
-            urlPattern: /^https:\/\/instagram120\.p\.rapidapi\.com\/.*/i,
+            urlPattern: /^https:\/\/instagram-api-followers-following-stories-info\.p\.rapidapi\.com\/.*/i,
             handler: 'NetworkOnly',
           },
           {

@@ -6,13 +6,13 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { username, maxId } = req.body ?? {};
+    const { username, maxId, pagination_token } = req.body ?? {};
 
     if (!username?.trim()) {
       return res.status(400).json({ error: 'username is required' });
     }
 
-    const data = await fetchInstagramReels(username, maxId);
+    const data = await fetchInstagramReels(username, pagination_token || maxId);
     res.status(200).json(data);
   } catch (err) {
     res.status(500).json({ error: err.message });

@@ -25,12 +25,14 @@ export function parseProfileResponse(data: unknown, username: string): ParsedPro
   const edgeFollowedBy = user.edge_followed_by as Record<string, unknown> | undefined;
   const edgeFollow = user.edge_follow as Record<string, unknown> | undefined;
   const edgeMedia = user.edge_owner_to_timeline_media as Record<string, unknown> | undefined;
+  const hdProfile = user.hd_profile_pic_url_info as Record<string, unknown> | undefined;
 
   return {
     username: pickString(user.username, result.username, username).toLowerCase() || username.toLowerCase(),
     fullName: pickString(user.full_name, user.fullName, result.full_name),
     profilePicUrl: pickString(
       user.profile_pic_url_hd,
+      hdProfile?.url,
       user.profile_pic_url,
       user.profilePicUrl,
       result.profile_pic_url,
@@ -91,12 +93,9 @@ export function parseReelsResponse(data: unknown): ParsedReel[] {
     const shortcode = pickString(media.shortcode, media.code, node.shortcode, node.code) || `reel-${index}`;
     const id = pickString(media.id, media.pk, node.id, shortcode) || shortcode;
 
+    const captionObj = media.caption as Record<string, unknown> | undefined;
     const caption =
-      pickString(
-        (media.caption as Record<string, unknown>)?.text,
-        media.caption,
-        node.caption,
-      ) || '';
+      pickString(captionObj?.text, media.caption, node.caption) || '';
 
     const thumbnailUrl = pickString(
       media.thumbnail_url,
@@ -139,6 +138,7 @@ export function extractReelsCursor(data: unknown): string | undefined {
   const root = (data as Record<string, unknown>) ?? {};
   const result = (root.result ?? root.data ?? root) as Record<string, unknown>;
   const cursor = pickString(
+    result.pagination_token,
     result.maxId,
     result.end_cursor,
     result.next_max_id,
