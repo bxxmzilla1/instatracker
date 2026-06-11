@@ -59,6 +59,7 @@ export default function App() {
   const [apiReady, setApiReady] = useState(true);
   const [allReelSnapshots, setAllReelSnapshots] = useState<ReelSnapshot[]>([]);
   const [allFollowerSnapshots, setAllFollowerSnapshots] = useState<FollowerSnapshot[]>([]);
+  const [accountsLoading, setAccountsLoading] = useState(false);
   const [view, setView] = useState<'dashboard' | 'accounts' | 'employee'>('dashboard');
   const [showCredentials, setShowCredentials] = useState(false);
   const [session, setSession] = useState<Session | null>(() => loadSession());
@@ -145,7 +146,7 @@ export default function App() {
   useEffect(() => {
     if (!session) return;
     let active = true;
-    setAccounts([]);
+    setAccountsLoading(true);
     setSelectedUsername(null);
     (async () => {
       const [rows] = await Promise.all([getAccounts(ownerFilter), loadDashboardData()]);
@@ -154,6 +155,7 @@ export default function App() {
       setSelectedUsername((current) =>
         rows.some((r) => r.username === current) ? current : rows[0]?.username ?? null,
       );
+      setAccountsLoading(false);
     })();
     return () => {
       active = false;
@@ -392,6 +394,13 @@ export default function App() {
 
   const showAddForm = view === 'accounts';
 
+  const loadingBlock = (
+    <div className="loading-block">
+      <span className="spinner" aria-hidden />
+      <span>Loading accounts…</span>
+    </div>
+  );
+
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -540,7 +549,9 @@ export default function App() {
         {warning && !error && <div className="banner banner--warn">{warning}</div>}
 
         {view === 'dashboard' &&
-          (accounts.length > 0 ? (
+          (accountsLoading ? (
+            <section className="panel">{loadingBlock}</section>
+          ) : accounts.length > 0 ? (
             <Dashboard
               accounts={accounts}
               reelSnapshots={scopedReelSnapshots}
@@ -571,7 +582,9 @@ export default function App() {
             <h2>Tracked ({accounts.length})</h2>
           </div>
 
-          {accounts.length === 0 ? (
+          {accountsLoading ? (
+            loadingBlock
+          ) : accounts.length === 0 ? (
             <p className="empty-note">
               {view === 'employee'
                 ? 'This employee has not added any accounts yet.'
@@ -605,7 +618,9 @@ export default function App() {
         </section>
 
         <section className="panel panel--detail">
-          {selectedAccount ? (
+          {accountsLoading ? (
+            loadingBlock
+          ) : selectedAccount ? (
             <>
               <div className="detail-header">
                 <div>

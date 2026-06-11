@@ -982,6 +982,30 @@ button:disabled {
   color: var(--muted);
 }
 
+.loading-block {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  min-height: 160px;
+  color: var(--muted);
+}
+
+.spinner {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid var(--surface-3);
+  border-top-color: var(--accent);
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .empty-detail {
   min-height: 280px;
   display: grid;
