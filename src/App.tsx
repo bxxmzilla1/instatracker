@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AddAccountForm } from './components/AddAccountForm';
 import { AccountCard } from './components/AccountCard';
-import { FollowerChart } from './components/FollowerChart';
 import { ReelCard } from './components/ReelCard';
 import { checkHealth, fetchProfile, fetchReels, fetchStories } from './lib/api';
 import {
@@ -337,11 +336,6 @@ export default function App() {
                   <span>Last check</span>
                   <strong>{selectedAccount.lastCheckedAt ? formatDate(selectedAccount.lastCheckedAt) : 'Never'}</strong>
                 </div>
-              </div>
-
-              <div className="section-block">
-                <h3>Follower history</h3>
-                <FollowerChart history={followerHistory} />
               </div>
 
               <div className="section-block">
