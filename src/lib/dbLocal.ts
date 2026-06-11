@@ -168,10 +168,12 @@ export function groupReelHistories(rows: ReelSnapshot[]): ReelHistory[] {
       shortcode: row.shortcode,
       thumbnailUrl: row.thumbnailUrl,
       caption: row.caption,
+      takenAt: row.takenAt,
       snapshots: [],
     };
     if (row.thumbnailUrl) existing.thumbnailUrl = row.thumbnailUrl;
     if (row.caption) existing.caption = row.caption;
+    if (row.takenAt) existing.takenAt = row.takenAt;
     existing.snapshots.push({
       views: row.views,
       likes: row.likes,

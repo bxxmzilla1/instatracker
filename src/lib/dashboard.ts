@@ -157,14 +157,22 @@ export function currentMonthLabel(): string {
   return new Date().toLocaleString(undefined, { month: 'long', year: 'numeric' });
 }
 
-function buildMonthlyBars(rows: SeriesRow[]): DayBar[] {
+export function monthLabel(year: number, month: number): string {
+  return new Date(year, month, 1).toLocaleString(undefined, { month: 'long', year: 'numeric' });
+}
+
+function buildMonthlyBars(rows: SeriesRow[], year?: number, month?: number): DayBar[] {
   const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth();
-  const today = now.getDate();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const monthStart = new Date(year, month, 1).getTime();
-  const monthEnd = new Date(year, month + 1, 1).getTime();
+  const y = year ?? now.getFullYear();
+  const m = month ?? now.getMonth();
+
+  const isCurrent = y === now.getFullYear() && m === now.getMonth();
+  const isPast = y < now.getFullYear() || (y === now.getFullYear() && m < now.getMonth());
+  const daysInMonth = new Date(y, m + 1, 0).getDate();
+  const today = isCurrent ? now.getDate() : isPast ? daysInMonth : 0;
+
+  const monthStart = new Date(y, m, 1).getTime();
+  const monthEnd = new Date(y, m + 1, 1).getTime();
 
   const monthRows = rows.filter(
     (row) => row.capturedAt >= monthStart && row.capturedAt < monthEnd,
@@ -173,7 +181,7 @@ function buildMonthlyBars(rows: SeriesRow[]): DayBar[] {
 
   const bars: DayBar[] = [];
   for (let day = 1; day <= daysInMonth; day += 1) {
-    const endOfDay = new Date(year, month, day, 23, 59, 59, 999).getTime();
+    const endOfDay = new Date(y, m, day, 23, 59, 59, 999).getTime();
     let value = 0;
 
     if (day <= today) {
@@ -183,7 +191,7 @@ function buildMonthlyBars(rows: SeriesRow[]): DayBar[] {
       }
     }
 
-    bars.push({ day, value, isFuture: day > today, isToday: day === today });
+    bars.push({ day, value, isFuture: day > today, isToday: isCurrent && day === today });
   }
 
   return bars;
@@ -211,6 +219,8 @@ export function monthlyFollowerBars(snapshots: FollowerSnapshot[]): DayBar[] {
 
 export function monthlyViewBarsForReel(
   snapshots: { views: number; capturedAt: number }[],
+  year?: number,
+  month?: number,
 ): DayBar[] {
   return buildMonthlyBars(
     snapshots.map((snapshot) => ({
@@ -218,5 +228,7 @@ export function monthlyViewBarsForReel(
       capturedAt: snapshot.capturedAt,
       value: snapshot.views,
     })),
+    year,
+    month,
   );
 }

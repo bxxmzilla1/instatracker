@@ -41,6 +41,7 @@ interface ReelRow {
   likes: number | null;
   comments: number | null;
   captured_at: number;
+  taken_at: number | null;
 }
 
 interface FollowerRow {
@@ -102,6 +103,7 @@ function toReelSnapshot(row: ReelRow): ReelSnapshot {
     likes: row.likes ?? 0,
     comments: row.comments ?? 0,
     capturedAt: row.captured_at,
+    takenAt: row.taken_at ?? undefined,
   };
 }
 
@@ -216,6 +218,7 @@ export async function saveReelSnapshots(snapshots: ReelSnapshot[]): Promise<void
     likes: snapshot.likes,
     comments: snapshot.comments,
     captured_at: snapshot.capturedAt,
+    taken_at: snapshot.takenAt ?? null,
   }));
   const { error } = await client().from('reel_snapshots').insert(rows);
   if (error) throw new Error(error.message);

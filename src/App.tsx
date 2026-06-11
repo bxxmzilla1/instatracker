@@ -267,6 +267,7 @@ export default function App() {
             likes: reel.likes,
             comments: reel.comments,
             capturedAt: now,
+            takenAt: reel.takenAt,
           })),
         );
       }

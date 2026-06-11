@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { ReelHistory } from '../types';
 import { formatCount, proxiedImage } from '../lib/format';
-import { currentMonthLabel, monthlyViewBarsForReel } from '../lib/dashboard';
+import { monthLabel, monthlyViewBarsForReel } from '../lib/dashboard';
 import { BarChart } from './BarChart';
 
 interface Props {
@@ -12,12 +12,34 @@ export function ReelCard({ history }: Props) {
   const latest = history.snapshots.at(-1);
   const [thumbError, setThumbError] = useState(false);
   const [showStats, setShowStats] = useState(false);
+  const [monthOffset, setMonthOffset] = useState(0);
   const showThumb = Boolean(history.thumbnailUrl) && !thumbError;
   const reelUrl = `https://www.instagram.com/reel/${history.shortcode}/`;
+
+  const viewDate = useMemo(() => {
+    const d = new Date();
+    d.setDate(1);
+    d.setMonth(d.getMonth() + monthOffset);
+    return d;
+  }, [monthOffset]);
+  const year = viewDate.getFullYear();
+  const month = viewDate.getMonth();
+
   const monthlyBars = useMemo(
-    () => monthlyViewBarsForReel(history.snapshots),
-    [history.snapshots],
+    () => monthlyViewBarsForReel(history.snapshots, year, month),
+    [history.snapshots, year, month],
   );
+
+  const postedDay = useMemo(() => {
+    if (!history.takenAt) return undefined;
+    const d = new Date(history.takenAt * 1000);
+    return d.getFullYear() === year && d.getMonth() === month ? d.getDate() : undefined;
+  }, [history.takenAt, year, month]);
+
+  function openStats() {
+    setMonthOffset(0);
+    setShowStats(true);
+  }
 
   return (
     <article className="reel-card">
@@ -47,7 +69,7 @@ export function ReelCard({ history }: Props) {
           <strong>{latest ? formatCount(latest.comments) : '—'}</strong>
         </div>
       </div>
-      <button type="button" className="reel-card__stats" onClick={() => setShowStats(true)}>
+      <button type="button" className="reel-card__stats" onClick={openStats}>
         Monthly views
       </button>
       <a href={reelUrl} target="_blank" rel="noreferrer" className="reel-card__watch">
@@ -68,14 +90,34 @@ export function ReelCard({ history }: Props) {
                 ✕
               </button>
             </div>
-            <p className="cred-note">
-              /reel/{history.shortcode} · {currentMonthLabel()}
-            </p>
+
+            <div className="month-nav">
+              <button
+                type="button"
+                className="month-nav__btn"
+                onClick={() => setMonthOffset((o) => o - 1)}
+                aria-label="Previous month"
+              >
+                ‹
+              </button>
+              <span className="month-nav__label">{monthLabel(year, month)}</span>
+              <button
+                type="button"
+                className="month-nav__btn"
+                onClick={() => setMonthOffset((o) => o + 1)}
+                disabled={monthOffset >= 0}
+                aria-label="Next month"
+              >
+                ›
+              </button>
+            </div>
+
             <div className="trend-chart__summary">
               <strong>{latest ? formatCount(latest.views) : '0'}</strong>
               <span className="delta">total views</span>
             </div>
-            <BarChart bars={monthlyBars} />
+
+            <BarChart bars={monthlyBars} postedDay={postedDay} showValues />
           </div>
         </div>
       )}

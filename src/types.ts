@@ -52,6 +52,7 @@ export interface ReelSnapshot {
   likes: number;
   comments: number;
   capturedAt: number;
+  takenAt?: number;
 }
 
 export interface ReelHistory {
@@ -60,6 +61,7 @@ export interface ReelHistory {
   shortcode: string;
   thumbnailUrl?: string;
   caption?: string;
+  takenAt?: number;
   snapshots: { views: number; likes: number; comments: number; capturedAt: number }[];
 }
 

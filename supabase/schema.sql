@@ -55,6 +55,8 @@ create table if not exists reel_snapshots (
   captured_at bigint not null
 );
 
+alter table reel_snapshots add column if not exists taken_at bigint;
+
 create index if not exists reel_snapshots_username_idx
   on reel_snapshots (username);
 
