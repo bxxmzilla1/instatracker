@@ -145,6 +145,8 @@ export default function App() {
   useEffect(() => {
     if (!session) return;
     let active = true;
+    setAccounts([]);
+    setSelectedUsername(null);
     (async () => {
       const [rows] = await Promise.all([getAccounts(ownerFilter), loadDashboardData()]);
       if (!active) return;
