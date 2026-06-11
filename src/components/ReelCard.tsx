@@ -1,0 +1,55 @@
+import type { ReelHistory } from '../types';
+import { formatCount, formatDelta } from '../lib/format';
+
+interface Props {
+  history: ReelHistory;
+}
+
+export function ReelCard({ history }: Props) {
+  const latest = history.snapshots.at(-1);
+  const previous = history.snapshots.length > 1 ? history.snapshots.at(-2) : undefined;
+  const viewDelta = latest ? formatDelta(latest.views, previous?.views) : null;
+
+  return (
+    <article className="reel-card">
+      <div className="reel-card__header">
+        <a
+          href={`https://www.instagram.com/reel/${history.shortcode}/`}
+          target="_blank"
+          rel="noreferrer"
+          className="reel-card__code"
+        >
+          /reel/{history.shortcode}
+        </a>
+        {viewDelta && (
+          <span className={viewDelta.startsWith('+') ? 'delta delta--up' : viewDelta === '0' ? 'delta' : 'delta delta--down'}>
+            {viewDelta} views
+          </span>
+        )}
+      </div>
+      <div className="reel-card__metrics">
+        <div>
+          <span className="label">Views</span>
+          <strong>{latest ? formatCount(latest.views) : '—'}</strong>
+        </div>
+        <div>
+          <span className="label">Likes</span>
+          <strong>{latest ? formatCount(latest.likes) : '—'}</strong>
+        </div>
+        <div>
+          <span className="label">Comments</span>
+          <strong>{latest ? formatCount(latest.comments) : '—'}</strong>
+        </div>
+      </div>
+      {history.snapshots.length > 1 && (
+        <div className="sparkline" aria-hidden>
+          {history.snapshots.map((snap, i) => {
+            const max = Math.max(...history.snapshots.map((s) => s.views), 1);
+            const height = Math.max(12, Math.round((snap.views / max) * 100));
+            return <span key={i} style={{ height: `${height}%` }} />;
+          })}
+        </div>
+      )}
+    </article>
+  );
+}

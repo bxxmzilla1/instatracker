@@ -1,0 +1,65 @@
+import cors from 'cors';
+import dotenv from 'dotenv';
+import express from 'express';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { callInstagram, normalizeUsername } from './instagram.js';
+
+dotenv.config();
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const app = express();
+const PORT = process.env.PORT || 3001;
+const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY;
+
+app.use(cors());
+app.use(express.json());
+
+app.get('/api/health', (_req, res) => {
+  res.json({ ok: true, hasKey: Boolean(RAPIDAPI_KEY) });
+});
+
+app.post('/api/profile', async (req, res) => {
+  try {
+    const { username } = req.body;
+    if (!username?.trim()) {
+      return res.status(400).json({ error: 'username is required' });
+    }
+    const data = await callInstagram('/api/instagram/profile', {
+      username: normalizeUsername(username),
+    });
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/reels', async (req, res) => {
+  try {
+    const { username, maxId } = req.body;
+    if (!username?.trim()) {
+      return res.status(400).json({ error: 'username is required' });
+    }
+    const body = { username: normalizeUsername(username) };
+    if (maxId) body.maxId = maxId;
+    const data = await callInstagram('/api/instagram/reels', body);
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+const distPath = path.join(__dirname, '..', 'dist');
+if (process.env.NODE_ENV === 'production') {
+  app.use(express.static(distPath));
+  app.get('*', (_req, res) => {
+    res.sendFile(path.join(distPath, 'index.html'));
+  });
+}
+
+app.listen(PORT, () => {
+  console.log(`Instatracker server running on http://localhost:${PORT}`);
+  if (!RAPIDAPI_KEY) {
+    console.warn('Warning: RAPIDAPI_KEY is missing. Set it in .env to fetch Instagram data.');
+  }
+});
