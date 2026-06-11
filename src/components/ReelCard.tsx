@@ -14,6 +14,7 @@ export function ReelCard({ history, addedAt }: Props) {
   const [thumbError, setThumbError] = useState(false);
   const [showStats, setShowStats] = useState(false);
   const [monthOffset, setMonthOffset] = useState(0);
+  const [selectedDay, setSelectedDay] = useState<number | null>(null);
   const showThumb = Boolean(history.thumbnailUrl) && !thumbError;
   const reelUrl = `https://www.instagram.com/reel/${history.shortcode}/`;
 
@@ -37,8 +38,11 @@ export function ReelCard({ history, addedAt }: Props) {
     return d.getFullYear() === year && d.getMonth() === month ? d.getDate() : undefined;
   }, [addedAt, year, month]);
 
+  const selectedBar = selectedDay ? monthlyBars.find((b) => b.day === selectedDay) ?? null : null;
+
   function openStats() {
     setMonthOffset(0);
+    setSelectedDay(null);
     setShowStats(true);
   }
 
@@ -96,7 +100,10 @@ export function ReelCard({ history, addedAt }: Props) {
               <button
                 type="button"
                 className="month-nav__btn"
-                onClick={() => setMonthOffset((o) => o - 1)}
+                onClick={() => {
+                  setMonthOffset((o) => o - 1);
+                  setSelectedDay(null);
+                }}
                 aria-label="Previous month"
               >
                 ‹
@@ -105,7 +112,10 @@ export function ReelCard({ history, addedAt }: Props) {
               <button
                 type="button"
                 className="month-nav__btn"
-                onClick={() => setMonthOffset((o) => o + 1)}
+                onClick={() => {
+                  setMonthOffset((o) => o + 1);
+                  setSelectedDay(null);
+                }}
                 disabled={monthOffset >= 0}
                 aria-label="Next month"
               >
@@ -114,11 +124,29 @@ export function ReelCard({ history, addedAt }: Props) {
             </div>
 
             <div className="trend-chart__summary">
-              <strong>{latest ? formatCount(latest.views) : '0'}</strong>
-              <span className="delta">total views</span>
+              {selectedBar ? (
+                <>
+                  <strong>{formatCount(selectedBar.value)}</strong>
+                  <span className="delta">
+                    views on {monthLabel(year, month).split(' ')[0]} {selectedBar.day}
+                  </span>
+                </>
+              ) : (
+                <>
+                  <strong>{latest ? formatCount(latest.views) : '0'}</strong>
+                  <span className="delta">total views</span>
+                </>
+              )}
             </div>
 
-            <BarChart bars={monthlyBars} markedDay={addedDay} markedLabel="added" showValues />
+            <BarChart
+              bars={monthlyBars}
+              markedDay={addedDay}
+              markedLabel="added"
+              showValues
+              selectedDay={selectedDay}
+              onSelectDay={(day) => setSelectedDay((c) => (c === day ? null : day))}
+            />
           </div>
         </div>
       )}

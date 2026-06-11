@@ -7,6 +7,8 @@ interface Props {
   markedDay?: number;
   markedLabel?: string;
   showValues?: boolean;
+  selectedDay?: number | null;
+  onSelectDay?: (day: number) => void;
 }
 
 export function BarChart({
@@ -15,8 +17,11 @@ export function BarChart({
   markedDay,
   markedLabel = 'added',
   showValues,
+  selectedDay,
+  onSelectDay,
 }: Props) {
   const max = Math.max(...bars.map((bar) => bar.value), 1);
+  const clickable = Boolean(onSelectDay);
 
   return (
     <div className="bar-chart">
@@ -24,12 +29,23 @@ export function BarChart({
         {bars.map((bar) => {
           const height = bar.value > 0 ? Math.max(3, (bar.value / max) * 100) : 0;
           const isMarked = markedDay === bar.day;
+          const isSelected = selectedDay === bar.day;
+          const className = [
+            'bar-chart__col',
+            bar.isToday ? 'bar-chart__col--today' : '',
+            isMarked ? 'bar-chart__col--posted' : '',
+            isSelected ? 'bar-chart__col--selected' : '',
+            clickable ? 'bar-chart__col--clickable' : '',
+          ]
+            .filter(Boolean)
+            .join(' ');
+
           return (
-            <div
+            <button
               key={bar.day}
-              className={`bar-chart__col ${bar.isToday ? 'bar-chart__col--today' : ''} ${
-                isMarked ? 'bar-chart__col--posted' : ''
-              }`}
+              type="button"
+              className={className}
+              onClick={clickable ? () => onSelectDay?.(bar.day) : undefined}
               title={`Day ${bar.day}: ${formatCount(bar.value)} views${
                 isMarked ? ` · ${markedLabel}` : ''
               }${bar.isFuture ? ' (upcoming)' : ''}`}
@@ -45,7 +61,7 @@ export function BarChart({
               </div>
               <span className="bar-chart__label">{bar.day}</span>
               {isMarked && <span className="bar-chart__posted">{markedLabel}</span>}
-            </div>
+            </button>
           );
         })}
       </div>

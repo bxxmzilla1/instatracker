@@ -20,6 +20,7 @@ type Metric = 'views' | 'followers';
 export function Dashboard({ accounts, reelSnapshots, followerSnapshots }: Props) {
   const [metric, setMetric] = useState<Metric>('views');
   const [monthOffset, setMonthOffset] = useState(0);
+  const [selectedDay, setSelectedDay] = useState<number | null>(null);
 
   const stats = useMemo(
     () => computeStats(accounts, reelSnapshots),
@@ -71,6 +72,13 @@ export function Dashboard({ accounts, reelSnapshots, followerSnapshots }: Props)
 
   const chartColor = metric === 'views' ? '#d4af37' : '#b8860b';
 
+  const selectedBar = selectedDay ? bars.find((b) => b.day === selectedDay) ?? null : null;
+  const metricNoun = metric === 'views' ? 'views' : 'followers';
+
+  function toggleDay(day: number) {
+    setSelectedDay((current) => (current === day ? null : day));
+  }
+
   return (
     <section className="panel dashboard">
       <div className="dashboard__stats">
@@ -106,14 +114,20 @@ export function Dashboard({ accounts, reelSnapshots, followerSnapshots }: Props)
             <button
               type="button"
               className={metric === 'views' ? 'toggle toggle--active' : 'toggle'}
-              onClick={() => setMetric('views')}
+              onClick={() => {
+                setMetric('views');
+                setSelectedDay(null);
+              }}
             >
               Reel Views
             </button>
             <button
               type="button"
               className={metric === 'followers' ? 'toggle toggle--active' : 'toggle'}
-              onClick={() => setMetric('followers')}
+              onClick={() => {
+                setMetric('followers');
+                setSelectedDay(null);
+              }}
             >
               Followers
             </button>
@@ -122,7 +136,10 @@ export function Dashboard({ accounts, reelSnapshots, followerSnapshots }: Props)
             <button
               type="button"
               className="month-nav__btn"
-              onClick={() => setMonthOffset((o) => o - 1)}
+              onClick={() => {
+                setMonthOffset((o) => o - 1);
+                setSelectedDay(null);
+              }}
               aria-label="Previous month"
             >
               ‹
@@ -131,7 +148,10 @@ export function Dashboard({ accounts, reelSnapshots, followerSnapshots }: Props)
             <button
               type="button"
               className="month-nav__btn"
-              onClick={() => setMonthOffset((o) => o + 1)}
+              onClick={() => {
+                setMonthOffset((o) => o + 1);
+                setSelectedDay(null);
+              }}
               disabled={monthOffset >= 0}
               aria-label="Next month"
             >
@@ -141,16 +161,33 @@ export function Dashboard({ accounts, reelSnapshots, followerSnapshots }: Props)
         </div>
 
         <div className="trend-chart__summary">
-          <strong>{formatCount(currentTotal)}</strong>
-          {hasMonthGain && (
-            <span className={monthGain > 0 ? 'delta delta--up' : monthGain < 0 ? 'delta delta--down' : 'delta'}>
-              {monthGain > 0 ? '+' : ''}
-              {formatCount(monthGain)} this month
-            </span>
+          {selectedBar ? (
+            <>
+              <strong>{formatCount(selectedBar.value)}</strong>
+              <span className="delta">
+                {metricNoun} on {monthLabel(year, month).split(' ')[0]} {selectedBar.day}
+              </span>
+            </>
+          ) : (
+            <>
+              <strong>{formatCount(currentTotal)}</strong>
+              {hasMonthGain && (
+                <span className={monthGain > 0 ? 'delta delta--up' : monthGain < 0 ? 'delta delta--down' : 'delta'}>
+                  {monthGain > 0 ? '+' : ''}
+                  {formatCount(monthGain)} this month
+                </span>
+              )}
+            </>
           )}
         </div>
 
-        <BarChart bars={bars} color={chartColor} showValues />
+        <BarChart
+          bars={bars}
+          color={chartColor}
+          showValues
+          selectedDay={selectedDay}
+          onSelectDay={toggleDay}
+        />
       </div>
 
       <div className="dashboard__highlights">

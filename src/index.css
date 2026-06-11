@@ -1216,6 +1216,24 @@ button:disabled {
   display: flex;
   flex-direction: column;
   align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  padding: 0;
+  cursor: default;
+}
+
+.bar-chart__col--clickable {
+  cursor: pointer;
+}
+
+.bar-chart__col--clickable:hover .bar-chart__bar-wrap {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.bar-chart__col--selected .bar-chart__bar-wrap {
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px var(--accent);
 }
 
 .bar-chart__col--today .bar-chart__label {
