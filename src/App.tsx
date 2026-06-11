@@ -289,6 +289,25 @@ export default function App() {
                 </button>
               </div>
 
+              <div className="metric-grid">
+                <div className="metric-card">
+                  <span>Followers</span>
+                  <strong>{selectedAccount.lastFollowers !== undefined ? formatCount(selectedAccount.lastFollowers) : '—'}</strong>
+                </div>
+                <div className="metric-card">
+                  <span>Following</span>
+                  <strong>{selectedAccount.lastFollowing !== undefined ? formatCount(selectedAccount.lastFollowing) : '—'}</strong>
+                </div>
+                <div className="metric-card">
+                  <span>Posts</span>
+                  <strong>{selectedAccount.lastMediaCount !== undefined ? formatCount(selectedAccount.lastMediaCount) : '—'}</strong>
+                </div>
+                <div className="metric-card">
+                  <span>Last check</span>
+                  <strong>{selectedAccount.lastCheckedAt ? formatDate(selectedAccount.lastCheckedAt) : 'Never'}</strong>
+                </div>
+              </div>
+
               {selectedAccount.bio && (
                 <p className="detail-bio">{selectedAccount.bio}</p>
               )}
@@ -318,25 +337,6 @@ export default function App() {
                   </div>
                 </div>
               )}
-
-              <div className="metric-grid">
-                <div className="metric-card">
-                  <span>Followers</span>
-                  <strong>{selectedAccount.lastFollowers !== undefined ? formatCount(selectedAccount.lastFollowers) : '—'}</strong>
-                </div>
-                <div className="metric-card">
-                  <span>Following</span>
-                  <strong>{selectedAccount.lastFollowing !== undefined ? formatCount(selectedAccount.lastFollowing) : '—'}</strong>
-                </div>
-                <div className="metric-card">
-                  <span>Posts</span>
-                  <strong>{selectedAccount.lastMediaCount !== undefined ? formatCount(selectedAccount.lastMediaCount) : '—'}</strong>
-                </div>
-                <div className="metric-card">
-                  <span>Last check</span>
-                  <strong>{selectedAccount.lastCheckedAt ? formatDate(selectedAccount.lastCheckedAt) : 'Never'}</strong>
-                </div>
-              </div>
 
               <div className="section-block">
                 <h3>Reels ({reelHistories.length})</h3>
