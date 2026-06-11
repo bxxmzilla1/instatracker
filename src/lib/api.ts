@@ -1,5 +1,10 @@
-import { extractReelsCursor, parseProfileResponse, parseReelsResponse } from './parse';
-import type { ParsedProfile, ParsedReel } from '../types';
+import {
+  extractReelsCursor,
+  parseProfileResponse,
+  parseReelsResponse,
+  parseStoriesResponse,
+} from './parse';
+import type { ParsedProfile, ParsedReel, ParsedStory } from '../types';
 
 async function post<T>(path: string, body: Record<string, unknown>): Promise<T> {
   const response = await fetch(path, {
@@ -29,6 +34,11 @@ export async function fetchReels(username: string, maxId?: string): Promise<{
     reels: parseReelsResponse(data),
     nextCursor: extractReelsCursor(data),
   };
+}
+
+export async function fetchStories(username: string): Promise<ParsedStory[]> {
+  const data = await post<unknown>('/api/stories', { username });
+  return parseStoriesResponse(data);
 }
 
 export async function checkHealth(): Promise<{ ok: boolean; hasKey: boolean }> {

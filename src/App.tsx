@@ -3,7 +3,7 @@ import { AddAccountForm } from './components/AddAccountForm';
 import { AccountCard } from './components/AccountCard';
 import { FollowerChart } from './components/FollowerChart';
 import { ReelCard } from './components/ReelCard';
-import { checkHealth, fetchProfile, fetchReels } from './lib/api';
+import { checkHealth, fetchProfile, fetchReels, fetchStories } from './lib/api';
 import {
   addAccount,
   getAccounts,
@@ -14,8 +14,14 @@ import {
   saveReelSnapshots,
   updateAccount,
 } from './lib/db';
-import { formatCount, formatDate } from './lib/format';
-import type { FollowerSnapshot, ParsedReel, ReelHistory, TrackedAccount } from './types';
+import { formatCount, formatDate, proxiedImage } from './lib/format';
+import type {
+  FollowerSnapshot,
+  ParsedReel,
+  ReelHistory,
+  StoryPreview,
+  TrackedAccount,
+} from './types';
 
 export default function App() {
   const [accounts, setAccounts] = useState<TrackedAccount[]>([]);
@@ -92,18 +98,33 @@ export default function App() {
         reelsWarning = reelsError instanceof Error ? reelsError.message : 'Could not load reels';
       }
 
+      let stories: StoryPreview[] = [];
+      try {
+        const parsedStories = await fetchStories(username);
+        stories = parsedStories.map((story) => ({
+          id: story.id,
+          thumbnailUrl: story.thumbnailUrl,
+          isVideo: story.isVideo,
+          expiringAt: story.expiringAt,
+        }));
+      } catch {
+        stories = [];
+      }
+
       const now = Date.now();
 
       const account: TrackedAccount = {
         username: profile.username.toLowerCase(),
         addedAt: accounts.find((a) => a.username === profile.username.toLowerCase())?.addedAt ?? now,
         fullName: profile.fullName,
+        bio: profile.biography,
         profilePicUrl: profile.profilePicUrl,
         isVerified: profile.isVerified,
         lastFollowers: profile.followers,
         lastFollowing: profile.following,
         lastMediaCount: profile.mediaCount,
         lastCheckedAt: now,
+        stories,
       };
 
       await updateAccount(account);
@@ -230,6 +251,7 @@ export default function App() {
                 <AccountCard
                   key={account.username}
                   account={account}
+                  hasStory={Boolean(account.stories && account.stories.length > 0)}
                   selected={account.username === selectedUsername}
                   refreshing={refreshing === account.username}
                   followerDelta={
@@ -260,6 +282,36 @@ export default function App() {
                   {refreshing === selectedAccount.username ? 'Refreshing…' : 'Refresh now'}
                 </button>
               </div>
+
+              {selectedAccount.bio && (
+                <p className="detail-bio">{selectedAccount.bio}</p>
+              )}
+
+              {selectedAccount.stories && selectedAccount.stories.length > 0 && (
+                <div className="section-block">
+                  <h3>
+                    Active story <span className="story-pill">{selectedAccount.stories.length}</span>
+                  </h3>
+                  <div className="story-strip">
+                    {selectedAccount.stories.map((story) => (
+                      <a
+                        key={story.id}
+                        className="story-thumb"
+                        href={`https://www.instagram.com/stories/${selectedAccount.username}/`}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        {story.thumbnailUrl ? (
+                          <img src={proxiedImage(story.thumbnailUrl)} alt="Story" loading="lazy" />
+                        ) : (
+                          <span className="story-thumb__placeholder">▶</span>
+                        )}
+                        {story.isVideo && <span className="story-thumb__badge">▶</span>}
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <div className="metric-grid">
                 <div className="metric-card">

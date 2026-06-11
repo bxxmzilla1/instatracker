@@ -1,13 +1,22 @@
+export interface StoryPreview {
+  id: string;
+  thumbnailUrl?: string;
+  isVideo?: boolean;
+  expiringAt?: number;
+}
+
 export interface TrackedAccount {
   username: string;
   addedAt: number;
   fullName?: string;
+  bio?: string;
   profilePicUrl?: string;
   isVerified?: boolean;
   lastFollowers?: number;
   lastFollowing?: number;
   lastMediaCount?: number;
   lastCheckedAt?: number;
+  stories?: StoryPreview[];
 }
 
 export interface FollowerSnapshot {
@@ -58,4 +67,11 @@ export interface ParsedReel {
   likes: number;
   comments: number;
   takenAt?: number;
+}
+
+export interface ParsedStory {
+  id: string;
+  thumbnailUrl?: string;
+  isVideo?: boolean;
+  expiringAt?: number;
 }

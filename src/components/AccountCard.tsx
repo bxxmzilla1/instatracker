@@ -7,6 +7,7 @@ interface Props {
   followerDelta?: number;
   selected?: boolean;
   refreshing?: boolean;
+  hasStory?: boolean;
   onSelect: () => void;
   onRefresh: () => void;
   onRemove: () => void;
@@ -17,6 +18,7 @@ export function AccountCard({
   followerDelta,
   selected,
   refreshing,
+  hasStory,
   onSelect,
   onRefresh,
   onRemove,
@@ -28,7 +30,7 @@ export function AccountCard({
   return (
     <article className={`account-card ${selected ? 'account-card--selected' : ''}`}>
       <button type="button" className="account-card__main" onClick={onSelect}>
-        <div className="account-card__avatar">
+        <div className={`account-card__avatar ${hasStory ? 'account-card__avatar--story' : ''}`}>
           {showImage ? (
             <img
               src={proxiedImage(account.profilePicUrl)}

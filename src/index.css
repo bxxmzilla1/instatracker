@@ -215,6 +215,13 @@ button:disabled {
   object-fit: cover;
 }
 
+.account-card__avatar--story {
+  background:
+    linear-gradient(#111114, #111114) padding-box,
+    linear-gradient(135deg, #f58529, #dd2a7b 55%, #8134af) border-box;
+  border: 2px solid transparent;
+}
+
 .account-card__title {
   display: flex;
   align-items: center;
@@ -283,6 +290,69 @@ button:disabled {
 .detail-header p {
   margin: 0.25rem 0 0;
   color: #a1a1aa;
+}
+
+.detail-bio {
+  margin: -0.5rem 0 1.25rem;
+  color: #d4d4d8;
+  white-space: pre-line;
+  line-height: 1.5;
+  max-width: 60ch;
+}
+
+.story-pill {
+  display: inline-block;
+  min-width: 1.4rem;
+  padding: 0 0.4rem;
+  margin-left: 0.4rem;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #f58529, #dd2a7b);
+  color: white;
+  font-size: 0.78rem;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.story-strip {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.story-thumb {
+  position: relative;
+  width: 84px;
+  height: 132px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #27272a;
+  display: grid;
+  place-items: center;
+  border: 2px solid transparent;
+  background:
+    linear-gradient(#111114, #111114) padding-box,
+    linear-gradient(135deg, #f58529, #dd2a7b 55%, #8134af) border-box;
+}
+
+.story-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.story-thumb__placeholder {
+  color: #a1a1aa;
+}
+
+.story-thumb__badge {
+  position: absolute;
+  bottom: 6px;
+  right: 6px;
+  font-size: 0.7rem;
+  background: rgba(0, 0, 0, 0.6);
+  color: white;
+  border-radius: 6px;
+  padding: 1px 5px;
 }
 
 .metric-grid {

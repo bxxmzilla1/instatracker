@@ -1,4 +1,4 @@
-import type { ParsedProfile, ParsedReel } from '../types';
+import type { ParsedProfile, ParsedReel, ParsedStory } from '../types';
 
 function pickNumber(...values: unknown[]): number {
   for (const value of values) {
@@ -130,6 +130,34 @@ export function parseReelsResponse(data: unknown): ParsedReel[] {
         (node.edge_media_to_comment as Record<string, unknown>)?.count,
       ),
       takenAt: pickNumber(media.taken_at, node.taken_at) || undefined,
+    };
+  });
+}
+
+export function parseStoriesResponse(data: unknown): ParsedStory[] {
+  const root = (data as Record<string, unknown>) ?? {};
+  const result = (root.result ?? root.data ?? root) as Record<string, unknown>;
+  const items = result.items;
+
+  if (!Array.isArray(items)) return [];
+
+  return items.map((raw, index) => {
+    const item = raw as Record<string, unknown>;
+    const imageVersions = item.image_versions as Record<string, unknown> | undefined;
+    const imageItems = imageVersions?.items as Array<Record<string, unknown>> | undefined;
+    const videoVersions = item.video_versions as Array<Record<string, unknown>> | undefined;
+
+    const thumbnailUrl = pickString(
+      imageItems?.[0]?.url,
+      (item.image_versions2 as Record<string, unknown>)?.candidates &&
+        ((item.image_versions2 as Record<string, unknown>).candidates as Array<Record<string, unknown>>)?.[0]?.url,
+    );
+
+    return {
+      id: pickString(item.id, item.pk, item.code, `story-${index}`) || `story-${index}`,
+      thumbnailUrl: thumbnailUrl || undefined,
+      isVideo: Array.isArray(videoVersions) && videoVersions.length > 0,
+      expiringAt: pickNumber(item.expiring_at) || undefined,
     };
   });
 }

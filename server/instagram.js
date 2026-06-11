@@ -93,3 +93,8 @@ export async function fetchInstagramReels(username, paginationToken) {
     pagination_token: paginationToken,
   });
 }
+
+export async function fetchInstagramStories(username) {
+  const normalized = normalizeUsername(username);
+  return callInstagramGet('/api/v1/user/stories', { username: normalized });
+}

@@ -6,6 +6,7 @@ import { fileURLToPath } from 'url';
 import {
   fetchInstagramProfile,
   fetchInstagramReels,
+  fetchInstagramStories,
   hasValidApiKey,
 } from './instagram.js';
 import { fetchImage } from './image.js';
@@ -42,6 +43,19 @@ app.post('/api/reels', async (req, res) => {
       return res.status(400).json({ error: 'username is required' });
     }
     const data = await fetchInstagramReels(username, pagination_token || maxId);
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/stories', async (req, res) => {
+  try {
+    const { username } = req.body;
+    if (!username?.trim()) {
+      return res.status(400).json({ error: 'username is required' });
+    }
+    const data = await fetchInstagramStories(username);
     res.json(data);
   } catch (err) {
     res.status(500).json({ error: err.message });
