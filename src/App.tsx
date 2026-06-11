@@ -278,7 +278,6 @@ export default function App() {
               <div className="detail-header">
                 <div>
                   <h2>@{selectedAccount.username}</h2>
-                  {selectedAccount.fullName && <p>{selectedAccount.fullName}</p>}
                 </div>
                 <button
                   type="button"
@@ -308,8 +307,21 @@ export default function App() {
                 </div>
               </div>
 
-              {selectedAccount.bio && (
-                <p className="detail-bio">{selectedAccount.bio}</p>
+              {(selectedAccount.fullName || selectedAccount.bio) && (
+                <div className="profile-meta">
+                  {selectedAccount.fullName && (
+                    <div className="profile-meta__row">
+                      <span className="profile-meta__label">Name</span>
+                      <p className="profile-meta__value">{selectedAccount.fullName}</p>
+                    </div>
+                  )}
+                  {selectedAccount.bio && (
+                    <div className="profile-meta__row">
+                      <span className="profile-meta__label">Bio</span>
+                      <p className="profile-meta__value">{selectedAccount.bio}</p>
+                    </div>
+                  )}
+                </div>
               )}
 
               {selectedAccount.stories && selectedAccount.stories.length > 0 && (
