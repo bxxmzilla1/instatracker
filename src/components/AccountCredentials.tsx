@@ -9,7 +9,6 @@ interface Props {
 export function AccountCredentials({ account, onSave }: Props) {
   const [loginUsername, setLoginUsername] = useState(account.loginUsername ?? '');
   const [loginPassword, setLoginPassword] = useState(account.loginPassword ?? '');
-  const [showPassword, setShowPassword] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
@@ -17,7 +16,6 @@ export function AccountCredentials({ account, onSave }: Props) {
     setLoginUsername(account.loginUsername ?? '');
     setLoginPassword(account.loginPassword ?? '');
     setSaved(false);
-    setShowPassword(false);
   }, [account.username, account.loginUsername, account.loginPassword]);
 
   async function handleSubmit(event: FormEvent) {
@@ -33,21 +31,25 @@ export function AccountCredentials({ account, onSave }: Props) {
 
   return (
     <form className="cred-form" onSubmit={handleSubmit}>
-      <input
-        className="cred-form__input"
-        placeholder="Login username or email"
-        value={loginUsername}
-        onChange={(e) => {
-          setLoginUsername(e.target.value);
-          setSaved(false);
-        }}
-        autoComplete="off"
-        spellCheck={false}
-      />
-      <div className="cred-form__password">
+      <label className="cred-field">
+        <span className="cred-field__label">Username or email</span>
         <input
           className="cred-form__input"
-          type={showPassword ? 'text' : 'password'}
+          placeholder="Login username or email"
+          value={loginUsername}
+          onChange={(e) => {
+            setLoginUsername(e.target.value);
+            setSaved(false);
+          }}
+          autoComplete="off"
+          spellCheck={false}
+        />
+      </label>
+      <label className="cred-field">
+        <span className="cred-field__label">Password</span>
+        <input
+          className="cred-form__input"
+          type="text"
           placeholder="Login password"
           value={loginPassword}
           onChange={(e) => {
@@ -56,14 +58,7 @@ export function AccountCredentials({ account, onSave }: Props) {
           }}
           autoComplete="off"
         />
-        <button
-          type="button"
-          className="cred-form__toggle"
-          onClick={() => setShowPassword((v) => !v)}
-        >
-          {showPassword ? 'Hide' : 'Show'}
-        </button>
-      </div>
+      </label>
       <button type="submit" disabled={saving}>
         {saving ? 'Saving…' : saved ? 'Saved ✓' : 'Save credentials'}
       </button>
