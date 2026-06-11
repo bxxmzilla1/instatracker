@@ -129,7 +129,13 @@ export function parseReelsResponse(data: unknown): ParsedReel[] {
         node.comment_count,
         (node.edge_media_to_comment as Record<string, unknown>)?.count,
       ),
-      takenAt: pickNumber(media.taken_at, node.taken_at) || undefined,
+      takenAt:
+        pickNumber(
+          media.taken_at,
+          node.taken_at,
+          captionObj?.created_at,
+          captionObj?.created_at_utc,
+        ) || undefined,
     };
   });
 }
