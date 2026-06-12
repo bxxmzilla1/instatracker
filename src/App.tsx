@@ -524,6 +524,15 @@ export default function App() {
     await loadProxies();
   }
 
+  async function handleUpdateProxyType(proxy: Proxy, type: string) {
+    try {
+      await addProxy({ ...proxy, type });
+      await loadProxies();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not update proxy.');
+    }
+  }
+
   async function submitBio() {
     const text = newBioText.trim();
     if (!text) return;
@@ -1165,9 +1174,20 @@ export default function App() {
                     <div key={proxy.id} className="proxy-row">
                       <div className="proxy-row__body">
                         <div className="proxy-row__top">
-                          <span className={`proxy-type-tag proxy-type-tag--${proxy.type}`}>
-                            {proxy.type.toUpperCase()}
-                          </span>
+                          {isAdmin ? (
+                            <select
+                              className="proxy-type-edit"
+                              value={proxy.type}
+                              onChange={(e) => handleUpdateProxyType(proxy, e.target.value)}
+                            >
+                              <option value="http">HTTP</option>
+                              <option value="socks5">SOCKS5</option>
+                            </select>
+                          ) : (
+                            <span className={`proxy-type-tag proxy-type-tag--${proxy.type}`}>
+                              {proxy.type.toUpperCase()}
+                            </span>
+                          )}
                           {isAdmin && <span className="owner-tag">{proxy.employee}</span>}
                         </div>
                         <CopyField className="proxy-row__link" label="Link" value={proxy.raw} />

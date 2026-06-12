@@ -398,6 +398,22 @@ code {
   max-width: 130px;
 }
 
+.proxy-type-edit {
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 0.2rem 0.5rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+
+.proxy-type-edit:hover {
+  border-color: var(--accent);
+}
+
 /* Copyable field */
 .copy-field {
   display: inline-flex;
