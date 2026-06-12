@@ -3,6 +3,7 @@ import { AddAccountForm } from './components/AddAccountForm';
 import { AccountCard } from './components/AccountCard';
 import { AccountCredentials } from './components/AccountCredentials';
 import { AssignmentPicker } from './components/AssignmentPicker';
+import { CopyButton } from './components/CopyButton';
 import { CopyField } from './components/CopyField';
 import { Dashboard } from './components/Dashboard';
 import { Login } from './components/Login';
@@ -1267,15 +1268,9 @@ export default function App() {
                 >
                   <textarea
                     className="bio-form__textarea"
-                    placeholder="Insert a text or link… (Shift+Enter for a new line)"
+                    placeholder="Insert a text or link…"
                     value={newCtaText}
                     onChange={(e) => setNewCtaText(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault();
-                        submitCta();
-                      }
-                    }}
                     rows={4}
                   />
 
@@ -1324,28 +1319,30 @@ export default function App() {
                             )}
                           </div>
                         )}
-                        <CopyField className="bio-row__copy" label="Copy" value={cta.text} />
                       </div>
-                      {isAdmin && (
-                        <div className="row-actions">
-                          <button
-                            type="button"
-                            className="row-edit"
-                            onClick={() => openEditCta(cta)}
-                            title="Edit CTA"
-                          >
-                            ✎
-                          </button>
-                          <button
-                            type="button"
-                            className="license-row__delete"
-                            onClick={() => handleDeleteCta(cta.id)}
-                            title="Delete CTA"
-                          >
-                            ✕
-                          </button>
-                        </div>
-                      )}
+                      <div className="row-actions">
+                        <CopyButton value={cta.text} title="Copy CTA" />
+                        {isAdmin && (
+                          <>
+                            <button
+                              type="button"
+                              className="row-edit"
+                              onClick={() => openEditCta(cta)}
+                              title="Edit CTA"
+                            >
+                              ✎
+                            </button>
+                            <button
+                              type="button"
+                              className="license-row__delete"
+                              onClick={() => handleDeleteCta(cta.id)}
+                              title="Delete CTA"
+                            >
+                              ✕
+                            </button>
+                          </>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -1368,15 +1365,9 @@ export default function App() {
                 >
                   <textarea
                     className="bio-form__textarea"
-                    placeholder="Write the bio… (Shift+Enter for a new line)"
+                    placeholder="Write the bio…"
                     value={newBioText}
                     onChange={(e) => setNewBioText(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault();
-                        submitBio();
-                      }
-                    }}
                     rows={4}
                   />
 
@@ -1425,28 +1416,30 @@ export default function App() {
                             )}
                           </div>
                         )}
-                        <CopyField className="bio-row__copy" label="Copy bio" value={bio.text} />
                       </div>
-                      {isAdmin && (
-                        <div className="row-actions">
-                          <button
-                            type="button"
-                            className="row-edit"
-                            onClick={() => openEditBio(bio)}
-                            title="Edit bio"
-                          >
-                            ✎
-                          </button>
-                          <button
-                            type="button"
-                            className="license-row__delete"
-                            onClick={() => handleDeleteBio(bio.id)}
-                            title="Delete bio"
-                          >
-                            ✕
-                          </button>
-                        </div>
-                      )}
+                      <div className="row-actions">
+                        <CopyButton value={bio.text} title="Copy bio" />
+                        {isAdmin && (
+                          <>
+                            <button
+                              type="button"
+                              className="row-edit"
+                              onClick={() => openEditBio(bio)}
+                              title="Edit bio"
+                            >
+                              ✎
+                            </button>
+                            <button
+                              type="button"
+                              className="license-row__delete"
+                              onClick={() => handleDeleteBio(bio.id)}
+                              title="Delete bio"
+                            >
+                              ✕
+                            </button>
+                          </>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
