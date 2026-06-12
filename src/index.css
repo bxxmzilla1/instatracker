@@ -254,6 +254,15 @@ code {
   font-weight: 600;
 }
 
+.unable-tag {
+  background: rgba(234, 179, 8, 0.16);
+  color: #fbbf24;
+  border-radius: 999px;
+  padding: 0.1rem 0.5rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+}
+
 /* Blaze License */
 .license-form {
   display: flex;
@@ -486,6 +495,27 @@ button:disabled {
   background: rgba(239, 68, 68, 0.1);
   border-color: rgba(239, 68, 68, 0.25);
   color: #fecaca;
+}
+
+.banner--dismissible {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.banner__close {
+  background: transparent;
+  color: inherit;
+  padding: 0.2rem 0.5rem;
+  border-radius: 8px;
+  flex-shrink: 0;
+  opacity: 0.8;
+}
+
+.banner__close:hover {
+  background: rgba(255, 255, 255, 0.12);
+  opacity: 1;
 }
 
 .refresh-progress {

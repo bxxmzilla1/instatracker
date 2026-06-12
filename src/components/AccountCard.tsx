@@ -10,6 +10,7 @@ interface Props {
   refreshing?: boolean;
   hasStory?: boolean;
   ownerTag?: string;
+  unableToRefresh?: boolean;
   onSelect: () => void;
   onRefresh: () => void;
   onRemove: () => void;
@@ -21,6 +22,7 @@ export function AccountCard({
   refreshing,
   hasStory,
   ownerTag,
+  unableToRefresh,
   onSelect,
   onRefresh,
   onRemove,
@@ -48,6 +50,9 @@ export function AccountCard({
             <strong>@{account.username}</strong>
             {account.isVerified && <span className="badge">✓</span>}
             {account.banned && <span className="banned-tag">Banned</span>}
+            {!account.banned && unableToRefresh && (
+              <span className="unable-tag">Unable to refresh</span>
+            )}
           </div>
           {ownerTag && <span className="owner-tag">{ownerTag}</span>}
         </div>

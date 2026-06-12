@@ -68,6 +68,7 @@ export default function App() {
   const [refreshAllProgress, setRefreshAllProgress] = useState<{ done: number; total: number } | null>(
     null,
   );
+  const [failedRefresh, setFailedRefresh] = useState<Set<string>>(() => new Set());
   const [view, setView] = useState<'dashboard' | 'accounts' | 'employee' | 'license'>('dashboard');
   const [showCredentials, setShowCredentials] = useState(false);
   const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
@@ -190,6 +191,23 @@ export default function App() {
     }
   }, [selectedUsername, loadAccountDetails]);
 
+  function markRefreshFailed(username: string) {
+    setFailedRefresh((prev) => {
+      const next = new Set(prev);
+      next.add(username);
+      return next;
+    });
+  }
+
+  function clearRefreshFailed(username: string) {
+    setFailedRefresh((prev) => {
+      if (!prev.has(username)) return prev;
+      const next = new Set(prev);
+      next.delete(username);
+      return next;
+    });
+  }
+
   async function refreshOne(username: string) {
     setRefreshing(username);
 
@@ -300,6 +318,7 @@ export default function App() {
         await loadAccountDetails(account.username);
       }
 
+      clearRefreshFailed(username);
       setWarning(reelsWarning);
     } finally {
       setRefreshing(null);
@@ -318,9 +337,15 @@ export default function App() {
   async function refreshAccount(username: string) {
     setError(null);
     setWarning(null);
+    const account = accounts.find((a) => a.username === username);
+    if (account?.banned) {
+      setWarning(`@${username} is marked banned — refresh skipped.`);
+      return;
+    }
     try {
       await refreshOne(username);
     } catch (err) {
+      markRefreshFailed(username);
       setError(suspendedMessage(err, username));
     }
   }
@@ -328,7 +353,7 @@ export default function App() {
   async function handleRefreshAll() {
     setError(null);
     setWarning(null);
-    const list = [...accounts];
+    const list = accounts.filter((a) => !a.banned);
     if (list.length === 0) return;
 
     setRefreshAllProgress({ done: 0, total: list.length });
@@ -338,6 +363,7 @@ export default function App() {
         await refreshOne(list[i].username);
       } catch {
         failed.push(list[i].username);
+        markRefreshFailed(list[i].username);
       }
       setRefreshAllProgress({ done: i + 1, total: list.length });
     }
@@ -345,7 +371,7 @@ export default function App() {
 
     if (failed.length > 0) {
       setWarning(
-        `Skipped ${failed.length} account(s) that may be suspended/banned: ${failed
+        `Unable to refresh ${failed.length} account(s): ${failed
           .map((u) => `@${u}`)
           .join(', ')}`,
       );
@@ -686,7 +712,19 @@ export default function App() {
         )}
 
         {error && <div className="banner banner--error">{error}</div>}
-        {warning && !error && <div className="banner banner--warn">{warning}</div>}
+        {warning && !error && (
+          <div className="banner banner--warn banner--dismissible">
+            <span>{warning}</span>
+            <button
+              type="button"
+              className="banner__close"
+              onClick={() => setWarning(null)}
+              aria-label="Dismiss"
+            >
+              ✕
+            </button>
+          </div>
+        )}
 
         {refreshAllProgress && (
           <div className="refresh-progress">
@@ -838,6 +876,7 @@ export default function App() {
                       ? account.owner
                       : undefined
                   }
+                  unableToRefresh={failedRefresh.has(account.username)}
                   selected={account.username === selectedUsername}
                   refreshing={refreshing === account.username}
                   followerDelta={
