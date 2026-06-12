@@ -2097,22 +2097,23 @@ button:disabled {
 
 .panel-add-toggle {
   flex-shrink: 0;
-  width: 30px;
-  height: 30px;
+  width: 34px;
+  height: 34px;
   display: grid;
   place-items: center;
-  border-radius: 8px;
-  border: 1px solid var(--border);
-  background: var(--surface-3);
+  border-radius: 50%;
+  border: 1px solid var(--accent);
+  background: var(--accent-soft);
   color: var(--accent);
-  font-size: 1.25rem;
+  font-size: 1.35rem;
   line-height: 1;
   cursor: pointer;
-  transition: transform 0.15s ease, background 0.15s ease;
+  transition: transform 0.15s ease, background 0.15s ease, color 0.15s ease;
 }
 
 .panel-add-toggle:hover {
-  background: var(--accent-soft);
+  background: var(--accent);
+  color: #000;
 }
 
 .panel-add-toggle--open {
@@ -2146,8 +2147,8 @@ button:disabled {
 
 .content-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1rem;
 }
 
 .content-tile {
@@ -2226,6 +2227,6 @@ button:disabled {
 
 @media (max-width: 640px) {
   .content-grid {
-    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   }
 }
