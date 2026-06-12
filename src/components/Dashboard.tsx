@@ -2,11 +2,11 @@ import { useMemo, useState } from 'react';
 import type { Employee, FollowerSnapshot, ReelSnapshot, TrackedAccount } from '../types';
 import {
   computeCardStats,
-  computeStats,
   countNewReels,
   dailyFollowerBars,
   dailyReelViewBars,
   monthLabel,
+  monthlyTops,
   totalsAsOf,
 } from '../lib/dashboard';
 import { formatCount, proxiedImage } from '../lib/format';
@@ -17,19 +17,21 @@ interface Props {
   reelSnapshots: ReelSnapshot[];
   followerSnapshots: FollowerSnapshot[];
   employees?: Employee[];
+  topMode?: 'admin' | 'employee';
 }
 
 type Metric = 'views' | 'followers';
 
-export function Dashboard({ accounts, reelSnapshots, followerSnapshots, employees }: Props) {
+export function Dashboard({
+  accounts,
+  reelSnapshots,
+  followerSnapshots,
+  employees,
+  topMode = 'admin',
+}: Props) {
   const [metric, setMetric] = useState<Metric>('views');
   const [monthOffset, setMonthOffset] = useState(0);
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
-
-  const stats = useMemo(
-    () => computeStats(accounts, reelSnapshots),
-    [accounts, reelSnapshots],
-  );
 
   const viewDate = useMemo(() => {
     const d = new Date();
@@ -80,6 +82,11 @@ export function Dashboard({ accounts, reelSnapshots, followerSnapshots, employee
   }, [accounts, reelSnapshots, followerSnapshots, selectedDay, year, month, monthOffset]);
 
   const currentTotal = metric === 'views' ? card.totalReelViews : card.totalFollowers;
+
+  const tops = useMemo(
+    () => monthlyTops(accounts, reelSnapshots, year, month),
+    [accounts, reelSnapshots, year, month],
+  );
 
   const employeeCardValue = useMemo(() => {
     if (!employees) return null;
@@ -209,56 +216,65 @@ export function Dashboard({ accounts, reelSnapshots, followerSnapshots, employee
       </div>
 
       <div className="dashboard__highlights">
-        <div className="highlight-card">
-          <span className="highlight-card__label">Top profile by views</span>
-          {stats.topProfile ? (
-            <div className="highlight-card__body">
-              <div className="highlight-card__avatar">
-                {stats.topProfile.profilePicUrl ? (
-                  <img src={proxiedImage(stats.topProfile.profilePicUrl)} alt="" loading="lazy" />
-                ) : (
-                  <span>{stats.topProfile.username.slice(0, 1).toUpperCase()}</span>
-                )}
+        {topMode === 'admin' && (
+          <div className="highlight-card">
+            <span className="highlight-card__label">Top 3 profiles by views</span>
+            {tops.profiles.length === 0 ? (
+              <p className="empty-note">No view data this month yet.</p>
+            ) : (
+              <div className="top-list">
+                {tops.profiles.slice(0, 3).map((profile, i) => (
+                  <div key={profile.username} className="top-row">
+                    <span className="top-row__rank">{i + 1}</span>
+                    <div className="highlight-card__avatar">
+                      {profile.profilePicUrl ? (
+                        <img src={proxiedImage(profile.profilePicUrl)} alt="" loading="lazy" />
+                      ) : (
+                        <span>{profile.username.slice(0, 1).toUpperCase()}</span>
+                      )}
+                    </div>
+                    <div className="top-row__info">
+                      <strong>@{profile.username}</strong>
+                      <p>{formatCount(profile.views)} views this month</p>
+                    </div>
+                  </div>
+                ))}
               </div>
-              <div>
-                <strong>@{stats.topProfile.username}</strong>
-                <p>{formatCount(stats.topProfile.views)} total reel views</p>
-                {stats.topProfile.followers !== undefined && (
-                  <p className="muted">{formatCount(stats.topProfile.followers)} followers</p>
-                )}
-              </div>
-            </div>
-          ) : (
-            <p className="empty-note">Refresh an account to see this.</p>
-          )}
-        </div>
+            )}
+          </div>
+        )}
 
         <div className="highlight-card">
-          <span className="highlight-card__label">Top reel by views</span>
-          {stats.topReel ? (
-            <a
-              className="highlight-card__body highlight-card__body--link"
-              href={`https://www.instagram.com/reel/${stats.topReel.shortcode}/`}
-              target="_blank"
-              rel="noreferrer"
-            >
-              <div className="highlight-card__thumb">
-                {stats.topReel.thumbnailUrl ? (
-                  <img src={proxiedImage(stats.topReel.thumbnailUrl)} alt="" loading="lazy" />
-                ) : (
-                  <span>▶</span>
-                )}
-              </div>
-              <div>
-                <strong>{formatCount(stats.topReel.views)} views</strong>
-                <p>@{stats.topReel.username}</p>
-                {stats.topReel.caption && (
-                  <p className="muted highlight-card__caption">{stats.topReel.caption}</p>
-                )}
-              </div>
-            </a>
+          <span className="highlight-card__label">
+            {topMode === 'employee' ? 'Top 5 reels by views' : 'Top 3 reels by views'}
+          </span>
+          {tops.reels.length === 0 ? (
+            <p className="empty-note">No view data this month yet.</p>
           ) : (
-            <p className="empty-note">Refresh an account to see this.</p>
+            <div className="top-list">
+              {tops.reels.slice(0, topMode === 'employee' ? 5 : 3).map((reel, i) => (
+                <a
+                  key={reel.reelId}
+                  className="top-row top-row--link"
+                  href={`https://www.instagram.com/reel/${reel.shortcode}/`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <span className="top-row__rank">{i + 1}</span>
+                  <div className="highlight-card__thumb">
+                    {reel.thumbnailUrl ? (
+                      <img src={proxiedImage(reel.thumbnailUrl)} alt="" loading="lazy" />
+                    ) : (
+                      <span>▶</span>
+                    )}
+                  </div>
+                  <div className="top-row__info">
+                    <strong>{formatCount(reel.views)} views</strong>
+                    <p>@{reel.username}</p>
+                  </div>
+                </a>
+              ))}
+            </div>
           )}
         </div>
       </div>

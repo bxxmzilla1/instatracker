@@ -135,6 +135,67 @@ export function computeCardStats(
   };
 }
 
+export interface TopReelItem {
+  reelId: string;
+  username: string;
+  shortcode: string;
+  thumbnailUrl?: string;
+  views: number;
+}
+
+export interface TopProfileItem {
+  username: string;
+  views: number;
+  profilePicUrl?: string;
+}
+
+/** Top reels and profiles ranked by views gained within the given month. */
+export function monthlyTops(
+  accounts: TrackedAccount[],
+  reelSnapshots: ReelSnapshot[],
+  year: number,
+  month: number,
+): { reels: TopReelItem[]; profiles: TopProfileItem[] } {
+  const monthStart = new Date(year, month, 1).getTime();
+  const monthEnd = new Date(year, month + 1, 1).getTime() - 1;
+
+  const groups = new Map<string, ReelSnapshot[]>();
+  for (const snapshot of reelSnapshots) {
+    const arr = groups.get(snapshot.id);
+    if (arr) arr.push(snapshot);
+    else groups.set(snapshot.id, [snapshot]);
+  }
+
+  const reelItems: TopReelItem[] = [];
+  const byUser = new Map<string, number>();
+
+  for (const [id, snaps] of groups) {
+    const latest = latestUpTo(snaps, monthEnd);
+    if (!latest) continue;
+    const atStart = latestUpTo(snaps, monthStart - 1);
+    const gain = Math.max(0, latest.views - (atStart ? atStart.views : 0));
+    if (gain <= 0) continue;
+    reelItems.push({
+      reelId: id,
+      username: latest.username,
+      shortcode: latest.shortcode,
+      thumbnailUrl: latest.thumbnailUrl,
+      views: gain,
+    });
+    byUser.set(latest.username, (byUser.get(latest.username) ?? 0) + gain);
+  }
+
+  const reels = reelItems.sort((a, b) => b.views - a.views);
+  const profiles: TopProfileItem[] = [...byUser.entries()]
+    .map(([username, views]) => {
+      const account = accounts.find((a) => a.username === username);
+      return { username, views, profilePicUrl: account?.profilePicUrl };
+    })
+    .sort((a, b) => b.views - a.views);
+
+  return { reels, profiles };
+}
+
 export function latestByReel(snapshots: ReelSnapshot[]): ReelSnapshot[] {
   const map = new Map<string, ReelSnapshot>();
   for (const snapshot of snapshots) {

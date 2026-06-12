@@ -1159,6 +1159,7 @@ export default function App() {
               reelSnapshots={scopedReelSnapshots}
               followerSnapshots={scopedFollowerSnapshots}
               employees={isAdmin ? employees : undefined}
+              topMode={isAdmin ? 'admin' : 'employee'}
             />
           ) : (
             <section className="panel empty-detail">

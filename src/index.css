@@ -1968,6 +1968,66 @@ button:disabled {
   color: var(--muted);
 }
 
+.top-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.top-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  text-decoration: none;
+  color: inherit;
+  min-width: 0;
+}
+
+.top-row--link:hover {
+  opacity: 0.9;
+}
+
+.top-row__rank {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.top-row__info {
+  min-width: 0;
+}
+
+.top-row__info strong {
+  display: block;
+  font-size: 1rem;
+}
+
+.top-row__info p {
+  margin: 0.1rem 0 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.top-row .highlight-card__thumb {
+  width: 38px;
+  height: 52px;
+}
+
+.top-row .highlight-card__avatar {
+  width: 40px;
+  height: 40px;
+}
+
 /* Responsive */
 @media (max-width: 1000px) {
   .app-shell {
