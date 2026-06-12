@@ -10,14 +10,17 @@ import { checkHealth, fetchProfile, fetchReels, fetchStories } from './lib/api';
 import {
   addAccount,
   addEmployee,
+  addBio,
   addLicense,
   addProxy,
+  deleteBio,
   deleteEmployee,
   deleteLicense,
   deleteProxy,
   getAccounts,
   getAllFollowerSnapshots,
   getAllReelSnapshots,
+  getBios,
   getEmployees,
   getFollowerHistory,
   getLicenses,
@@ -33,6 +36,7 @@ import { latestByReel } from './lib/dashboard';
 import { cacheImage, imgKey } from './lib/media';
 import { formatCount, formatDate, proxiedImage } from './lib/format';
 import type {
+  Bio,
   Employee,
   FollowerSnapshot,
   License,
@@ -77,7 +81,7 @@ export default function App() {
   const [failedRefresh, setFailedRefresh] = useState<Set<string>>(() => new Set());
   const [accountSearch, setAccountSearch] = useState('');
   const [view, setView] = useState<
-    'dashboard' | 'accounts' | 'employee' | 'license' | 'proxy'
+    'dashboard' | 'accounts' | 'employee' | 'license' | 'proxy' | 'bio'
   >('dashboard');
   const [showCredentials, setShowCredentials] = useState(false);
   const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
@@ -95,6 +99,10 @@ export default function App() {
   const [newProxy, setNewProxy] = useState('');
   const [newProxyEmployee, setNewProxyEmployee] = useState('');
   const [newProxyType, setNewProxyType] = useState('http');
+  const [bios, setBios] = useState<Bio[]>([]);
+  const [newBioText, setNewBioText] = useState('');
+  const [newBioEmployees, setNewBioEmployees] = useState<Set<string>>(() => new Set());
+  const [newBioAll, setNewBioAll] = useState(false);
 
   const isAdmin = session?.role === 'admin';
 
@@ -140,6 +148,12 @@ export default function App() {
     setProxies(await getProxies(filter));
   }, [session]);
 
+  const loadBios = useCallback(async () => {
+    if (!session) return;
+    const filter = session.role === 'employee' ? session.username : undefined;
+    setBios(await getBios(filter));
+  }, [session]);
+
   const loadDashboardData = useCallback(async () => {
     const [reels, followers] = await Promise.all([
       getAllReelSnapshots(),
@@ -171,6 +185,7 @@ export default function App() {
         await loadDashboardData();
         await loadLicenses();
         await loadProxies();
+        await loadBios();
         if (session?.role === 'admin') {
           setEmployees(await getEmployees());
         }
@@ -181,7 +196,7 @@ export default function App() {
       }
     }
     init();
-  }, [session, loadDashboardData, loadLicenses, loadProxies]);
+  }, [session, loadDashboardData, loadLicenses, loadProxies, loadBios]);
 
   useEffect(() => {
     if (!session) return;
@@ -509,6 +524,44 @@ export default function App() {
     await loadProxies();
   }
 
+  async function submitBio() {
+    const text = newBioText.trim();
+    if (!text) return;
+    if (!newBioAll && newBioEmployees.size === 0) {
+      setError('Select at least one employee or choose all employees.');
+      return;
+    }
+    try {
+      await addBio({
+        id: crypto.randomUUID(),
+        text: newBioText,
+        employees: newBioAll ? [] : [...newBioEmployees],
+        allEmployees: newBioAll,
+        createdAt: Date.now(),
+      });
+      await loadBios();
+      setNewBioText('');
+      setNewBioEmployees(new Set());
+      setNewBioAll(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not add bio.');
+    }
+  }
+
+  function toggleBioEmployee(username: string) {
+    setNewBioEmployees((prev) => {
+      const next = new Set(prev);
+      if (next.has(username)) next.delete(username);
+      else next.add(username);
+      return next;
+    });
+  }
+
+  async function handleDeleteBio(id: string) {
+    await deleteBio(id);
+    await loadBios();
+  }
+
   async function handleSaveCredentials(values: {
     loginUsername: string;
     loginEmail: string;
@@ -604,7 +657,9 @@ export default function App() {
           ? 'Blaze License'
           : view === 'proxy'
             ? 'Proxy'
-            : 'Accounts';
+            : view === 'bio'
+              ? 'Account Bio'
+              : 'Accounts';
 
   const showAddForm = view === 'accounts';
 
@@ -699,6 +754,20 @@ export default function App() {
               <path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" />
             </svg>
             Proxy
+          </button>
+
+          <button
+            type="button"
+            className={view === 'bio' ? 'nav-item nav-item--active' : 'nav-item'}
+            onClick={() => {
+              setSelectedEmployee(null);
+              setView('bio');
+            }}
+          >
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M4 5h16M4 10h16M4 15h10M4 20h7" />
+            </svg>
+            Account Bio
           </button>
 
           {isAdmin && (
@@ -902,6 +971,119 @@ export default function App() {
                           className="license-row__delete"
                           onClick={() => handleDeleteLicense(license.id)}
                           title="Delete license"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          </>
+        )}
+
+        {view === 'bio' && (
+          <>
+            {isAdmin && (
+              <section className="panel">
+                <h2>Add account bio</h2>
+                <form
+                  className="bio-form"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    submitBio();
+                  }}
+                >
+                  <textarea
+                    className="bio-form__textarea"
+                    placeholder="Write the bio… (Shift+Enter for a new line)"
+                    value={newBioText}
+                    onChange={(e) => setNewBioText(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        submitBio();
+                      }
+                    }}
+                    rows={4}
+                  />
+
+                  <div className="bio-form__assign">
+                    <span className="cred-field__label">Assign to</span>
+                    <label className="bio-check">
+                      <input
+                        type="checkbox"
+                        checked={newBioAll}
+                        onChange={(e) => setNewBioAll(e.target.checked)}
+                      />
+                      All employees
+                    </label>
+                    {!newBioAll && (
+                      <div className="bio-employees">
+                        {employees.length === 0 ? (
+                          <span className="cred-note">No employees yet.</span>
+                        ) : (
+                          employees.map((employee) => (
+                            <label key={employee.username} className="bio-check">
+                              <input
+                                type="checkbox"
+                                checked={newBioEmployees.has(employee.username)}
+                                onChange={() => toggleBioEmployee(employee.username)}
+                              />
+                              {employee.username}
+                            </label>
+                          ))
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={!newBioText.trim() || (!newBioAll && newBioEmployees.size === 0)}
+                  >
+                    Add bio
+                  </button>
+                </form>
+              </section>
+            )}
+
+            <section className="panel">
+              <h2>{isAdmin ? `Bios (${bios.length})` : 'Your account bios'}</h2>
+              {bios.length === 0 ? (
+                <p className="empty-note">
+                  {isAdmin
+                    ? 'No bios yet. Write one above and assign it to employees.'
+                    : 'No bio assigned to you yet.'}
+                </p>
+              ) : (
+                <div className="bio-list">
+                  {bios.map((bio) => (
+                    <div key={bio.id} className="bio-row">
+                      <div className="bio-row__body">
+                        <p className="bio-row__text">{bio.text}</p>
+                        {isAdmin && (
+                          <div className="bio-row__assign">
+                            {bio.allEmployees ? (
+                              <span className="owner-tag">All employees</span>
+                            ) : (
+                              bio.employees.map((u) => (
+                                <span key={u} className="owner-tag">
+                                  {u}
+                                </span>
+                              ))
+                            )}
+                          </div>
+                        )}
+                        <CopyField className="bio-row__copy" label="Copy bio" value={bio.text} />
+                      </div>
+                      {isAdmin && (
+                        <button
+                          type="button"
+                          className="license-row__delete"
+                          onClick={() => handleDeleteBio(bio.id)}
+                          title="Delete bio"
                         >
                           ✕
                         </button>

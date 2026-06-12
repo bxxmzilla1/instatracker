@@ -55,6 +55,15 @@ create table if not exists proxies (
   created_at bigint
 );
 
+-- Account bios assigned to employees (or all).
+create table if not exists bios (
+  id text primary key,
+  text text,
+  employees jsonb default '[]'::jsonb,
+  all_employees boolean default false,
+  created_at bigint
+);
+
 create table if not exists follower_snapshots (
   id bigint generated always as identity primary key,
   username text not null,
@@ -95,6 +104,7 @@ alter table reel_snapshots enable row level security;
 alter table employees enable row level security;
 alter table licenses enable row level security;
 alter table proxies enable row level security;
+alter table bios enable row level security;
 
 drop policy if exists "allow anon all" on accounts;
 drop policy if exists "allow anon all" on follower_snapshots;
@@ -102,6 +112,7 @@ drop policy if exists "allow anon all" on reel_snapshots;
 drop policy if exists "allow anon all" on employees;
 drop policy if exists "allow anon all" on licenses;
 drop policy if exists "allow anon all" on proxies;
+drop policy if exists "allow anon all" on bios;
 
 create policy "allow anon all" on accounts
   for all to anon using (true) with check (true);
@@ -114,6 +125,8 @@ create policy "allow anon all" on employees
 create policy "allow anon all" on licenses
   for all to anon using (true) with check (true);
 create policy "allow anon all" on proxies
+  for all to anon using (true) with check (true);
+create policy "allow anon all" on bios
   for all to anon using (true) with check (true);
 
 -- Storage bucket for cached profile pictures, reel thumbnails, and story images.

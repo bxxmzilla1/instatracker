@@ -1,6 +1,7 @@
 import { supabase } from './supabase';
 import { groupReelHistories } from './dbLocal';
 import type {
+  Bio,
   Employee,
   FollowerSnapshot,
   License,
@@ -259,6 +260,53 @@ export async function addProxy(proxy: Proxy): Promise<void> {
 
 export async function deleteProxy(id: string): Promise<void> {
   const { error } = await client().from('proxies').delete().eq('id', id);
+  if (error) throw new Error(error.message);
+}
+
+interface BioRow {
+  id: string;
+  text: string | null;
+  employees: unknown;
+  all_employees: boolean | null;
+  created_at: number | null;
+}
+
+function toBio(row: BioRow): Bio {
+  return {
+    id: row.id,
+    text: row.text ?? '',
+    employees: Array.isArray(row.employees) ? (row.employees as string[]) : [],
+    allEmployees: row.all_employees ?? false,
+    createdAt: row.created_at ?? 0,
+  };
+}
+
+export async function getBios(employee?: string): Promise<Bio[]> {
+  const { data, error } = await client()
+    .from('bios')
+    .select('*')
+    .order('created_at', { ascending: true });
+  if (error) throw new Error(error.message);
+  let bios = (data as BioRow[]).map(toBio);
+  if (employee !== undefined) {
+    bios = bios.filter((b) => b.allEmployees || b.employees.includes(employee));
+  }
+  return bios;
+}
+
+export async function addBio(bio: Bio): Promise<void> {
+  const { error } = await client().from('bios').upsert({
+    id: bio.id,
+    text: bio.text,
+    employees: bio.employees,
+    all_employees: bio.allEmployees,
+    created_at: bio.createdAt,
+  });
+  if (error) throw new Error(error.message);
+}
+
+export async function deleteBio(id: string): Promise<void> {
+  const { error } = await client().from('bios').delete().eq('id', id);
   if (error) throw new Error(error.message);
 }
 

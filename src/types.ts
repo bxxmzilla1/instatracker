@@ -35,6 +35,14 @@ export interface Proxy {
   createdAt: number;
 }
 
+export interface Bio {
+  id: string;
+  text: string;
+  employees: string[];
+  allEmployees: boolean;
+  createdAt: number;
+}
+
 export interface TrackedAccount {
   username: string;
   addedAt: number;

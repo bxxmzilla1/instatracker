@@ -24,4 +24,7 @@ export const {
   getProxies,
   addProxy,
   deleteProxy,
+  getBios,
+  addBio,
+  deleteBio,
 } = impl;

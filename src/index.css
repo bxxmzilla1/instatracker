@@ -447,6 +447,103 @@ code {
   white-space: normal;
 }
 
+/* Account Bio */
+.bio-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.bio-form__textarea {
+  width: 100%;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.8rem 0.9rem;
+  color: var(--text);
+  outline: none;
+  resize: vertical;
+  min-height: 90px;
+  line-height: 1.5;
+  font-family: inherit;
+}
+
+.bio-form__textarea:focus {
+  border-color: var(--accent);
+}
+
+.bio-form__assign {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1rem;
+}
+
+.bio-employees {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  flex-basis: 100%;
+}
+
+.bio-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--text);
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.bio-check input {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--accent);
+}
+
+.bio-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.bio-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.85rem 1rem;
+}
+
+.bio-row__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.bio-row__text {
+  margin: 0;
+  color: var(--text);
+  white-space: pre-wrap;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.bio-row__assign {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.bio-row__copy {
+  align-self: flex-start;
+}
+
 .owner-tag--detail {
   display: inline-block;
   margin-top: 0.4rem;

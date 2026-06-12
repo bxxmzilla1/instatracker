@@ -1,5 +1,6 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
 import type {
+  Bio,
   Employee,
   FollowerSnapshot,
   License,
@@ -26,6 +27,10 @@ interface InstatrackerDB extends DBSchema {
     key: string;
     value: Proxy;
   };
+  bios: {
+    key: string;
+    value: Bio;
+  };
   followerHistory: {
     key: number;
     value: FollowerSnapshot;
@@ -42,7 +47,7 @@ let dbPromise: Promise<IDBPDatabase<InstatrackerDB>> | null = null;
 
 function getDb() {
   if (!dbPromise) {
-    dbPromise = openDB<InstatrackerDB>('instatracker-v1', 5, {
+    dbPromise = openDB<InstatrackerDB>('instatracker-v1', 6, {
       upgrade(db, oldVersion) {
         if (!db.objectStoreNames.contains('accounts')) {
           db.createObjectStore('accounts', { keyPath: 'username' });
@@ -58,6 +63,10 @@ function getDb() {
 
         if (!db.objectStoreNames.contains('proxies')) {
           db.createObjectStore('proxies', { keyPath: 'id' });
+        }
+
+        if (!db.objectStoreNames.contains('bios')) {
+          db.createObjectStore('bios', { keyPath: 'id' });
         }
 
         if (oldVersion < 2) {
@@ -155,6 +164,25 @@ export async function addProxy(proxy: Proxy): Promise<void> {
 export async function deleteProxy(id: string): Promise<void> {
   const db = await getDb();
   await db.delete('proxies', id);
+}
+
+export async function getBios(employee?: string): Promise<Bio[]> {
+  const db = await getDb();
+  let bios = await db.getAll('bios');
+  if (employee !== undefined) {
+    bios = bios.filter((b) => b.allEmployees || b.employees.includes(employee));
+  }
+  return bios.sort((a, b) => a.createdAt - b.createdAt);
+}
+
+export async function addBio(bio: Bio): Promise<void> {
+  const db = await getDb();
+  await db.put('bios', bio);
+}
+
+export async function deleteBio(id: string): Promise<void> {
+  const db = await getDb();
+  await db.delete('bios', id);
 }
 
 export async function addAccount(account: TrackedAccount): Promise<void> {
