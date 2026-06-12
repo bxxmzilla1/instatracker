@@ -146,6 +146,7 @@ export default function App() {
   const [newContentAll, setNewContentAll] = useState(false);
   const [uploadingContent, setUploadingContent] = useState(false);
   const contentFileRef = useRef<HTMLInputElement>(null);
+  const [openAddForms, setOpenAddForms] = useState<Set<string>>(() => new Set());
 
   const isAdmin = session?.role === 'admin';
 
@@ -809,6 +810,15 @@ export default function App() {
     }
   }
 
+  function toggleAddForm(key: string) {
+    setOpenAddForms((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
   function openEditProxy(proxy: Proxy) {
     setEditItem({
       kind: 'proxy',
@@ -1383,7 +1393,19 @@ export default function App() {
           <>
             {isAdmin && (
               <section className="panel">
-                <h2>Add license</h2>
+                <div className="panel-head">
+                  <h2>Add license</h2>
+                  <button
+                    type="button"
+                    className={`panel-add-toggle ${openAddForms.has('license') ? 'panel-add-toggle--open' : ''}`}
+                    onClick={() => toggleAddForm('license')}
+                    title={openAddForms.has('license') ? 'Hide' : 'Add license'}
+                    aria-label={openAddForms.has('license') ? 'Hide' : 'Add license'}
+                  >
+                    +
+                  </button>
+                </div>
+                {openAddForms.has('license') && (
                 <form className="bio-form" onSubmit={handleAddLicense}>
                   <input
                     className="cred-form__input"
@@ -1407,6 +1429,7 @@ export default function App() {
                     Add license
                   </button>
                 </form>
+                )}
               </section>
             )}
 
@@ -1470,7 +1493,19 @@ export default function App() {
           <>
             {isAdmin && (
               <section className="panel">
-                <h2>Add CTA</h2>
+                <div className="panel-head">
+                  <h2>Add CTA</h2>
+                  <button
+                    type="button"
+                    className={`panel-add-toggle ${openAddForms.has('cta') ? 'panel-add-toggle--open' : ''}`}
+                    onClick={() => toggleAddForm('cta')}
+                    title={openAddForms.has('cta') ? 'Hide' : 'Add CTA'}
+                    aria-label={openAddForms.has('cta') ? 'Hide' : 'Add CTA'}
+                  >
+                    +
+                  </button>
+                </div>
+                {openAddForms.has('cta') && (
                 <form
                   className="bio-form"
                   onSubmit={(e) => {
@@ -1501,6 +1536,7 @@ export default function App() {
                     Add CTA
                   </button>
                 </form>
+                )}
               </section>
             )}
 
@@ -1567,7 +1603,19 @@ export default function App() {
           <>
             {isAdmin && (
               <section className="panel">
-                <h2>Add account bio</h2>
+                <div className="panel-head">
+                  <h2>Add account bio</h2>
+                  <button
+                    type="button"
+                    className={`panel-add-toggle ${openAddForms.has('bio') ? 'panel-add-toggle--open' : ''}`}
+                    onClick={() => toggleAddForm('bio')}
+                    title={openAddForms.has('bio') ? 'Hide' : 'Add bio'}
+                    aria-label={openAddForms.has('bio') ? 'Hide' : 'Add bio'}
+                  >
+                    +
+                  </button>
+                </div>
+                {openAddForms.has('bio') && (
                 <form
                   className="bio-form"
                   onSubmit={(e) => {
@@ -1598,6 +1646,7 @@ export default function App() {
                     Add bio
                   </button>
                 </form>
+                )}
               </section>
             )}
 
@@ -1664,7 +1713,19 @@ export default function App() {
           <>
             {isAdmin && (
               <section className="panel">
-                <h2>Add story</h2>
+                <div className="panel-head">
+                  <h2>Add story</h2>
+                  <button
+                    type="button"
+                    className={`panel-add-toggle ${openAddForms.has('story') ? 'panel-add-toggle--open' : ''}`}
+                    onClick={() => toggleAddForm('story')}
+                    title={openAddForms.has('story') ? 'Hide' : 'Add story'}
+                    aria-label={openAddForms.has('story') ? 'Hide' : 'Add story'}
+                  >
+                    +
+                  </button>
+                </div>
+                {openAddForms.has('story') && (
                 <form
                   className="bio-form"
                   onSubmit={(e) => {
@@ -1695,6 +1756,7 @@ export default function App() {
                     Add story
                   </button>
                 </form>
+                )}
               </section>
             )}
 
@@ -1761,7 +1823,19 @@ export default function App() {
           <>
             {isAdmin && (
               <section className="panel">
-                <h2>Upload reel</h2>
+                <div className="panel-head">
+                  <h2>Upload reel</h2>
+                  <button
+                    type="button"
+                    className={`panel-add-toggle ${openAddForms.has('content') ? 'panel-add-toggle--open' : ''}`}
+                    onClick={() => toggleAddForm('content')}
+                    title={openAddForms.has('content') ? 'Hide' : 'Upload reel'}
+                    aria-label={openAddForms.has('content') ? 'Hide' : 'Upload reel'}
+                  >
+                    +
+                  </button>
+                </div>
+                {openAddForms.has('content') && (
                 <form
                   className="bio-form"
                   onSubmit={(e) => {
@@ -1808,6 +1882,7 @@ export default function App() {
                     {uploadingContent ? 'Uploading…' : 'Upload reel'}
                   </button>
                 </form>
+                )}
               </section>
             )}
 
@@ -1885,7 +1960,20 @@ export default function App() {
           <>
             {isAdmin && (
               <section className="panel">
-                <h2>Add proxy</h2>
+                <div className="panel-head">
+                  <h2>Add proxy</h2>
+                  <button
+                    type="button"
+                    className={`panel-add-toggle ${openAddForms.has('proxy') ? 'panel-add-toggle--open' : ''}`}
+                    onClick={() => toggleAddForm('proxy')}
+                    title={openAddForms.has('proxy') ? 'Hide' : 'Add proxy'}
+                    aria-label={openAddForms.has('proxy') ? 'Hide' : 'Add proxy'}
+                  >
+                    +
+                  </button>
+                </div>
+                {openAddForms.has('proxy') && (
+                <>
                 <form className="license-form" onSubmit={handleAddProxy}>
                   <input
                     className="cred-form__input"
@@ -1939,6 +2027,8 @@ export default function App() {
                       <p className="cred-note">Could not parse this proxy format.</p>
                     );
                   })()}
+                </>
+                )}
               </section>
             )}
 

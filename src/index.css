@@ -2084,6 +2084,41 @@ button:disabled {
   }
 }
 
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.panel-head h2 {
+  margin: 0;
+}
+
+.panel-add-toggle {
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface-3);
+  color: var(--accent);
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.panel-add-toggle:hover {
+  background: var(--accent-soft);
+}
+
+.panel-add-toggle--open {
+  transform: rotate(45deg);
+}
+
 .content-upload {
   display: flex;
   align-items: center;
