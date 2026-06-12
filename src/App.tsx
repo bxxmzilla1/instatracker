@@ -1103,7 +1103,19 @@ export default function App() {
           </div>
         )}
 
-        {error && <div className="banner banner--error">{error}</div>}
+        {error && (
+          <div className="banner banner--error banner--dismissible">
+            <span>{error}</span>
+            <button
+              type="button"
+              className="banner__close"
+              onClick={() => setError(null)}
+              aria-label="Dismiss"
+            >
+              ✕
+            </button>
+          </div>
+        )}
         {warning && !error && (
           <div className="banner banner--warn banner--dismissible">
             <span>{warning}</span>
@@ -1753,9 +1765,19 @@ export default function App() {
               </div>
 
               {failedRefresh.has(selectedAccount.username) && !selectedAccount.banned && (
-                <div className="banner banner--warn">
-                  ⚠️ Unable to refresh, account might be banned or suspended. Please check status of
-                  account.
+                <div className="banner banner--warn banner--dismissible">
+                  <span>
+                    ⚠️ Unable to refresh, account might be banned or suspended. Please check status
+                    of account.
+                  </span>
+                  <button
+                    type="button"
+                    className="banner__close"
+                    onClick={() => clearRefreshFailed(selectedAccount.username)}
+                    aria-label="Dismiss"
+                  >
+                    ✕
+                  </button>
                 </div>
               )}
 
