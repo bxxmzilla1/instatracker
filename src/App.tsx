@@ -1402,7 +1402,7 @@ export default function App() {
                     title={openAddForms.has('license') ? 'Hide' : 'Add license'}
                     aria-label={openAddForms.has('license') ? 'Hide' : 'Add license'}
                   >
-                    +
+                    {openAddForms.has('license') ? 'Hide' : 'Add'}
                   </button>
                 </div>
                 {openAddForms.has('license') && (
@@ -1502,7 +1502,7 @@ export default function App() {
                     title={openAddForms.has('cta') ? 'Hide' : 'Add CTA'}
                     aria-label={openAddForms.has('cta') ? 'Hide' : 'Add CTA'}
                   >
-                    +
+                    {openAddForms.has('cta') ? 'Hide' : 'Add'}
                   </button>
                 </div>
                 {openAddForms.has('cta') && (
@@ -1612,7 +1612,7 @@ export default function App() {
                     title={openAddForms.has('bio') ? 'Hide' : 'Add bio'}
                     aria-label={openAddForms.has('bio') ? 'Hide' : 'Add bio'}
                   >
-                    +
+                    {openAddForms.has('bio') ? 'Hide' : 'Add'}
                   </button>
                 </div>
                 {openAddForms.has('bio') && (
@@ -1722,7 +1722,7 @@ export default function App() {
                     title={openAddForms.has('story') ? 'Hide' : 'Add story'}
                     aria-label={openAddForms.has('story') ? 'Hide' : 'Add story'}
                   >
-                    +
+                    {openAddForms.has('story') ? 'Hide' : 'Add'}
                   </button>
                 </div>
                 {openAddForms.has('story') && (
@@ -1832,7 +1832,7 @@ export default function App() {
                     title={openAddForms.has('content') ? 'Hide' : 'Upload reel'}
                     aria-label={openAddForms.has('content') ? 'Hide' : 'Upload reel'}
                   >
-                    +
+                    {openAddForms.has('content') ? 'Hide' : 'Add'}
                   </button>
                 </div>
                 {openAddForms.has('content') && (
@@ -1969,7 +1969,7 @@ export default function App() {
                     title={openAddForms.has('proxy') ? 'Hide' : 'Add proxy'}
                     aria-label={openAddForms.has('proxy') ? 'Hide' : 'Add proxy'}
                   >
-                    +
+                    {openAddForms.has('proxy') ? 'Hide' : 'Add'}
                   </button>
                 </div>
                 {openAddForms.has('proxy') && (
