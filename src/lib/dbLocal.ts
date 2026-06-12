@@ -262,6 +262,7 @@ export async function getContent(employee?: string): Promise<ContentReel[]> {
       videoUrl: r.blob ? URL.createObjectURL(r.blob) : (r.videoUrl ?? ''),
       employees: r.employees,
       allEmployees: r.allEmployees,
+      targetAccount: r.targetAccount,
       scheduledAt: r.scheduledAt,
       createdAt: r.createdAt,
     }));
@@ -274,6 +275,7 @@ export async function addContent(reel: ContentReel, file?: Blob): Promise<void> 
     caption: reel.caption,
     employees: reel.employees,
     allEmployees: reel.allEmployees,
+    targetAccount: reel.targetAccount,
     scheduledAt: reel.scheduledAt,
     createdAt: reel.createdAt,
   };

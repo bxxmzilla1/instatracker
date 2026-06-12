@@ -70,6 +70,7 @@ export interface ContentReel {
   videoUrl: string;
   employees: string[];
   allEmployees: boolean;
+  targetAccount?: string;
   scheduledAt?: number;
   createdAt: number;
 }

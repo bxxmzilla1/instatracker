@@ -2229,6 +2229,14 @@ button:disabled {
   color: var(--accent);
 }
 
+.content-tile__target {
+  margin: 0;
+  padding: 0.3rem 0.7rem 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
 .content-tile {
   display: flex;
   flex-direction: column;

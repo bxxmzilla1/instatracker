@@ -157,6 +157,7 @@ export default function App() {
   const [newContentCaption, setNewContentCaption] = useState('');
   const [newContentEmployees, setNewContentEmployees] = useState<Set<string>>(() => new Set());
   const [newContentAll, setNewContentAll] = useState(false);
+  const [newContentTarget, setNewContentTarget] = useState('');
   const [newContentScheduledAt, setNewContentScheduledAt] = useState('');
   const [uploadingContent, setUploadingContent] = useState(false);
   const contentFileRef = useRef<HTMLInputElement>(null);
@@ -780,6 +781,7 @@ export default function App() {
           videoUrl: '',
           employees: newContentAll ? [] : [...newContentEmployees],
           allEmployees: newContentAll,
+          targetAccount: newContentTarget || undefined,
           scheduledAt: newContentScheduledAt ? new Date(newContentScheduledAt).getTime() : undefined,
           createdAt: Date.now(),
         },
@@ -790,6 +792,7 @@ export default function App() {
       setNewContentCaption('');
       setNewContentEmployees(new Set());
       setNewContentAll(false);
+      setNewContentTarget('');
       setNewContentScheduledAt('');
       if (contentFileRef.current) contentFileRef.current.value = '';
     } catch (err) {
@@ -1099,6 +1102,12 @@ export default function App() {
                     : 'Accounts';
 
   const showAddForm = view === 'accounts';
+
+  const contentTargetAccounts = accounts.filter((a) =>
+    newContentAll
+      ? true
+      : Boolean(a.owner) && newContentEmployees.has(a.owner as string),
+  );
 
   const displayedContent = (() => {
     let list = content;
@@ -1917,6 +1926,27 @@ export default function App() {
                     onAllChange={setNewContentAll}
                   />
 
+                  {(newContentAll || newContentEmployees.size > 0) && (
+                    <label className="cred-field">
+                      <span className="cred-field__label">
+                        Instagram account to post on (optional)
+                      </span>
+                      <select
+                        className="cred-form__input"
+                        value={newContentTarget}
+                        onChange={(e) => setNewContentTarget(e.target.value)}
+                      >
+                        <option value="">No specific account</option>
+                        {contentTargetAccounts.map((a) => (
+                          <option key={a.username} value={a.username}>
+                            @{a.username}
+                            {a.owner ? ` · ${a.owner}` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+
                   <button
                     type="submit"
                     disabled={
@@ -2026,6 +2056,9 @@ export default function App() {
                             minute: '2-digit',
                           })}
                         </p>
+                      )}
+                      {reel.targetAccount && (
+                        <p className="content-tile__target">📲 Post on @{reel.targetAccount}</p>
                       )}
                       {reel.caption ? (
                         <p className="content-tile__caption">{reel.caption}</p>

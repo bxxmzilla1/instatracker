@@ -408,6 +408,7 @@ interface ContentRow {
   video_url: string | null;
   employees: unknown;
   all_employees: boolean | null;
+  target_account: string | null;
   scheduled_at: number | null;
   created_at: number | null;
 }
@@ -419,6 +420,7 @@ function toContent(row: ContentRow): ContentReel {
     videoUrl: row.video_url ?? '',
     employees: Array.isArray(row.employees) ? (row.employees as string[]) : [],
     allEmployees: row.all_employees ?? false,
+    targetAccount: row.target_account ?? undefined,
     scheduledAt: row.scheduled_at ?? undefined,
     createdAt: row.created_at ?? 0,
   };
@@ -460,6 +462,7 @@ export async function addContent(reel: ContentReel, file?: Blob): Promise<void> 
     video_url: videoUrl,
     employees: reel.employees,
     all_employees: reel.allEmployees,
+    target_account: reel.targetAccount ?? null,
     scheduled_at: reel.scheduledAt ?? null,
     created_at: reel.createdAt,
   });
