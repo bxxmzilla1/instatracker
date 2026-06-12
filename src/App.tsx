@@ -1324,26 +1324,29 @@ export default function App() {
                             ))
                           ))}
                       </div>
-                      {isAdmin && (
-                        <div className="row-actions">
-                          <button
-                            type="button"
-                            className="row-edit"
-                            onClick={() => openEditLicense(license)}
-                            title="Edit license"
-                          >
-                            ✎
-                          </button>
-                          <button
-                            type="button"
-                            className="license-row__delete"
-                            onClick={() => handleDeleteLicense(license.id)}
-                            title="Delete license"
-                          >
-                            ✕
-                          </button>
-                        </div>
-                      )}
+                      <div className="row-actions">
+                        <CopyButton value={license.license} title="Copy license" />
+                        {isAdmin && (
+                          <>
+                            <button
+                              type="button"
+                              className="row-edit"
+                              onClick={() => openEditLicense(license)}
+                              title="Edit license"
+                            >
+                              ✎
+                            </button>
+                            <button
+                              type="button"
+                              className="license-row__delete"
+                              onClick={() => handleDeleteLicense(license.id)}
+                              title="Delete license"
+                            >
+                              ✕
+                            </button>
+                          </>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
