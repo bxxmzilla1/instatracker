@@ -2,9 +2,17 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { Secret, TOTP } from 'otpauth';
 import type { TrackedAccount } from '../types';
 
+interface CredentialValues {
+  loginUsername: string;
+  loginEmail: string;
+  loginPhone: string;
+  loginPassword: string;
+  authSecret: string;
+}
+
 interface Props {
   account: TrackedAccount;
-  onSave: (loginUsername: string, loginPassword: string, authSecret: string) => Promise<void> | void;
+  onSave: (values: CredentialValues) => Promise<void> | void;
 }
 
 function buildTotp(secret: string): TOTP | null {
@@ -23,7 +31,9 @@ function buildTotp(secret: string): TOTP | null {
 }
 
 export function AccountCredentials({ account, onSave }: Props) {
-  const [loginUsername, setLoginUsername] = useState(account.loginUsername ?? '');
+  const [loginUsername, setLoginUsername] = useState(account.loginUsername || account.username);
+  const [loginEmail, setLoginEmail] = useState(account.loginEmail ?? '');
+  const [loginPhone, setLoginPhone] = useState(account.loginPhone ?? '');
   const [loginPassword, setLoginPassword] = useState(account.loginPassword ?? '');
   const [authSecret, setAuthSecret] = useState(account.authSecret ?? '');
   const [saving, setSaving] = useState(false);
@@ -32,11 +42,20 @@ export function AccountCredentials({ account, onSave }: Props) {
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    setLoginUsername(account.loginUsername ?? '');
+    setLoginUsername(account.loginUsername || account.username);
+    setLoginEmail(account.loginEmail ?? '');
+    setLoginPhone(account.loginPhone ?? '');
     setLoginPassword(account.loginPassword ?? '');
     setAuthSecret(account.authSecret ?? '');
     setSaved(false);
-  }, [account.username, account.loginUsername, account.loginPassword, account.authSecret]);
+  }, [
+    account.username,
+    account.loginUsername,
+    account.loginEmail,
+    account.loginPhone,
+    account.loginPassword,
+    account.authSecret,
+  ]);
 
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
@@ -61,7 +80,13 @@ export function AccountCredentials({ account, onSave }: Props) {
     event.preventDefault();
     setSaving(true);
     try {
-      await onSave(loginUsername.trim(), loginPassword, authSecret.trim());
+      await onSave({
+        loginUsername: loginUsername.trim(),
+        loginEmail: loginEmail.trim(),
+        loginPhone: loginPhone.trim(),
+        loginPassword,
+        authSecret: authSecret.trim(),
+      });
       setSaved(true);
     } finally {
       setSaving(false);
@@ -82,13 +107,28 @@ export function AccountCredentials({ account, onSave }: Props) {
   return (
     <form className="cred-form" onSubmit={handleSubmit}>
       <label className="cred-field">
-        <span className="cred-field__label">Username or email</span>
+        <span className="cred-field__label">Username</span>
         <input
           className="cred-form__input"
-          placeholder="Login username or email"
+          placeholder="Instagram username"
           value={loginUsername}
           onChange={(e) => {
             setLoginUsername(e.target.value);
+            setSaved(false);
+          }}
+          autoComplete="off"
+          spellCheck={false}
+        />
+      </label>
+
+      <label className="cred-field">
+        <span className="cred-field__label">Email</span>
+        <input
+          className="cred-form__input"
+          placeholder="Login email"
+          value={loginEmail}
+          onChange={(e) => {
+            setLoginEmail(e.target.value);
             setSaved(false);
           }}
           autoComplete="off"
@@ -105,6 +145,21 @@ export function AccountCredentials({ account, onSave }: Props) {
           value={loginPassword}
           onChange={(e) => {
             setLoginPassword(e.target.value);
+            setSaved(false);
+          }}
+          autoComplete="off"
+        />
+      </label>
+
+      <label className="cred-field">
+        <span className="cred-field__label">Phone number</span>
+        <input
+          className="cred-form__input"
+          type="tel"
+          placeholder="Phone number"
+          value={loginPhone}
+          onChange={(e) => {
+            setLoginPhone(e.target.value);
             setSaved(false);
           }}
           autoComplete="off"

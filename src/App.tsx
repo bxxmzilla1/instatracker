@@ -257,6 +257,8 @@ export default function App() {
         stories: cachedStories,
         owner: existing?.owner ?? defaultOwner,
         loginUsername: existing?.loginUsername,
+        loginEmail: existing?.loginEmail,
+        loginPhone: existing?.loginPhone,
         loginPassword: existing?.loginPassword,
         authSecret: existing?.authSecret,
         banned: existing?.banned,
@@ -425,17 +427,21 @@ export default function App() {
     await loadLicenses();
   }
 
-  async function handleSaveCredentials(
-    loginUsername: string,
-    loginPassword: string,
-    authSecret: string,
-  ) {
+  async function handleSaveCredentials(values: {
+    loginUsername: string;
+    loginEmail: string;
+    loginPhone: string;
+    loginPassword: string;
+    authSecret: string;
+  }) {
     if (!selectedAccount) return;
     const updated: TrackedAccount = {
       ...selectedAccount,
-      loginUsername: loginUsername || undefined,
-      loginPassword: loginPassword || undefined,
-      authSecret: authSecret || undefined,
+      loginUsername: values.loginUsername || undefined,
+      loginEmail: values.loginEmail || undefined,
+      loginPhone: values.loginPhone || undefined,
+      loginPassword: values.loginPassword || undefined,
+      authSecret: values.authSecret || undefined,
     };
     await updateAccount(updated);
     await loadAccounts();

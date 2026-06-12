@@ -37,6 +37,8 @@ export interface TrackedAccount {
   lastCheckedAt?: number;
   stories?: StoryPreview[];
   loginUsername?: string;
+  loginEmail?: string;
+  loginPhone?: string;
   loginPassword?: string;
   authSecret?: string;
   banned?: boolean;

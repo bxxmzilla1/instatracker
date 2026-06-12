@@ -19,6 +19,8 @@ create table if not exists accounts (
 
 -- If the accounts table already exists, add the credential/owner columns:
 alter table accounts add column if not exists login_username text;
+alter table accounts add column if not exists login_email text;
+alter table accounts add column if not exists login_phone text;
 alter table accounts add column if not exists login_password text;
 alter table accounts add column if not exists auth_secret text;
 alter table accounts add column if not exists owner text;

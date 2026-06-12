@@ -27,6 +27,8 @@ interface AccountRow {
   last_checked_at: number | null;
   stories: unknown;
   login_username: string | null;
+  login_email: string | null;
+  login_phone: string | null;
   login_password: string | null;
   auth_secret: string | null;
   owner: string | null;
@@ -69,6 +71,8 @@ function toAccount(row: AccountRow): TrackedAccount {
     lastCheckedAt: row.last_checked_at ?? undefined,
     stories: Array.isArray(row.stories) ? (row.stories as TrackedAccount['stories']) : [],
     loginUsername: row.login_username ?? undefined,
+    loginEmail: row.login_email ?? undefined,
+    loginPhone: row.login_phone ?? undefined,
     loginPassword: row.login_password ?? undefined,
     authSecret: row.auth_secret ?? undefined,
     owner: row.owner ?? undefined,
@@ -91,6 +95,8 @@ function fromAccount(account: TrackedAccount): AccountRow {
     last_checked_at: account.lastCheckedAt ?? null,
     stories: account.stories ?? [],
     login_username: account.loginUsername ?? null,
+    login_email: account.loginEmail ?? null,
+    login_phone: account.loginPhone ?? null,
     login_password: account.loginPassword ?? null,
     auth_secret: account.authSecret ?? null,
     owner: account.owner ?? null,
