@@ -64,6 +64,19 @@ import type {
   TrackedAccount,
 } from './types';
 
+function toDateKey(ms: number): string {
+  const d = new Date(ms);
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${m}-${day}`;
+}
+
+function shiftDateKey(key: string, days: number): string {
+  const d = new Date(`${key}T00:00`);
+  d.setDate(d.getDate() + days);
+  return toDateKey(d.getTime());
+}
+
 function loadSession(): Session | null {
   try {
     const raw = localStorage.getItem('drbossing_session');
@@ -144,8 +157,10 @@ export default function App() {
   const [newContentCaption, setNewContentCaption] = useState('');
   const [newContentEmployees, setNewContentEmployees] = useState<Set<string>>(() => new Set());
   const [newContentAll, setNewContentAll] = useState(false);
+  const [newContentScheduledAt, setNewContentScheduledAt] = useState('');
   const [uploadingContent, setUploadingContent] = useState(false);
   const contentFileRef = useRef<HTMLInputElement>(null);
+  const [scheduleFilter, setScheduleFilter] = useState<string | null>(null);
   const [openAddForms, setOpenAddForms] = useState<Set<string>>(() => new Set());
 
   const isAdmin = session?.role === 'admin';
@@ -761,6 +776,7 @@ export default function App() {
           videoUrl: '',
           employees: newContentAll ? [] : [...newContentEmployees],
           allEmployees: newContentAll,
+          scheduledAt: newContentScheduledAt ? new Date(newContentScheduledAt).getTime() : undefined,
           createdAt: Date.now(),
         },
         newContentFile,
@@ -770,6 +786,7 @@ export default function App() {
       setNewContentCaption('');
       setNewContentEmployees(new Set());
       setNewContentAll(false);
+      setNewContentScheduledAt('');
       if (contentFileRef.current) contentFileRef.current.value = '';
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not upload reel.');
@@ -1078,6 +1095,12 @@ export default function App() {
                     : 'Accounts';
 
   const showAddForm = view === 'accounts';
+
+  const displayedContent = scheduleFilter
+    ? content
+        .filter((reel) => reel.scheduledAt && toDateKey(reel.scheduledAt) === scheduleFilter)
+        .sort((a, b) => (a.scheduledAt ?? 0) - (b.scheduledAt ?? 0))
+    : content;
 
   const searchWords = accountSearch.trim().toLowerCase().split(/\s+/).filter(Boolean);
   const filteredAccounts =
@@ -1863,6 +1886,16 @@ export default function App() {
                     rows={3}
                   />
 
+                  <label className="cred-field">
+                    <span className="cred-field__label">Schedule date &amp; time (optional)</span>
+                    <input
+                      type="datetime-local"
+                      className="cred-form__input"
+                      value={newContentScheduledAt}
+                      onChange={(e) => setNewContentScheduledAt(e.target.value)}
+                    />
+                  </label>
+
                   <AssignmentPicker
                     employees={employees}
                     selected={newContentEmployees}
@@ -1887,16 +1920,66 @@ export default function App() {
             )}
 
             <section className="panel">
-              <h2>{isAdmin ? `Reels (${content.length})` : 'Your reels'}</h2>
-              {content.length === 0 ? (
+              <div className="panel-head">
+                <h2>
+                  {isAdmin ? `Reels (${displayedContent.length})` : 'Your reels'}
+                  {scheduleFilter && (
+                    <span className="content-filter__active"> · scheduled {scheduleFilter}</span>
+                  )}
+                </h2>
+                <div className="content-filter">
+                  <button
+                    type="button"
+                    className="content-filter__nav"
+                    onClick={() =>
+                      setScheduleFilter((prev) =>
+                        shiftDateKey(prev ?? toDateKey(Date.now()), -1),
+                      )
+                    }
+                    title="Previous day"
+                  >
+                    ‹
+                  </button>
+                  <input
+                    type="date"
+                    className="content-filter__date"
+                    value={scheduleFilter ?? ''}
+                    onChange={(e) => setScheduleFilter(e.target.value || null)}
+                  />
+                  <button
+                    type="button"
+                    className="content-filter__nav"
+                    onClick={() =>
+                      setScheduleFilter((prev) =>
+                        shiftDateKey(prev ?? toDateKey(Date.now()), 1),
+                      )
+                    }
+                    title="Next day"
+                  >
+                    ›
+                  </button>
+                  {scheduleFilter && (
+                    <button
+                      type="button"
+                      className="content-filter__clear"
+                      onClick={() => setScheduleFilter(null)}
+                    >
+                      All
+                    </button>
+                  )}
+                </div>
+              </div>
+              {displayedContent.length === 0 ? (
                 <p className="empty-note">
-                  {isAdmin
-                    ? 'No reels yet. Upload one above and assign it to employees.'
-                    : 'No reel assigned to you yet.'}
+                  {scheduleFilter
+                    ? 'No reels scheduled for this date.'
+                    : isAdmin
+                      ? 'No reels yet. Upload one above and assign it to employees.'
+                      : 'No reel assigned to you yet.'}
                 </p>
               ) : (
                 <div className="content-grid">
-                  {content.map((reel) => (
+                  {displayedContent.map((reel) => (
                     <div key={reel.id} className="content-tile">
                       <video
                         className="content-tile__video"
@@ -1906,6 +1989,16 @@ export default function App() {
                         muted
                         playsInline
                       />
+                      {reel.scheduledAt && (
+                        <p className="content-tile__schedule">
+                          🗓 {new Date(reel.scheduledAt).toLocaleString([], {
+                            month: 'short',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
+                        </p>
+                      )}
                       {reel.caption ? (
                         <p className="content-tile__caption">{reel.caption}</p>
                       ) : (

@@ -99,8 +99,10 @@ create table if not exists content (
   video_url text,
   employees jsonb default '[]'::jsonb,
   all_employees boolean default false,
+  scheduled_at bigint,
   created_at bigint
 );
+alter table content add column if not exists scheduled_at bigint;
 
 create table if not exists follower_snapshots (
   id bigint generated always as identity primary key,
