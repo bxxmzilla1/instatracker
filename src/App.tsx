@@ -31,6 +31,9 @@ import {
   getLicenses,
   getProxies,
   getReelHistories,
+  getStories,
+  addStory,
+  deleteStory,
   removeAccount,
   saveFollowerSnapshot,
   saveReelSnapshots,
@@ -52,6 +55,7 @@ import type {
   ReelHistory,
   ReelSnapshot,
   Session,
+  StoryNote,
   StoryPreview,
   TrackedAccount,
 } from './types';
@@ -88,7 +92,7 @@ export default function App() {
   const [failedRefresh, setFailedRefresh] = useState<Set<string>>(() => new Set());
   const [accountSearch, setAccountSearch] = useState('');
   const [view, setView] = useState<
-    'dashboard' | 'accounts' | 'employee' | 'license' | 'proxy' | 'bio' | 'cta'
+    'dashboard' | 'accounts' | 'employee' | 'license' | 'proxy' | 'bio' | 'cta' | 'story'
   >('dashboard');
   const [showCredentials, setShowCredentials] = useState(false);
   const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
@@ -110,7 +114,7 @@ export default function App() {
   const [newProxyType, setNewProxyType] = useState('http');
   const [newProxyRotating, setNewProxyRotating] = useState('');
   const [editItem, setEditItem] = useState<{
-    kind: 'proxy' | 'license' | 'bio' | 'cta';
+    kind: 'proxy' | 'license' | 'bio' | 'cta' | 'story';
     id: string;
     createdAt: number;
     text: string;
@@ -127,6 +131,10 @@ export default function App() {
   const [newCtaText, setNewCtaText] = useState('');
   const [newCtaEmployees, setNewCtaEmployees] = useState<Set<string>>(() => new Set());
   const [newCtaAll, setNewCtaAll] = useState(false);
+  const [stories, setStories] = useState<StoryNote[]>([]);
+  const [newStoryText, setNewStoryText] = useState('');
+  const [newStoryEmployees, setNewStoryEmployees] = useState<Set<string>>(() => new Set());
+  const [newStoryAll, setNewStoryAll] = useState(false);
 
   const isAdmin = session?.role === 'admin';
 
@@ -184,6 +192,12 @@ export default function App() {
     setCtas(await getCtas(filter));
   }, [session]);
 
+  const loadStories = useCallback(async () => {
+    if (!session) return;
+    const filter = session.role === 'employee' ? session.username : undefined;
+    setStories(await getStories(filter));
+  }, [session]);
+
   const loadDashboardData = useCallback(async () => {
     const [reels, followers] = await Promise.all([
       getAllReelSnapshots(),
@@ -217,6 +231,7 @@ export default function App() {
         await loadProxies();
         await loadBios();
         await loadCtas();
+        await loadStories();
         if (session?.role === 'admin') {
           setEmployees(await getEmployees());
         }
@@ -227,7 +242,7 @@ export default function App() {
       }
     }
     init();
-  }, [session, loadDashboardData, loadLicenses, loadProxies, loadBios, loadCtas]);
+  }, [session, loadDashboardData, loadLicenses, loadProxies, loadBios, loadCtas, loadStories]);
 
   useEffect(() => {
     if (!session) return;
@@ -662,6 +677,44 @@ export default function App() {
     await loadCtas();
   }
 
+  async function submitStory() {
+    const text = newStoryText.trim();
+    if (!text) return;
+    if (!newStoryAll && newStoryEmployees.size === 0) {
+      setError('Select at least one employee or choose all employees.');
+      return;
+    }
+    try {
+      await addStory({
+        id: crypto.randomUUID(),
+        text: newStoryText,
+        employees: newStoryAll ? [] : [...newStoryEmployees],
+        allEmployees: newStoryAll,
+        createdAt: Date.now(),
+      });
+      await loadStories();
+      setNewStoryText('');
+      setNewStoryEmployees(new Set());
+      setNewStoryAll(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not add story.');
+    }
+  }
+
+  function toggleStoryEmployee(username: string) {
+    setNewStoryEmployees((prev) => {
+      const next = new Set(prev);
+      if (next.has(username)) next.delete(username);
+      else next.add(username);
+      return next;
+    });
+  }
+
+  async function handleDeleteStory(id: string) {
+    await deleteStory(id);
+    await loadStories();
+  }
+
   function openEditProxy(proxy: Proxy) {
     setEditItem({
       kind: 'proxy',
@@ -711,6 +764,19 @@ export default function App() {
       type: 'http',
       employees: new Set(cta.employees),
       allEmployees: cta.allEmployees,
+    });
+  }
+
+  function openEditStory(story: StoryNote) {
+    setEditItem({
+      kind: 'story',
+      id: story.id,
+      createdAt: story.createdAt,
+      text: story.text,
+      rotating: '',
+      type: 'http',
+      employees: new Set(story.employees),
+      allEmployees: story.allEmployees,
     });
   }
 
@@ -772,6 +838,15 @@ export default function App() {
           createdAt: editItem.createdAt,
         });
         await loadBios();
+      } else if (editItem.kind === 'story') {
+        await addStory({
+          id: editItem.id,
+          text: editItem.text,
+          employees,
+          allEmployees: editItem.allEmployees,
+          createdAt: editItem.createdAt,
+        });
+        await loadStories();
       } else {
         await addCta({
           id: editItem.id,
@@ -887,7 +962,9 @@ export default function App() {
               ? 'Account Bio'
               : view === 'cta'
                 ? 'CTA'
-                : 'Accounts';
+                : view === 'story'
+                  ? 'Stories'
+                  : 'Accounts';
 
   const showAddForm = view === 'accounts';
 
@@ -1010,6 +1087,21 @@ export default function App() {
               <path d="M3 11l18-7-7 18-2.5-7.5z" />
             </svg>
             CTA
+          </button>
+
+          <button
+            type="button"
+            className={view === 'story' ? 'nav-item nav-item--active' : 'nav-item'}
+            onClick={() => {
+              setSelectedEmployee(null);
+              setView('story');
+            }}
+          >
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="9" strokeDasharray="3 2.2" />
+              <circle cx="12" cy="12" r="3.5" />
+            </svg>
+            Stories
           </button>
 
           {isAdmin && (
@@ -1435,6 +1527,103 @@ export default function App() {
                               className="license-row__delete"
                               onClick={() => handleDeleteBio(bio.id)}
                               title="Delete bio"
+                            >
+                              ✕
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          </>
+        )}
+
+        {view === 'story' && (
+          <>
+            {isAdmin && (
+              <section className="panel">
+                <h2>Add story</h2>
+                <form
+                  className="bio-form"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    submitStory();
+                  }}
+                >
+                  <textarea
+                    className="bio-form__textarea"
+                    placeholder="Write the story…"
+                    value={newStoryText}
+                    onChange={(e) => setNewStoryText(e.target.value)}
+                    rows={4}
+                  />
+
+                  <AssignmentPicker
+                    employees={employees}
+                    selected={newStoryEmployees}
+                    all={newStoryAll}
+                    onToggle={toggleStoryEmployee}
+                    onAllChange={setNewStoryAll}
+                  />
+
+                  <button
+                    type="submit"
+                    disabled={!newStoryText.trim() || (!newStoryAll && newStoryEmployees.size === 0)}
+                  >
+                    Add story
+                  </button>
+                </form>
+              </section>
+            )}
+
+            <section className="panel">
+              <h2>{isAdmin ? `Stories (${stories.length})` : 'Your stories'}</h2>
+              {stories.length === 0 ? (
+                <p className="empty-note">
+                  {isAdmin
+                    ? 'No stories yet. Write one above and assign it to employees.'
+                    : 'No story assigned to you yet.'}
+                </p>
+              ) : (
+                <div className="bio-list">
+                  {stories.map((story) => (
+                    <div key={story.id} className="bio-row">
+                      <div className="bio-row__body">
+                        <p className="bio-row__text">{story.text}</p>
+                        {isAdmin && (
+                          <div className="bio-row__assign">
+                            {story.allEmployees ? (
+                              <span className="owner-tag">All employees</span>
+                            ) : (
+                              story.employees.map((u) => (
+                                <span key={u} className="owner-tag">
+                                  {u}
+                                </span>
+                              ))
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      <div className="row-actions">
+                        <CopyButton value={story.text} title="Copy story" />
+                        {isAdmin && (
+                          <>
+                            <button
+                              type="button"
+                              className="row-edit"
+                              onClick={() => openEditStory(story)}
+                              title="Edit story"
+                            >
+                              ✎
+                            </button>
+                            <button
+                              type="button"
+                              className="license-row__delete"
+                              onClick={() => handleDeleteStory(story.id)}
+                              title="Delete story"
                             >
                               ✕
                             </button>
@@ -1889,7 +2078,9 @@ export default function App() {
                       ? 'license'
                       : editItem.kind === 'bio'
                         ? 'bio'
-                        : 'CTA'}
+                        : editItem.kind === 'story'
+                          ? 'story'
+                          : 'CTA'}
                 </h3>
                 <button
                   type="button"

@@ -30,4 +30,7 @@ export const {
   getCtas,
   addCta,
   deleteCta,
+  getStories,
+  addStory,
+  deleteStory,
 } = impl;

@@ -56,6 +56,14 @@ export interface Cta {
   createdAt: number;
 }
 
+export interface StoryNote {
+  id: string;
+  text: string;
+  employees: string[];
+  allEmployees: boolean;
+  createdAt: number;
+}
+
 export interface TrackedAccount {
   username: string;
   addedAt: number;

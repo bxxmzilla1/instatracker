@@ -9,6 +9,7 @@ import type {
   Proxy,
   ReelHistory,
   ReelSnapshot,
+  StoryNote,
   TrackedAccount,
 } from '../types';
 
@@ -37,6 +38,10 @@ interface InstatrackerDB extends DBSchema {
     key: string;
     value: Cta;
   };
+  stories: {
+    key: string;
+    value: StoryNote;
+  };
   followerHistory: {
     key: number;
     value: FollowerSnapshot;
@@ -53,7 +58,7 @@ let dbPromise: Promise<IDBPDatabase<InstatrackerDB>> | null = null;
 
 function getDb() {
   if (!dbPromise) {
-    dbPromise = openDB<InstatrackerDB>('instatracker-v1', 7, {
+    dbPromise = openDB<InstatrackerDB>('instatracker-v1', 8, {
       upgrade(db, oldVersion) {
         if (!db.objectStoreNames.contains('accounts')) {
           db.createObjectStore('accounts', { keyPath: 'username' });
@@ -77,6 +82,10 @@ function getDb() {
 
         if (!db.objectStoreNames.contains('ctas')) {
           db.createObjectStore('ctas', { keyPath: 'id' });
+        }
+
+        if (!db.objectStoreNames.contains('stories')) {
+          db.createObjectStore('stories', { keyPath: 'id' });
         }
 
         if (oldVersion < 2) {
@@ -207,6 +216,25 @@ export async function getCtas(employee?: string): Promise<Cta[]> {
 export async function addCta(cta: Cta): Promise<void> {
   const db = await getDb();
   await db.put('ctas', cta);
+}
+
+export async function getStories(employee?: string): Promise<StoryNote[]> {
+  const db = await getDb();
+  let stories = await db.getAll('stories');
+  if (employee !== undefined) {
+    stories = stories.filter((s) => s.allEmployees || s.employees.includes(employee));
+  }
+  return stories.sort((a, b) => a.createdAt - b.createdAt);
+}
+
+export async function addStory(story: StoryNote): Promise<void> {
+  const db = await getDb();
+  await db.put('stories', story);
+}
+
+export async function deleteStory(id: string): Promise<void> {
+  const db = await getDb();
+  await db.delete('stories', id);
 }
 
 export async function deleteCta(id: string): Promise<void> {

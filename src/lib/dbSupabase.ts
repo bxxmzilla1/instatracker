@@ -10,6 +10,7 @@ import type {
   Proxy,
   ReelHistory,
   ReelSnapshot,
+  StoryNote,
   TrackedAccount,
 } from '../types';
 
@@ -368,6 +369,35 @@ export async function addCta(cta: Cta): Promise<void> {
 
 export async function deleteCta(id: string): Promise<void> {
   const { error } = await client().from('ctas').delete().eq('id', id);
+  if (error) throw new Error(error.message);
+}
+
+export async function getStories(employee?: string): Promise<StoryNote[]> {
+  const { data, error } = await client()
+    .from('stories')
+    .select('*')
+    .order('created_at', { ascending: true });
+  if (error) throw new Error(error.message);
+  let stories = (data as BioRow[]).map(toBio) as StoryNote[];
+  if (employee !== undefined) {
+    stories = stories.filter((s) => s.allEmployees || s.employees.includes(employee));
+  }
+  return stories;
+}
+
+export async function addStory(story: StoryNote): Promise<void> {
+  const { error } = await client().from('stories').upsert({
+    id: story.id,
+    text: story.text,
+    employees: story.employees,
+    all_employees: story.allEmployees,
+    created_at: story.createdAt,
+  });
+  if (error) throw new Error(error.message);
+}
+
+export async function deleteStory(id: string): Promise<void> {
+  const { error } = await client().from('stories').delete().eq('id', id);
   if (error) throw new Error(error.message);
 }
 
