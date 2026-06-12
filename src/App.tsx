@@ -160,7 +160,11 @@ export default function App() {
   const [newContentScheduledAt, setNewContentScheduledAt] = useState('');
   const [uploadingContent, setUploadingContent] = useState(false);
   const contentFileRef = useRef<HTMLInputElement>(null);
-  const [scheduleFilter, setScheduleFilter] = useState<string | null>(null);
+  const [scheduleFilter, setScheduleFilter] = useState<string | null>(() => {
+    const s = loadSession();
+    return s?.role === 'employee' ? toDateKey(Date.now()) : null;
+  });
+  const [contentEmployeeFilter, setContentEmployeeFilter] = useState('');
   const [openAddForms, setOpenAddForms] = useState<Set<string>>(() => new Set());
 
   const isAdmin = session?.role === 'admin';
@@ -1096,11 +1100,20 @@ export default function App() {
 
   const showAddForm = view === 'accounts';
 
-  const displayedContent = scheduleFilter
-    ? content
+  const displayedContent = (() => {
+    let list = content;
+    if (isAdmin && contentEmployeeFilter) {
+      list = list.filter(
+        (reel) => reel.allEmployees || reel.employees.includes(contentEmployeeFilter),
+      );
+    }
+    if (scheduleFilter) {
+      list = list
         .filter((reel) => reel.scheduledAt && toDateKey(reel.scheduledAt) === scheduleFilter)
-        .sort((a, b) => (a.scheduledAt ?? 0) - (b.scheduledAt ?? 0))
-    : content;
+        .sort((a, b) => (a.scheduledAt ?? 0) - (b.scheduledAt ?? 0));
+    }
+    return list;
+  })();
 
   const searchWords = accountSearch.trim().toLowerCase().split(/\s+/).filter(Boolean);
   const filteredAccounts =
@@ -1928,6 +1941,21 @@ export default function App() {
                   )}
                 </h2>
                 <div className="content-filter">
+                  {isAdmin && (
+                    <select
+                      className="content-filter__date"
+                      value={contentEmployeeFilter}
+                      onChange={(e) => setContentEmployeeFilter(e.target.value)}
+                      title="Filter by employee"
+                    >
+                      <option value="">All employees</option>
+                      {employees.map((emp) => (
+                        <option key={emp.username} value={emp.username}>
+                          {emp.username}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                   <button
                     type="button"
                     className="content-filter__nav"
