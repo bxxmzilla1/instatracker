@@ -98,6 +98,19 @@ code {
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.sidebar__nav::-webkit-scrollbar {
+  width: 6px;
+}
+
+.sidebar__nav::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
 }
 
 .nav-item {
@@ -2051,6 +2064,8 @@ button:disabled {
 
   .sidebar__nav {
     flex-direction: row;
+    overflow-x: auto;
+    overflow-y: visible;
   }
 
   .nav-item__count {
