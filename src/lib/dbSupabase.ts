@@ -2,6 +2,7 @@ import { supabase } from './supabase';
 import { groupReelHistories } from './dbLocal';
 import type {
   Bio,
+  Cta,
   Employee,
   FollowerSnapshot,
   License,
@@ -310,6 +311,35 @@ export async function addBio(bio: Bio): Promise<void> {
 
 export async function deleteBio(id: string): Promise<void> {
   const { error } = await client().from('bios').delete().eq('id', id);
+  if (error) throw new Error(error.message);
+}
+
+export async function getCtas(employee?: string): Promise<Cta[]> {
+  const { data, error } = await client()
+    .from('ctas')
+    .select('*')
+    .order('created_at', { ascending: true });
+  if (error) throw new Error(error.message);
+  let ctas = (data as BioRow[]).map(toBio) as Cta[];
+  if (employee !== undefined) {
+    ctas = ctas.filter((c) => c.allEmployees || c.employees.includes(employee));
+  }
+  return ctas;
+}
+
+export async function addCta(cta: Cta): Promise<void> {
+  const { error } = await client().from('ctas').upsert({
+    id: cta.id,
+    text: cta.text,
+    employees: cta.employees,
+    all_employees: cta.allEmployees,
+    created_at: cta.createdAt,
+  });
+  if (error) throw new Error(error.message);
+}
+
+export async function deleteCta(id: string): Promise<void> {
+  const { error } = await client().from('ctas').delete().eq('id', id);
   if (error) throw new Error(error.message);
 }
 

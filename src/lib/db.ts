@@ -27,4 +27,7 @@ export const {
   getBios,
   addBio,
   deleteBio,
+  getCtas,
+  addCta,
+  deleteCta,
 } = impl;

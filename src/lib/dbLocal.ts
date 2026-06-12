@@ -1,6 +1,7 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
 import type {
   Bio,
+  Cta,
   Employee,
   FollowerSnapshot,
   License,
@@ -31,6 +32,10 @@ interface InstatrackerDB extends DBSchema {
     key: string;
     value: Bio;
   };
+  ctas: {
+    key: string;
+    value: Cta;
+  };
   followerHistory: {
     key: number;
     value: FollowerSnapshot;
@@ -47,7 +52,7 @@ let dbPromise: Promise<IDBPDatabase<InstatrackerDB>> | null = null;
 
 function getDb() {
   if (!dbPromise) {
-    dbPromise = openDB<InstatrackerDB>('instatracker-v1', 6, {
+    dbPromise = openDB<InstatrackerDB>('instatracker-v1', 7, {
       upgrade(db, oldVersion) {
         if (!db.objectStoreNames.contains('accounts')) {
           db.createObjectStore('accounts', { keyPath: 'username' });
@@ -67,6 +72,10 @@ function getDb() {
 
         if (!db.objectStoreNames.contains('bios')) {
           db.createObjectStore('bios', { keyPath: 'id' });
+        }
+
+        if (!db.objectStoreNames.contains('ctas')) {
+          db.createObjectStore('ctas', { keyPath: 'id' });
         }
 
         if (oldVersion < 2) {
@@ -183,6 +192,25 @@ export async function addBio(bio: Bio): Promise<void> {
 export async function deleteBio(id: string): Promise<void> {
   const db = await getDb();
   await db.delete('bios', id);
+}
+
+export async function getCtas(employee?: string): Promise<Cta[]> {
+  const db = await getDb();
+  let ctas = await db.getAll('ctas');
+  if (employee !== undefined) {
+    ctas = ctas.filter((c) => c.allEmployees || c.employees.includes(employee));
+  }
+  return ctas.sort((a, b) => a.createdAt - b.createdAt);
+}
+
+export async function addCta(cta: Cta): Promise<void> {
+  const db = await getDb();
+  await db.put('ctas', cta);
+}
+
+export async function deleteCta(id: string): Promise<void> {
+  const db = await getDb();
+  await db.delete('ctas', id);
 }
 
 export async function addAccount(account: TrackedAccount): Promise<void> {

@@ -44,6 +44,14 @@ export interface Bio {
   createdAt: number;
 }
 
+export interface Cta {
+  id: string;
+  text: string;
+  employees: string[];
+  allEmployees: boolean;
+  createdAt: number;
+}
+
 export interface TrackedAccount {
   username: string;
   addedAt: number;

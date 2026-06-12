@@ -11,9 +11,11 @@ import {
   addAccount,
   addEmployee,
   addBio,
+  addCta,
   addLicense,
   addProxy,
   deleteBio,
+  deleteCta,
   deleteEmployee,
   deleteLicense,
   deleteProxy,
@@ -21,6 +23,7 @@ import {
   getAllFollowerSnapshots,
   getAllReelSnapshots,
   getBios,
+  getCtas,
   getEmployees,
   getFollowerHistory,
   getLicenses,
@@ -37,6 +40,7 @@ import { cacheImage, imgKey } from './lib/media';
 import { formatCount, formatDate, proxiedImage } from './lib/format';
 import type {
   Bio,
+  Cta,
   Employee,
   FollowerSnapshot,
   License,
@@ -81,7 +85,7 @@ export default function App() {
   const [failedRefresh, setFailedRefresh] = useState<Set<string>>(() => new Set());
   const [accountSearch, setAccountSearch] = useState('');
   const [view, setView] = useState<
-    'dashboard' | 'accounts' | 'employee' | 'license' | 'proxy' | 'bio'
+    'dashboard' | 'accounts' | 'employee' | 'license' | 'proxy' | 'bio' | 'cta'
   >('dashboard');
   const [showCredentials, setShowCredentials] = useState(false);
   const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
@@ -104,6 +108,10 @@ export default function App() {
   const [newBioText, setNewBioText] = useState('');
   const [newBioEmployees, setNewBioEmployees] = useState<Set<string>>(() => new Set());
   const [newBioAll, setNewBioAll] = useState(false);
+  const [ctas, setCtas] = useState<Cta[]>([]);
+  const [newCtaText, setNewCtaText] = useState('');
+  const [newCtaEmployees, setNewCtaEmployees] = useState<Set<string>>(() => new Set());
+  const [newCtaAll, setNewCtaAll] = useState(false);
 
   const isAdmin = session?.role === 'admin';
 
@@ -155,6 +163,12 @@ export default function App() {
     setBios(await getBios(filter));
   }, [session]);
 
+  const loadCtas = useCallback(async () => {
+    if (!session) return;
+    const filter = session.role === 'employee' ? session.username : undefined;
+    setCtas(await getCtas(filter));
+  }, [session]);
+
   const loadDashboardData = useCallback(async () => {
     const [reels, followers] = await Promise.all([
       getAllReelSnapshots(),
@@ -187,6 +201,7 @@ export default function App() {
         await loadLicenses();
         await loadProxies();
         await loadBios();
+        await loadCtas();
         if (session?.role === 'admin') {
           setEmployees(await getEmployees());
         }
@@ -197,7 +212,7 @@ export default function App() {
       }
     }
     init();
-  }, [session, loadDashboardData, loadLicenses, loadProxies, loadBios]);
+  }, [session, loadDashboardData, loadLicenses, loadProxies, loadBios, loadCtas]);
 
   useEffect(() => {
     if (!session) return;
@@ -574,6 +589,44 @@ export default function App() {
     await loadBios();
   }
 
+  async function submitCta() {
+    const text = newCtaText.trim();
+    if (!text) return;
+    if (!newCtaAll && newCtaEmployees.size === 0) {
+      setError('Select at least one employee or choose all employees.');
+      return;
+    }
+    try {
+      await addCta({
+        id: crypto.randomUUID(),
+        text: newCtaText,
+        employees: newCtaAll ? [] : [...newCtaEmployees],
+        allEmployees: newCtaAll,
+        createdAt: Date.now(),
+      });
+      await loadCtas();
+      setNewCtaText('');
+      setNewCtaEmployees(new Set());
+      setNewCtaAll(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not add CTA.');
+    }
+  }
+
+  function toggleCtaEmployee(username: string) {
+    setNewCtaEmployees((prev) => {
+      const next = new Set(prev);
+      if (next.has(username)) next.delete(username);
+      else next.add(username);
+      return next;
+    });
+  }
+
+  async function handleDeleteCta(id: string) {
+    await deleteCta(id);
+    await loadCtas();
+  }
+
   async function handleSaveCredentials(values: {
     loginUsername: string;
     loginEmail: string;
@@ -671,7 +724,9 @@ export default function App() {
             ? 'Proxy'
             : view === 'bio'
               ? 'Account Bio'
-              : 'Accounts';
+              : view === 'cta'
+                ? 'CTA'
+                : 'Accounts';
 
   const showAddForm = view === 'accounts';
 
@@ -780,6 +835,20 @@ export default function App() {
               <path d="M4 5h16M4 10h16M4 15h10M4 20h7" />
             </svg>
             Account Bio
+          </button>
+
+          <button
+            type="button"
+            className={view === 'cta' ? 'nav-item nav-item--active' : 'nav-item'}
+            onClick={() => {
+              setSelectedEmployee(null);
+              setView('cta');
+            }}
+          >
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M3 11l18-7-7 18-2.5-7.5z" />
+            </svg>
+            CTA
           </button>
 
           {isAdmin && (
@@ -983,6 +1052,119 @@ export default function App() {
                           className="license-row__delete"
                           onClick={() => handleDeleteLicense(license.id)}
                           title="Delete license"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          </>
+        )}
+
+        {view === 'cta' && (
+          <>
+            {isAdmin && (
+              <section className="panel">
+                <h2>Add CTA</h2>
+                <form
+                  className="bio-form"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    submitCta();
+                  }}
+                >
+                  <textarea
+                    className="bio-form__textarea"
+                    placeholder="Insert a text or link… (Shift+Enter for a new line)"
+                    value={newCtaText}
+                    onChange={(e) => setNewCtaText(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        submitCta();
+                      }
+                    }}
+                    rows={4}
+                  />
+
+                  <div className="bio-form__assign">
+                    <span className="cred-field__label">Assign to</span>
+                    <label className="bio-check">
+                      <input
+                        type="checkbox"
+                        checked={newCtaAll}
+                        onChange={(e) => setNewCtaAll(e.target.checked)}
+                      />
+                      All employees
+                    </label>
+                    {!newCtaAll && (
+                      <div className="bio-employees">
+                        {employees.length === 0 ? (
+                          <span className="cred-note">No employees yet.</span>
+                        ) : (
+                          employees.map((employee) => (
+                            <label key={employee.username} className="bio-check">
+                              <input
+                                type="checkbox"
+                                checked={newCtaEmployees.has(employee.username)}
+                                onChange={() => toggleCtaEmployee(employee.username)}
+                              />
+                              {employee.username}
+                            </label>
+                          ))
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={!newCtaText.trim() || (!newCtaAll && newCtaEmployees.size === 0)}
+                  >
+                    Add CTA
+                  </button>
+                </form>
+              </section>
+            )}
+
+            <section className="panel">
+              <h2>{isAdmin ? `CTAs (${ctas.length})` : 'Your CTAs'}</h2>
+              {ctas.length === 0 ? (
+                <p className="empty-note">
+                  {isAdmin
+                    ? 'No CTAs yet. Add one above and assign it to employees.'
+                    : 'No CTA assigned to you yet.'}
+                </p>
+              ) : (
+                <div className="bio-list">
+                  {ctas.map((cta) => (
+                    <div key={cta.id} className="bio-row">
+                      <div className="bio-row__body">
+                        <p className="bio-row__text">{cta.text}</p>
+                        {isAdmin && (
+                          <div className="bio-row__assign">
+                            {cta.allEmployees ? (
+                              <span className="owner-tag">All employees</span>
+                            ) : (
+                              cta.employees.map((u) => (
+                                <span key={u} className="owner-tag">
+                                  {u}
+                                </span>
+                              ))
+                            )}
+                          </div>
+                        )}
+                        <CopyField className="bio-row__copy" label="Copy" value={cta.text} />
+                      </div>
+                      {isAdmin && (
+                        <button
+                          type="button"
+                          className="license-row__delete"
+                          onClick={() => handleDeleteCta(cta.id)}
+                          title="Delete CTA"
                         >
                           ✕
                         </button>

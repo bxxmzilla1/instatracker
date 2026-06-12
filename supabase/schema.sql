@@ -67,6 +67,15 @@ create table if not exists bios (
   created_at bigint
 );
 
+-- CTAs assigned to employees (or all).
+create table if not exists ctas (
+  id text primary key,
+  text text,
+  employees jsonb default '[]'::jsonb,
+  all_employees boolean default false,
+  created_at bigint
+);
+
 create table if not exists follower_snapshots (
   id bigint generated always as identity primary key,
   username text not null,
@@ -108,6 +117,7 @@ alter table employees enable row level security;
 alter table licenses enable row level security;
 alter table proxies enable row level security;
 alter table bios enable row level security;
+alter table ctas enable row level security;
 
 drop policy if exists "allow anon all" on accounts;
 drop policy if exists "allow anon all" on follower_snapshots;
@@ -116,6 +126,7 @@ drop policy if exists "allow anon all" on employees;
 drop policy if exists "allow anon all" on licenses;
 drop policy if exists "allow anon all" on proxies;
 drop policy if exists "allow anon all" on bios;
+drop policy if exists "allow anon all" on ctas;
 
 create policy "allow anon all" on accounts
   for all to anon using (true) with check (true);
@@ -130,6 +141,8 @@ create policy "allow anon all" on licenses
 create policy "allow anon all" on proxies
   for all to anon using (true) with check (true);
 create policy "allow anon all" on bios
+  for all to anon using (true) with check (true);
+create policy "allow anon all" on ctas
   for all to anon using (true) with check (true);
 
 -- Storage bucket for cached profile pictures, reel thumbnails, and story images.
