@@ -19,7 +19,9 @@ export interface Session {
 export interface License {
   id: string;
   license: string;
-  employee: string;
+  employees: string[];
+  allEmployees: boolean;
+  employee?: string;
   createdAt: number;
 }
 
@@ -32,7 +34,9 @@ export interface Proxy {
   username: string;
   password: string;
   rotatingLink: string;
-  employee: string;
+  employees: string[];
+  allEmployees: boolean;
+  employee?: string;
   createdAt: number;
 }
 

@@ -39,8 +39,13 @@ create table if not exists licenses (
   id text primary key,
   license text,
   employee text,
+  employees jsonb default '[]'::jsonb,
+  all_employees boolean default false,
   created_at bigint
 );
+
+alter table licenses add column if not exists employees jsonb default '[]'::jsonb;
+alter table licenses add column if not exists all_employees boolean default false;
 
 -- Proxies assigned to employees.
 create table if not exists proxies (
@@ -57,6 +62,8 @@ create table if not exists proxies (
 );
 
 alter table proxies add column if not exists rotating_link text;
+alter table proxies add column if not exists employees jsonb default '[]'::jsonb;
+alter table proxies add column if not exists all_employees boolean default false;
 
 -- Account bios assigned to employees (or all).
 create table if not exists bios (

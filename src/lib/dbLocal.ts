@@ -1,4 +1,5 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
+import { matchesEmployee } from './assignment';
 import type {
   Bio,
   Cta,
@@ -141,7 +142,7 @@ export async function getLicenses(employee?: string): Promise<License[]> {
   const db = await getDb();
   let licenses = await db.getAll('licenses');
   if (employee !== undefined) {
-    licenses = licenses.filter((l) => l.employee === employee);
+    licenses = licenses.filter((l) => matchesEmployee(l, employee));
   }
   return licenses.sort((a, b) => a.createdAt - b.createdAt);
 }
@@ -160,7 +161,7 @@ export async function getProxies(employee?: string): Promise<Proxy[]> {
   const db = await getDb();
   let proxies = await db.getAll('proxies');
   if (employee !== undefined) {
-    proxies = proxies.filter((p) => p.employee === employee);
+    proxies = proxies.filter((p) => matchesEmployee(p, employee));
   }
   return proxies.sort((a, b) => a.createdAt - b.createdAt);
 }

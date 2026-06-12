@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { groupReelHistories } from './dbLocal';
+import { matchesEmployee } from './assignment';
 import type {
   Bio,
   Cta,
@@ -176,28 +177,46 @@ export async function deleteEmployee(username: string): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
+interface LicenseRow {
+  id: string;
+  license: string | null;
+  employee: string | null;
+  employees: unknown;
+  all_employees: boolean | null;
+  created_at: number | null;
+}
+
+function toLicense(row: LicenseRow): License {
+  return {
+    id: row.id,
+    license: row.license ?? '',
+    employees: Array.isArray(row.employees) ? (row.employees as string[]) : [],
+    allEmployees: row.all_employees ?? false,
+    employee: row.employee ?? undefined,
+    createdAt: row.created_at ?? 0,
+  };
+}
+
 export async function getLicenses(employee?: string): Promise<License[]> {
-  let query = client().from('licenses').select('*').order('created_at', { ascending: true });
-  if (employee !== undefined) {
-    query = query.eq('employee', employee);
-  }
-  const { data, error } = await query;
+  const { data, error } = await client()
+    .from('licenses')
+    .select('*')
+    .order('created_at', { ascending: true });
   if (error) throw new Error(error.message);
-  return (data as { id: string; license: string | null; employee: string | null; created_at: number | null }[]).map(
-    (row) => ({
-      id: row.id,
-      license: row.license ?? '',
-      employee: row.employee ?? '',
-      createdAt: row.created_at ?? 0,
-    }),
-  );
+  let licenses = (data as LicenseRow[]).map(toLicense);
+  if (employee !== undefined) {
+    licenses = licenses.filter((l) => matchesEmployee(l, employee));
+  }
+  return licenses;
 }
 
 export async function addLicense(license: License): Promise<void> {
   const { error } = await client().from('licenses').upsert({
     id: license.id,
     license: license.license,
-    employee: license.employee,
+    employee: license.employee ?? null,
+    employees: license.employees,
+    all_employees: license.allEmployees,
     created_at: license.createdAt,
   });
   if (error) throw new Error(error.message);
@@ -218,6 +237,8 @@ interface ProxyRow {
   password: string | null;
   rotating_link: string | null;
   employee: string | null;
+  employees: unknown;
+  all_employees: boolean | null;
   created_at: number | null;
 }
 
@@ -231,19 +252,24 @@ function toProxy(row: ProxyRow): Proxy {
     username: row.username ?? '',
     password: row.password ?? '',
     rotatingLink: row.rotating_link ?? '',
-    employee: row.employee ?? '',
+    employees: Array.isArray(row.employees) ? (row.employees as string[]) : [],
+    allEmployees: row.all_employees ?? false,
+    employee: row.employee ?? undefined,
     createdAt: row.created_at ?? 0,
   };
 }
 
 export async function getProxies(employee?: string): Promise<Proxy[]> {
-  let query = client().from('proxies').select('*').order('created_at', { ascending: true });
-  if (employee !== undefined) {
-    query = query.eq('employee', employee);
-  }
-  const { data, error } = await query;
+  const { data, error } = await client()
+    .from('proxies')
+    .select('*')
+    .order('created_at', { ascending: true });
   if (error) throw new Error(error.message);
-  return (data as ProxyRow[]).map(toProxy);
+  let proxies = (data as ProxyRow[]).map(toProxy);
+  if (employee !== undefined) {
+    proxies = proxies.filter((p) => matchesEmployee(p, employee));
+  }
+  return proxies;
 }
 
 export async function addProxy(proxy: Proxy): Promise<void> {
@@ -256,7 +282,9 @@ export async function addProxy(proxy: Proxy): Promise<void> {
     username: proxy.username,
     password: proxy.password,
     rotating_link: proxy.rotatingLink,
-    employee: proxy.employee,
+    employee: proxy.employee ?? null,
+    employees: proxy.employees,
+    all_employees: proxy.allEmployees,
     created_at: proxy.createdAt,
   });
   if (error) throw new Error(error.message);

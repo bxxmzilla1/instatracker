@@ -2,6 +2,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 're
 import { AddAccountForm } from './components/AddAccountForm';
 import { AccountCard } from './components/AccountCard';
 import { AccountCredentials } from './components/AccountCredentials';
+import { AssignmentPicker } from './components/AssignmentPicker';
 import { CopyField } from './components/CopyField';
 import { Dashboard } from './components/Dashboard';
 import { Login } from './components/Login';
@@ -35,6 +36,7 @@ import {
   updateAccount,
 } from './lib/db';
 import { parseProxyString } from './lib/proxy';
+import { assignedEmployees } from './lib/assignment';
 import { latestByReel } from './lib/dashboard';
 import { cacheImage, imgKey } from './lib/media';
 import { formatCount, formatDate, proxiedImage } from './lib/format';
@@ -98,12 +100,24 @@ export default function App() {
   const [newEmpPassword, setNewEmpPassword] = useState('');
   const [licenses, setLicenses] = useState<License[]>([]);
   const [newLicense, setNewLicense] = useState('');
-  const [newLicenseEmployee, setNewLicenseEmployee] = useState('');
+  const [newLicenseEmployees, setNewLicenseEmployees] = useState<Set<string>>(() => new Set());
+  const [newLicenseAll, setNewLicenseAll] = useState(false);
   const [proxies, setProxies] = useState<Proxy[]>([]);
   const [newProxy, setNewProxy] = useState('');
-  const [newProxyEmployee, setNewProxyEmployee] = useState('');
+  const [newProxyEmployees, setNewProxyEmployees] = useState<Set<string>>(() => new Set());
+  const [newProxyAll, setNewProxyAll] = useState(false);
   const [newProxyType, setNewProxyType] = useState('http');
   const [newProxyRotating, setNewProxyRotating] = useState('');
+  const [editItem, setEditItem] = useState<{
+    kind: 'proxy' | 'license' | 'bio' | 'cta';
+    id: string;
+    createdAt: number;
+    text: string;
+    rotating: string;
+    type: string;
+    employees: Set<string>;
+    allEmployees: boolean;
+  } | null>(null);
   const [bios, setBios] = useState<Bio[]>([]);
   const [newBioText, setNewBioText] = useState('');
   const [newBioEmployees, setNewBioEmployees] = useState<Set<string>>(() => new Set());
@@ -479,21 +493,31 @@ export default function App() {
     }
   }
 
+  function toggleLicenseEmployee(username: string) {
+    setNewLicenseEmployees((prev) => {
+      const next = new Set(prev);
+      if (next.has(username)) next.delete(username);
+      else next.add(username);
+      return next;
+    });
+  }
+
   async function handleAddLicense(event: FormEvent) {
     event.preventDefault();
     const license = newLicense.trim();
-    const employee = newLicenseEmployee.trim();
-    if (!license || !employee) return;
+    if (!license || (!newLicenseAll && newLicenseEmployees.size === 0)) return;
     try {
       await addLicense({
         id: crypto.randomUUID(),
         license,
-        employee,
+        employees: newLicenseAll ? [] : [...newLicenseEmployees],
+        allEmployees: newLicenseAll,
         createdAt: Date.now(),
       });
       await loadLicenses();
       setNewLicense('');
-      setNewLicenseEmployee('');
+      setNewLicenseEmployees(new Set());
+      setNewLicenseAll(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not add license.');
     }
@@ -504,11 +528,19 @@ export default function App() {
     await loadLicenses();
   }
 
+  function toggleProxyEmployee(username: string) {
+    setNewProxyEmployees((prev) => {
+      const next = new Set(prev);
+      if (next.has(username)) next.delete(username);
+      else next.add(username);
+      return next;
+    });
+  }
+
   async function handleAddProxy(event: FormEvent) {
     event.preventDefault();
     const raw = newProxy.trim();
-    const employee = newProxyEmployee.trim();
-    if (!raw || !employee) return;
+    if (!raw || (!newProxyAll && newProxyEmployees.size === 0)) return;
     const parsed = parseProxyString(raw);
     if (!parsed) {
       setError('Could not parse that proxy. Use host:port:user:pass or user:pass@host:port.');
@@ -524,12 +556,14 @@ export default function App() {
         username: parsed.user,
         password: parsed.pass,
         rotatingLink: newProxyRotating.trim(),
-        employee,
+        employees: newProxyAll ? [] : [...newProxyEmployees],
+        allEmployees: newProxyAll,
         createdAt: Date.now(),
       });
       await loadProxies();
       setNewProxy('');
-      setNewProxyEmployee('');
+      setNewProxyEmployees(new Set());
+      setNewProxyAll(false);
       setNewProxyType('http');
       setNewProxyRotating('');
     } catch (err) {
@@ -625,6 +659,132 @@ export default function App() {
   async function handleDeleteCta(id: string) {
     await deleteCta(id);
     await loadCtas();
+  }
+
+  function openEditProxy(proxy: Proxy) {
+    setEditItem({
+      kind: 'proxy',
+      id: proxy.id,
+      createdAt: proxy.createdAt,
+      text: proxy.raw,
+      rotating: proxy.rotatingLink,
+      type: proxy.type,
+      employees: new Set(assignedEmployees(proxy)),
+      allEmployees: proxy.allEmployees,
+    });
+  }
+
+  function openEditLicense(license: License) {
+    setEditItem({
+      kind: 'license',
+      id: license.id,
+      createdAt: license.createdAt,
+      text: license.license,
+      rotating: '',
+      type: 'http',
+      employees: new Set(assignedEmployees(license)),
+      allEmployees: license.allEmployees,
+    });
+  }
+
+  function openEditBio(bio: Bio) {
+    setEditItem({
+      kind: 'bio',
+      id: bio.id,
+      createdAt: bio.createdAt,
+      text: bio.text,
+      rotating: '',
+      type: 'http',
+      employees: new Set(bio.employees),
+      allEmployees: bio.allEmployees,
+    });
+  }
+
+  function openEditCta(cta: Cta) {
+    setEditItem({
+      kind: 'cta',
+      id: cta.id,
+      createdAt: cta.createdAt,
+      text: cta.text,
+      rotating: '',
+      type: 'http',
+      employees: new Set(cta.employees),
+      allEmployees: cta.allEmployees,
+    });
+  }
+
+  function toggleEditEmployee(username: string) {
+    setEditItem((prev) => {
+      if (!prev) return prev;
+      const next = new Set(prev.employees);
+      if (next.has(username)) next.delete(username);
+      else next.add(username);
+      return { ...prev, employees: next };
+    });
+  }
+
+  async function saveEdit() {
+    if (!editItem) return;
+    const text = editItem.text.trim();
+    if (!text) return;
+    if (!editItem.allEmployees && editItem.employees.size === 0) {
+      setError('Select at least one employee or choose all employees.');
+      return;
+    }
+    const employees = editItem.allEmployees ? [] : [...editItem.employees];
+    try {
+      if (editItem.kind === 'proxy') {
+        const parsed = parseProxyString(text);
+        if (!parsed) {
+          setError('Could not parse that proxy.');
+          return;
+        }
+        await addProxy({
+          id: editItem.id,
+          raw: text,
+          type: editItem.type,
+          host: parsed.host,
+          port: parsed.port,
+          username: parsed.user,
+          password: parsed.pass,
+          rotatingLink: editItem.rotating.trim(),
+          employees,
+          allEmployees: editItem.allEmployees,
+          createdAt: editItem.createdAt,
+        });
+        await loadProxies();
+      } else if (editItem.kind === 'license') {
+        await addLicense({
+          id: editItem.id,
+          license: text,
+          employees,
+          allEmployees: editItem.allEmployees,
+          createdAt: editItem.createdAt,
+        });
+        await loadLicenses();
+      } else if (editItem.kind === 'bio') {
+        await addBio({
+          id: editItem.id,
+          text: editItem.text,
+          employees,
+          allEmployees: editItem.allEmployees,
+          createdAt: editItem.createdAt,
+        });
+        await loadBios();
+      } else {
+        await addCta({
+          id: editItem.id,
+          text: editItem.text,
+          employees,
+          allEmployees: editItem.allEmployees,
+          createdAt: editItem.createdAt,
+        });
+        await loadCtas();
+      }
+      setEditItem(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save changes.');
+    }
   }
 
   async function handleSaveCredentials(values: {
@@ -1002,7 +1162,7 @@ export default function App() {
             {isAdmin && (
               <section className="panel">
                 <h2>Add license</h2>
-                <form className="license-form" onSubmit={handleAddLicense}>
+                <form className="bio-form" onSubmit={handleAddLicense}>
                   <input
                     className="cred-form__input"
                     placeholder="License key"
@@ -1011,19 +1171,17 @@ export default function App() {
                     autoComplete="off"
                     spellCheck={false}
                   />
-                  <select
-                    className="cred-form__input license-form__select"
-                    value={newLicenseEmployee}
-                    onChange={(e) => setNewLicenseEmployee(e.target.value)}
+                  <AssignmentPicker
+                    employees={employees}
+                    selected={newLicenseEmployees}
+                    all={newLicenseAll}
+                    onToggle={toggleLicenseEmployee}
+                    onAllChange={setNewLicenseAll}
+                  />
+                  <button
+                    type="submit"
+                    disabled={!newLicense.trim() || (!newLicenseAll && newLicenseEmployees.size === 0)}
                   >
-                    <option value="">Assign to employee…</option>
-                    {employees.map((employee) => (
-                      <option key={employee.username} value={employee.username}>
-                        {employee.username}
-                      </option>
-                    ))}
-                  </select>
-                  <button type="submit" disabled={!newLicense.trim() || !newLicenseEmployee}>
                     Add license
                   </button>
                 </form>
@@ -1044,17 +1202,36 @@ export default function App() {
                     <div key={license.id} className="license-row">
                       <div className="license-row__info">
                         <code className="license-row__key">{license.license}</code>
-                        {isAdmin && <span className="owner-tag">{license.employee}</span>}
+                        {isAdmin &&
+                          (license.allEmployees ? (
+                            <span className="owner-tag">All employees</span>
+                          ) : (
+                            assignedEmployees(license).map((u) => (
+                              <span key={u} className="owner-tag">
+                                {u}
+                              </span>
+                            ))
+                          ))}
                       </div>
                       {isAdmin && (
-                        <button
-                          type="button"
-                          className="license-row__delete"
-                          onClick={() => handleDeleteLicense(license.id)}
-                          title="Delete license"
-                        >
-                          ✕
-                        </button>
+                        <div className="row-actions">
+                          <button
+                            type="button"
+                            className="row-edit"
+                            onClick={() => openEditLicense(license)}
+                            title="Edit license"
+                          >
+                            ✎
+                          </button>
+                          <button
+                            type="button"
+                            className="license-row__delete"
+                            onClick={() => handleDeleteLicense(license.id)}
+                            title="Delete license"
+                          >
+                            ✕
+                          </button>
+                        </div>
                       )}
                     </div>
                   ))}
@@ -1160,14 +1337,24 @@ export default function App() {
                         <CopyField className="bio-row__copy" label="Copy" value={cta.text} />
                       </div>
                       {isAdmin && (
-                        <button
-                          type="button"
-                          className="license-row__delete"
-                          onClick={() => handleDeleteCta(cta.id)}
-                          title="Delete CTA"
-                        >
-                          ✕
-                        </button>
+                        <div className="row-actions">
+                          <button
+                            type="button"
+                            className="row-edit"
+                            onClick={() => openEditCta(cta)}
+                            title="Edit CTA"
+                          >
+                            ✎
+                          </button>
+                          <button
+                            type="button"
+                            className="license-row__delete"
+                            onClick={() => handleDeleteCta(cta.id)}
+                            title="Delete CTA"
+                          >
+                            ✕
+                          </button>
+                        </div>
                       )}
                     </div>
                   ))}
@@ -1273,14 +1460,24 @@ export default function App() {
                         <CopyField className="bio-row__copy" label="Copy bio" value={bio.text} />
                       </div>
                       {isAdmin && (
-                        <button
-                          type="button"
-                          className="license-row__delete"
-                          onClick={() => handleDeleteBio(bio.id)}
-                          title="Delete bio"
-                        >
-                          ✕
-                        </button>
+                        <div className="row-actions">
+                          <button
+                            type="button"
+                            className="row-edit"
+                            onClick={() => openEditBio(bio)}
+                            title="Edit bio"
+                          >
+                            ✎
+                          </button>
+                          <button
+                            type="button"
+                            className="license-row__delete"
+                            onClick={() => handleDeleteBio(bio.id)}
+                            title="Delete bio"
+                          >
+                            ✕
+                          </button>
+                        </div>
                       )}
                     </div>
                   ))}
@@ -1320,19 +1517,17 @@ export default function App() {
                     <option value="http">HTTP</option>
                     <option value="socks5">SOCKS5</option>
                   </select>
-                  <select
-                    className="cred-form__input license-form__select"
-                    value={newProxyEmployee}
-                    onChange={(e) => setNewProxyEmployee(e.target.value)}
+                  <AssignmentPicker
+                    employees={employees}
+                    selected={newProxyEmployees}
+                    all={newProxyAll}
+                    onToggle={toggleProxyEmployee}
+                    onAllChange={setNewProxyAll}
+                  />
+                  <button
+                    type="submit"
+                    disabled={!newProxy.trim() || (!newProxyAll && newProxyEmployees.size === 0)}
                   >
-                    <option value="">Assign to employee…</option>
-                    {employees.map((employee) => (
-                      <option key={employee.username} value={employee.username}>
-                        {employee.username}
-                      </option>
-                    ))}
-                  </select>
-                  <button type="submit" disabled={!newProxy.trim() || !newProxyEmployee}>
                     Add proxy
                   </button>
                 </form>
@@ -1381,7 +1576,16 @@ export default function App() {
                               {proxy.type.toUpperCase()}
                             </span>
                           )}
-                          {isAdmin && <span className="owner-tag">{proxy.employee}</span>}
+                          {isAdmin &&
+                            (proxy.allEmployees ? (
+                              <span className="owner-tag">All employees</span>
+                            ) : (
+                              assignedEmployees(proxy).map((u) => (
+                                <span key={u} className="owner-tag">
+                                  {u}
+                                </span>
+                              ))
+                            ))}
                         </div>
                         <CopyField className="proxy-row__link" label="Link" value={proxy.raw} />
                         {proxy.rotatingLink && (
@@ -1399,14 +1603,24 @@ export default function App() {
                         </div>
                       </div>
                       {isAdmin && (
-                        <button
-                          type="button"
-                          className="license-row__delete"
-                          onClick={() => handleDeleteProxy(proxy.id)}
-                          title="Delete proxy"
-                        >
-                          ✕
-                        </button>
+                        <div className="row-actions">
+                          <button
+                            type="button"
+                            className="row-edit"
+                            onClick={() => openEditProxy(proxy)}
+                            title="Edit proxy"
+                          >
+                            ✎
+                          </button>
+                          <button
+                            type="button"
+                            className="license-row__delete"
+                            onClick={() => handleDeleteProxy(proxy.id)}
+                            title="Delete proxy"
+                          >
+                            ✕
+                          </button>
+                        </div>
                       )}
                     </div>
                   ))}
@@ -1681,6 +1895,106 @@ export default function App() {
               alt="Story"
               onClick={(e) => e.stopPropagation()}
             />
+          </div>
+        )}
+
+        {editItem && (
+          <div className="modal" onClick={() => setEditItem(null)}>
+            <form
+              className="modal__card modal__card--wide"
+              onClick={(e) => e.stopPropagation()}
+              onSubmit={(e) => {
+                e.preventDefault();
+                saveEdit();
+              }}
+            >
+              <div className="modal__head">
+                <h3>
+                  Edit{' '}
+                  {editItem.kind === 'proxy'
+                    ? 'proxy'
+                    : editItem.kind === 'license'
+                      ? 'license'
+                      : editItem.kind === 'bio'
+                        ? 'bio'
+                        : 'CTA'}
+                </h3>
+                <button
+                  type="button"
+                  className="modal__close"
+                  onClick={() => setEditItem(null)}
+                  aria-label="Close"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="bio-form">
+                {editItem.kind === 'proxy' ? (
+                  <>
+                    <label className="cred-field">
+                      <span className="cred-field__label">Proxy link</span>
+                      <input
+                        className="cred-form__input"
+                        value={editItem.text}
+                        onChange={(e) => setEditItem({ ...editItem, text: e.target.value })}
+                        autoComplete="off"
+                        spellCheck={false}
+                      />
+                    </label>
+                    <label className="cred-field">
+                      <span className="cred-field__label">Rotating link</span>
+                      <input
+                        className="cred-form__input"
+                        value={editItem.rotating}
+                        onChange={(e) => setEditItem({ ...editItem, rotating: e.target.value })}
+                        autoComplete="off"
+                        spellCheck={false}
+                      />
+                    </label>
+                    <label className="cred-field">
+                      <span className="cred-field__label">Type</span>
+                      <select
+                        className="cred-form__input"
+                        value={editItem.type}
+                        onChange={(e) => setEditItem({ ...editItem, type: e.target.value })}
+                      >
+                        <option value="http">HTTP</option>
+                        <option value="socks5">SOCKS5</option>
+                      </select>
+                    </label>
+                  </>
+                ) : editItem.kind === 'license' ? (
+                  <label className="cred-field">
+                    <span className="cred-field__label">License key</span>
+                    <input
+                      className="cred-form__input"
+                      value={editItem.text}
+                      onChange={(e) => setEditItem({ ...editItem, text: e.target.value })}
+                      autoComplete="off"
+                      spellCheck={false}
+                    />
+                  </label>
+                ) : (
+                  <textarea
+                    className="bio-form__textarea"
+                    value={editItem.text}
+                    onChange={(e) => setEditItem({ ...editItem, text: e.target.value })}
+                    rows={4}
+                  />
+                )}
+
+                <AssignmentPicker
+                  employees={employees}
+                  selected={editItem.employees}
+                  all={editItem.allEmployees}
+                  onToggle={toggleEditEmployee}
+                  onAllChange={(all) => setEditItem({ ...editItem, allEmployees: all })}
+                />
+
+                <button type="submit">Save changes</button>
+              </div>
+            </form>
           </div>
         )}
 

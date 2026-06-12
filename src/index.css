@@ -319,6 +319,24 @@ code {
   color: var(--red);
 }
 
+.row-actions {
+  display: flex;
+  gap: 0.25rem;
+  flex-shrink: 0;
+}
+
+.row-edit {
+  background: transparent;
+  color: var(--muted);
+  padding: 0.4rem 0.6rem;
+  border-radius: 8px;
+}
+
+.row-edit:hover {
+  background: var(--surface-3);
+  color: var(--accent);
+}
+
 /* Proxy */
 .proxy-preview {
   display: flex;
