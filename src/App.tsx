@@ -791,6 +791,24 @@ export default function App() {
     await loadContent();
   }
 
+  async function downloadReel(reel: ContentReel) {
+    if (!reel.videoUrl) return;
+    try {
+      const res = await fetch(reel.videoUrl);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `reel-${reel.id}.mp4`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      window.open(reel.videoUrl, '_blank', 'noopener');
+    }
+  }
+
   function openEditProxy(proxy: Proxy) {
     setEditItem({
       kind: 'proxy',
@@ -1813,9 +1831,15 @@ export default function App() {
                         muted
                         playsInline
                       />
-                      {reel.caption && <p className="content-tile__caption">{reel.caption}</p>}
-                      {isAdmin && (
-                        <div className="content-tile__meta">
+                      {reel.caption ? (
+                        <p className="content-tile__caption">{reel.caption}</p>
+                      ) : (
+                        <p className="content-tile__caption content-tile__caption--empty">
+                          No Caption
+                        </p>
+                      )}
+                      <div className="content-tile__meta">
+                        {isAdmin && (
                           <div className="content-tile__assign">
                             {reel.allEmployees ? (
                               <span className="owner-tag">All employees</span>
@@ -1827,16 +1851,28 @@ export default function App() {
                               ))
                             )}
                           </div>
+                        )}
+                        <div className="content-tile__actions">
                           <button
                             type="button"
-                            className="license-row__delete"
-                            onClick={() => handleDeleteContent(reel.id)}
-                            title="Delete reel"
+                            className="content-tile__download"
+                            onClick={() => downloadReel(reel)}
+                            title="Download reel"
                           >
-                            ✕
+                            ↓ Download
                           </button>
+                          {isAdmin && (
+                            <button
+                              type="button"
+                              className="license-row__delete"
+                              onClick={() => handleDeleteContent(reel.id)}
+                              title="Delete reel"
+                            >
+                              ✕
+                            </button>
+                          )}
                         </div>
-                      )}
+                      </div>
                     </div>
                   ))}
                 </div>

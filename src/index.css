@@ -2143,6 +2143,11 @@ button:disabled {
   overflow: hidden;
 }
 
+.content-tile__caption--empty {
+  color: var(--muted);
+  font-style: italic;
+}
+
 .content-tile__meta {
   display: flex;
   align-items: center;
@@ -2150,12 +2155,38 @@ button:disabled {
   gap: 0.5rem;
   padding: 0.4rem 0.7rem 0.7rem;
   flex-wrap: wrap;
+  margin-top: auto;
 }
 
 .content-tile__assign {
   display: flex;
   flex-wrap: wrap;
   gap: 0.3rem;
+}
+
+.content-tile__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-left: auto;
+}
+
+.content-tile__download {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.3rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-3);
+  color: var(--accent);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.content-tile__download:hover {
+  background: var(--accent-soft);
 }
 
 @media (max-width: 640px) {
