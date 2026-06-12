@@ -488,6 +488,37 @@ button:disabled {
   color: #fecaca;
 }
 
+.refresh-progress {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  margin-bottom: 1rem;
+}
+
+.refresh-progress__track {
+  flex: 1;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.refresh-progress__fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 999px;
+  transition: width 0.25s ease;
+}
+
+.refresh-progress__label {
+  color: var(--muted);
+  font-size: 0.85rem;
+  white-space: nowrap;
+  min-width: 12ch;
+  text-align: right;
+}
+
 /* Panels */
 .panel {
   background: var(--surface);

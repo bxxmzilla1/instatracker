@@ -65,6 +65,9 @@ export default function App() {
   const [allReelSnapshots, setAllReelSnapshots] = useState<ReelSnapshot[]>([]);
   const [allFollowerSnapshots, setAllFollowerSnapshots] = useState<FollowerSnapshot[]>([]);
   const [accountsLoading, setAccountsLoading] = useState(false);
+  const [refreshAllProgress, setRefreshAllProgress] = useState<{ done: number; total: number } | null>(
+    null,
+  );
   const [view, setView] = useState<'dashboard' | 'accounts' | 'employee' | 'license'>('dashboard');
   const [showCredentials, setShowCredentials] = useState(false);
   const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
@@ -187,10 +190,8 @@ export default function App() {
     }
   }, [selectedUsername, loadAccountDetails]);
 
-  async function refreshAccount(username: string) {
+  async function refreshOne(username: string) {
     setRefreshing(username);
-    setError(null);
-    setWarning(null);
 
     try {
       const profile = await fetchProfile(username);
@@ -298,10 +299,54 @@ export default function App() {
       }
 
       setWarning(reelsWarning);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Refresh failed');
     } finally {
       setRefreshing(null);
+    }
+  }
+
+  function suspendedMessage(err: unknown, username: string) {
+    const msg = err instanceof Error ? err.message : 'Refresh failed';
+    return /returned an error|not found|invalid|could not load profile|profile lookup failed|request failed|multiple attempts/i.test(
+      msg,
+    )
+      ? `@${username} might be suspended/banned, please check status`
+      : msg;
+  }
+
+  async function refreshAccount(username: string) {
+    setError(null);
+    setWarning(null);
+    try {
+      await refreshOne(username);
+    } catch (err) {
+      setError(suspendedMessage(err, username));
+    }
+  }
+
+  async function handleRefreshAll() {
+    setError(null);
+    setWarning(null);
+    const list = [...accounts];
+    if (list.length === 0) return;
+
+    setRefreshAllProgress({ done: 0, total: list.length });
+    const failed: string[] = [];
+    for (let i = 0; i < list.length; i += 1) {
+      try {
+        await refreshOne(list[i].username);
+      } catch {
+        failed.push(list[i].username);
+      }
+      setRefreshAllProgress({ done: i + 1, total: list.length });
+    }
+    setRefreshAllProgress(null);
+
+    if (failed.length > 0) {
+      setWarning(
+        `Skipped ${failed.length} account(s) that may be suspended/banned: ${failed
+          .map((u) => `@${u}`)
+          .join(', ')}`,
+      );
     }
   }
 
@@ -619,14 +664,10 @@ export default function App() {
               <button
                 type="button"
                 className="btn btn--ghost"
-                disabled={Boolean(refreshing)}
-                onClick={async () => {
-                  for (const account of accounts) {
-                    await refreshAccount(account.username);
-                  }
-                }}
+                disabled={Boolean(refreshing) || Boolean(refreshAllProgress)}
+                onClick={handleRefreshAll}
               >
-                Refresh all
+                {refreshAllProgress ? 'Refreshing…' : 'Refresh all'}
               </button>
             )}
           </div>
@@ -640,6 +681,25 @@ export default function App() {
 
         {error && <div className="banner banner--error">{error}</div>}
         {warning && !error && <div className="banner banner--warn">{warning}</div>}
+
+        {refreshAllProgress && (
+          <div className="refresh-progress">
+            <div className="refresh-progress__track">
+              <div
+                className="refresh-progress__fill"
+                style={{
+                  width: `${Math.round(
+                    (refreshAllProgress.done / refreshAllProgress.total) * 100,
+                  )}%`,
+                }}
+              />
+            </div>
+            <span className="refresh-progress__label">
+              Refreshing {refreshAllProgress.done}/{refreshAllProgress.total} (
+              {Math.round((refreshAllProgress.done / refreshAllProgress.total) * 100)}%)
+            </span>
+          </div>
+        )}
 
         {view === 'dashboard' &&
           (accountsLoading ? (
