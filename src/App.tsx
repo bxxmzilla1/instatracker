@@ -930,6 +930,13 @@ export default function App() {
                 </div>
               </div>
 
+              {failedRefresh.has(selectedAccount.username) && !selectedAccount.banned && (
+                <div className="banner banner--warn">
+                  ⚠️ Unable to refresh, account might be banned or suspended. Please check status of
+                  account.
+                </div>
+              )}
+
               <div className="metric-grid">
                 <div className="metric-card">
                   <span>Followers</span>

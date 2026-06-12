@@ -255,12 +255,8 @@ code {
 }
 
 .unable-tag {
-  background: rgba(234, 179, 8, 0.16);
-  color: #fbbf24;
-  border-radius: 999px;
-  padding: 0.1rem 0.5rem;
-  font-size: 0.68rem;
-  font-weight: 600;
+  font-size: 0.95rem;
+  line-height: 1;
 }
 
 /* Blaze License */

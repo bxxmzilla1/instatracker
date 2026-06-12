@@ -51,7 +51,9 @@ export function AccountCard({
             {account.isVerified && <span className="badge">✓</span>}
             {account.banned && <span className="banned-tag">Banned</span>}
             {!account.banned && unableToRefresh && (
-              <span className="unable-tag">Unable to refresh</span>
+              <span className="unable-tag" title="Unable to refresh" aria-label="Unable to refresh">
+                ⚠️
+              </span>
             )}
           </div>
           {ownerTag && <span className="owner-tag">{ownerTag}</span>}
