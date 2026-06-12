@@ -122,6 +122,21 @@ export function AccountCredentials({ account, onSave }: Props) {
       </label>
 
       <label className="cred-field">
+        <span className="cred-field__label">Phone number</span>
+        <input
+          className="cred-form__input"
+          type="tel"
+          placeholder="Phone number"
+          value={loginPhone}
+          onChange={(e) => {
+            setLoginPhone(e.target.value);
+            setSaved(false);
+          }}
+          autoComplete="off"
+        />
+      </label>
+
+      <label className="cred-field">
         <span className="cred-field__label">Email</span>
         <input
           className="cred-form__input"
@@ -145,21 +160,6 @@ export function AccountCredentials({ account, onSave }: Props) {
           value={loginPassword}
           onChange={(e) => {
             setLoginPassword(e.target.value);
-            setSaved(false);
-          }}
-          autoComplete="off"
-        />
-      </label>
-
-      <label className="cred-field">
-        <span className="cred-field__label">Phone number</span>
-        <input
-          className="cred-form__input"
-          type="tel"
-          placeholder="Phone number"
-          value={loginPhone}
-          onChange={(e) => {
-            setLoginPhone(e.target.value);
             setSaved(false);
           }}
           autoComplete="off"
