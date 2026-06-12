@@ -2,6 +2,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 're
 import { AddAccountForm } from './components/AddAccountForm';
 import { AccountCard } from './components/AccountCard';
 import { AccountCredentials } from './components/AccountCredentials';
+import { CopyField } from './components/CopyField';
 import { Dashboard } from './components/Dashboard';
 import { Login } from './components/Login';
 import { ReelCard } from './components/ReelCard';
@@ -93,6 +94,7 @@ export default function App() {
   const [proxies, setProxies] = useState<Proxy[]>([]);
   const [newProxy, setNewProxy] = useState('');
   const [newProxyEmployee, setNewProxyEmployee] = useState('');
+  const [newProxyType, setNewProxyType] = useState('http');
 
   const isAdmin = session?.role === 'admin';
 
@@ -485,7 +487,7 @@ export default function App() {
       await addProxy({
         id: crypto.randomUUID(),
         raw,
-        type: parsed.type,
+        type: newProxyType,
         host: parsed.host,
         port: parsed.port,
         username: parsed.user,
@@ -496,6 +498,7 @@ export default function App() {
       await loadProxies();
       setNewProxy('');
       setNewProxyEmployee('');
+      setNewProxyType('http');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not add proxy.');
     }
@@ -926,6 +929,14 @@ export default function App() {
                     spellCheck={false}
                   />
                   <select
+                    className="cred-form__input license-form__select proxy-type-select"
+                    value={newProxyType}
+                    onChange={(e) => setNewProxyType(e.target.value)}
+                  >
+                    <option value="http">HTTP</option>
+                    <option value="socks5">SOCKS5</option>
+                  </select>
+                  <select
                     className="cred-form__input license-form__select"
                     value={newProxyEmployee}
                     onChange={(e) => setNewProxyEmployee(e.target.value)}
@@ -970,12 +981,20 @@ export default function App() {
                 <div className="proxy-list">
                   {proxies.map((proxy) => (
                     <div key={proxy.id} className="proxy-row">
-                      <div className="proxy-row__fields">
-                        <span><span className="proxy-row__label">IP</span> {proxy.host || '—'}</span>
-                        <span><span className="proxy-row__label">Port</span> {proxy.port || '—'}</span>
-                        <span><span className="proxy-row__label">Username</span> {proxy.username || '—'}</span>
-                        <span><span className="proxy-row__label">Password</span> {proxy.password || '—'}</span>
-                        {isAdmin && <span className="owner-tag">{proxy.employee}</span>}
+                      <div className="proxy-row__body">
+                        <div className="proxy-row__top">
+                          <span className={`proxy-type-tag proxy-type-tag--${proxy.type}`}>
+                            {proxy.type.toUpperCase()}
+                          </span>
+                          {isAdmin && <span className="owner-tag">{proxy.employee}</span>}
+                        </div>
+                        <CopyField className="proxy-row__link" label="Link" value={proxy.raw} />
+                        <div className="proxy-row__fields">
+                          <CopyField label="IP" value={proxy.host} />
+                          <CopyField label="Port" value={proxy.port} />
+                          <CopyField label="Username" value={proxy.username} />
+                          <CopyField label="Password" value={proxy.password} />
+                        </div>
                       </div>
                       {isAdmin && (
                         <button

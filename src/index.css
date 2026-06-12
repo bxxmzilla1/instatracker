@@ -344,7 +344,7 @@ code {
 
 .proxy-row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 1rem;
   background: var(--surface-2);
@@ -353,23 +353,98 @@ code {
   padding: 0.85rem 1rem;
 }
 
+.proxy-row__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.proxy-row__top {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 .proxy-row__fields {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem 1.25rem;
-  min-width: 0;
-  color: var(--text);
-  font-size: 0.92rem;
-  word-break: break-all;
+  gap: 0.5rem;
 }
 
-.proxy-row__label {
+.proxy-type-tag {
   text-transform: uppercase;
   letter-spacing: 0.06em;
   font-size: 0.66rem;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 0.12rem 0.55rem;
+  background: var(--surface-3);
+  color: var(--muted);
+}
+
+.proxy-type-tag--socks5 {
+  background: rgba(99, 102, 241, 0.16);
+  color: #a5b4fc;
+}
+
+.proxy-type-tag--http {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.proxy-type-select {
+  max-width: 130px;
+}
+
+/* Copyable field */
+.copy-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.35rem 0.6rem;
+  color: var(--text);
+  font-size: 0.85rem;
+  cursor: pointer;
+  max-width: 100%;
+}
+
+.copy-field:hover {
+  background: rgba(212, 175, 55, 0.1);
+  border-color: var(--border-strong);
+}
+
+.copy-field__label {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 0.62rem;
   color: var(--faint);
-  margin-right: 0.3rem;
+}
+
+.copy-field__value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.copy-field__icon {
+  color: var(--accent);
+  font-size: 0.8rem;
+}
+
+.proxy-row__link {
+  width: 100%;
+  justify-content: flex-start;
+}
+
+.proxy-row__link .copy-field__value {
+  word-break: break-all;
+  white-space: normal;
 }
 
 .owner-tag--detail {
