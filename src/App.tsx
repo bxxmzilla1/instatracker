@@ -1279,35 +1279,13 @@ export default function App() {
                     rows={4}
                   />
 
-                  <div className="bio-form__assign">
-                    <span className="cred-field__label">Assign to</span>
-                    <label className="bio-check">
-                      <input
-                        type="checkbox"
-                        checked={newCtaAll}
-                        onChange={(e) => setNewCtaAll(e.target.checked)}
-                      />
-                      All employees
-                    </label>
-                    {!newCtaAll && (
-                      <div className="bio-employees">
-                        {employees.length === 0 ? (
-                          <span className="cred-note">No employees yet.</span>
-                        ) : (
-                          employees.map((employee) => (
-                            <label key={employee.username} className="bio-check">
-                              <input
-                                type="checkbox"
-                                checked={newCtaEmployees.has(employee.username)}
-                                onChange={() => toggleCtaEmployee(employee.username)}
-                              />
-                              {employee.username}
-                            </label>
-                          ))
-                        )}
-                      </div>
-                    )}
-                  </div>
+                  <AssignmentPicker
+                    employees={employees}
+                    selected={newCtaEmployees}
+                    all={newCtaAll}
+                    onToggle={toggleCtaEmployee}
+                    onAllChange={setNewCtaAll}
+                  />
 
                   <button
                     type="submit"
@@ -1402,35 +1380,13 @@ export default function App() {
                     rows={4}
                   />
 
-                  <div className="bio-form__assign">
-                    <span className="cred-field__label">Assign to</span>
-                    <label className="bio-check">
-                      <input
-                        type="checkbox"
-                        checked={newBioAll}
-                        onChange={(e) => setNewBioAll(e.target.checked)}
-                      />
-                      All employees
-                    </label>
-                    {!newBioAll && (
-                      <div className="bio-employees">
-                        {employees.length === 0 ? (
-                          <span className="cred-note">No employees yet.</span>
-                        ) : (
-                          employees.map((employee) => (
-                            <label key={employee.username} className="bio-check">
-                              <input
-                                type="checkbox"
-                                checked={newBioEmployees.has(employee.username)}
-                                onChange={() => toggleBioEmployee(employee.username)}
-                              />
-                              {employee.username}
-                            </label>
-                          ))
-                        )}
-                      </div>
-                    )}
-                  </div>
+                  <AssignmentPicker
+                    employees={employees}
+                    selected={newBioEmployees}
+                    all={newBioAll}
+                    onToggle={toggleBioEmployee}
+                    onAllChange={setNewBioAll}
+                  />
 
                   <button
                     type="submit"
