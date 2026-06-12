@@ -51,9 +51,12 @@ create table if not exists proxies (
   port text,
   username text,
   password text,
+  rotating_link text,
   employee text,
   created_at bigint
 );
+
+alter table proxies add column if not exists rotating_link text;
 
 -- Account bios assigned to employees (or all).
 create table if not exists bios (

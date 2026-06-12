@@ -99,6 +99,7 @@ export default function App() {
   const [newProxy, setNewProxy] = useState('');
   const [newProxyEmployee, setNewProxyEmployee] = useState('');
   const [newProxyType, setNewProxyType] = useState('http');
+  const [newProxyRotating, setNewProxyRotating] = useState('');
   const [bios, setBios] = useState<Bio[]>([]);
   const [newBioText, setNewBioText] = useState('');
   const [newBioEmployees, setNewBioEmployees] = useState<Set<string>>(() => new Set());
@@ -507,6 +508,7 @@ export default function App() {
         port: parsed.port,
         username: parsed.user,
         password: parsed.pass,
+        rotatingLink: newProxyRotating.trim(),
         employee,
         createdAt: Date.now(),
       });
@@ -514,6 +516,7 @@ export default function App() {
       setNewProxy('');
       setNewProxyEmployee('');
       setNewProxyType('http');
+      setNewProxyRotating('');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not add proxy.');
     }
@@ -1119,6 +1122,14 @@ export default function App() {
                     autoComplete="off"
                     spellCheck={false}
                   />
+                  <input
+                    className="cred-form__input"
+                    placeholder="Rotating link (optional)"
+                    value={newProxyRotating}
+                    onChange={(e) => setNewProxyRotating(e.target.value)}
+                    autoComplete="off"
+                    spellCheck={false}
+                  />
                   <select
                     className="cred-form__input license-form__select proxy-type-select"
                     value={newProxyType}
@@ -1191,6 +1202,13 @@ export default function App() {
                           {isAdmin && <span className="owner-tag">{proxy.employee}</span>}
                         </div>
                         <CopyField className="proxy-row__link" label="Link" value={proxy.raw} />
+                        {proxy.rotatingLink && (
+                          <CopyField
+                            className="proxy-row__link"
+                            label="Rotating link"
+                            value={proxy.rotatingLink}
+                          />
+                        )}
                         <div className="proxy-row__fields">
                           <CopyField label="IP" value={proxy.host} />
                           <CopyField label="Port" value={proxy.port} />

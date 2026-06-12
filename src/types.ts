@@ -31,6 +31,7 @@ export interface Proxy {
   port: string;
   username: string;
   password: string;
+  rotatingLink: string;
   employee: string;
   createdAt: number;
 }

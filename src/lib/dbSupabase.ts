@@ -215,6 +215,7 @@ interface ProxyRow {
   port: string | null;
   username: string | null;
   password: string | null;
+  rotating_link: string | null;
   employee: string | null;
   created_at: number | null;
 }
@@ -228,6 +229,7 @@ function toProxy(row: ProxyRow): Proxy {
     port: row.port ?? '',
     username: row.username ?? '',
     password: row.password ?? '',
+    rotatingLink: row.rotating_link ?? '',
     employee: row.employee ?? '',
     createdAt: row.created_at ?? 0,
   };
@@ -252,6 +254,7 @@ export async function addProxy(proxy: Proxy): Promise<void> {
     port: proxy.port,
     username: proxy.username,
     password: proxy.password,
+    rotating_link: proxy.rotatingLink,
     employee: proxy.employee,
     created_at: proxy.createdAt,
   });
