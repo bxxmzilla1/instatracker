@@ -947,6 +947,11 @@ export default function App() {
     setSession(null);
     setEmployees([]);
     setSelectedEmployee(null);
+    setError(null);
+    setWarning(null);
+    setRefreshAllProgress(null);
+    setRefreshing(null);
+    setFailedRefresh(new Set());
   }
 
   const topbarTitle =
