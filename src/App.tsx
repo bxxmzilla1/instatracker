@@ -10,20 +10,24 @@ import {
   addAccount,
   addEmployee,
   addLicense,
+  addProxy,
   deleteEmployee,
   deleteLicense,
+  deleteProxy,
   getAccounts,
   getAllFollowerSnapshots,
   getAllReelSnapshots,
   getEmployees,
   getFollowerHistory,
   getLicenses,
+  getProxies,
   getReelHistories,
   removeAccount,
   saveFollowerSnapshot,
   saveReelSnapshots,
   updateAccount,
 } from './lib/db';
+import { parseProxyString } from './lib/proxy';
 import { latestByReel } from './lib/dashboard';
 import { cacheImage, imgKey } from './lib/media';
 import { formatCount, formatDate, proxiedImage } from './lib/format';
@@ -32,6 +36,7 @@ import type {
   FollowerSnapshot,
   License,
   ParsedReel,
+  Proxy,
   ReelHistory,
   ReelSnapshot,
   Session,
@@ -70,7 +75,9 @@ export default function App() {
   );
   const [failedRefresh, setFailedRefresh] = useState<Set<string>>(() => new Set());
   const [accountSearch, setAccountSearch] = useState('');
-  const [view, setView] = useState<'dashboard' | 'accounts' | 'employee' | 'license'>('dashboard');
+  const [view, setView] = useState<
+    'dashboard' | 'accounts' | 'employee' | 'license' | 'proxy'
+  >('dashboard');
   const [showCredentials, setShowCredentials] = useState(false);
   const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
   const [session, setSession] = useState<Session | null>(() => loadSession());
@@ -83,6 +90,9 @@ export default function App() {
   const [licenses, setLicenses] = useState<License[]>([]);
   const [newLicense, setNewLicense] = useState('');
   const [newLicenseEmployee, setNewLicenseEmployee] = useState('');
+  const [proxies, setProxies] = useState<Proxy[]>([]);
+  const [newProxy, setNewProxy] = useState('');
+  const [newProxyEmployee, setNewProxyEmployee] = useState('');
 
   const isAdmin = session?.role === 'admin';
 
@@ -122,6 +132,12 @@ export default function App() {
     setLicenses(await getLicenses(filter));
   }, [session]);
 
+  const loadProxies = useCallback(async () => {
+    if (!session) return;
+    const filter = session.role === 'employee' ? session.username : undefined;
+    setProxies(await getProxies(filter));
+  }, [session]);
+
   const loadDashboardData = useCallback(async () => {
     const [reels, followers] = await Promise.all([
       getAllReelSnapshots(),
@@ -152,6 +168,7 @@ export default function App() {
         setApiReady(health.hasKey);
         await loadDashboardData();
         await loadLicenses();
+        await loadProxies();
         if (session?.role === 'admin') {
           setEmployees(await getEmployees());
         }
@@ -162,7 +179,7 @@ export default function App() {
       }
     }
     init();
-  }, [session, loadDashboardData, loadLicenses]);
+  }, [session, loadDashboardData, loadLicenses, loadProxies]);
 
   useEffect(() => {
     if (!session) return;
@@ -454,6 +471,41 @@ export default function App() {
     await loadLicenses();
   }
 
+  async function handleAddProxy(event: FormEvent) {
+    event.preventDefault();
+    const raw = newProxy.trim();
+    const employee = newProxyEmployee.trim();
+    if (!raw || !employee) return;
+    const parsed = parseProxyString(raw);
+    if (!parsed) {
+      setError('Could not parse that proxy. Use host:port:user:pass or user:pass@host:port.');
+      return;
+    }
+    try {
+      await addProxy({
+        id: crypto.randomUUID(),
+        raw,
+        type: parsed.type,
+        host: parsed.host,
+        port: parsed.port,
+        username: parsed.user,
+        password: parsed.pass,
+        employee,
+        createdAt: Date.now(),
+      });
+      await loadProxies();
+      setNewProxy('');
+      setNewProxyEmployee('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not add proxy.');
+    }
+  }
+
+  async function handleDeleteProxy(id: string) {
+    await deleteProxy(id);
+    await loadProxies();
+  }
+
   async function handleSaveCredentials(values: {
     loginUsername: string;
     loginEmail: string;
@@ -547,7 +599,9 @@ export default function App() {
         ? `Employee · ${selectedEmployee ?? ''}`
         : view === 'license'
           ? 'Blaze License'
-          : 'Accounts';
+          : view === 'proxy'
+            ? 'Proxy'
+            : 'Accounts';
 
   const showAddForm = view === 'accounts';
 
@@ -627,6 +681,21 @@ export default function App() {
               <path d="M13 2 4.5 12.5h6L9 22l9.5-12h-6z" />
             </svg>
             Blaze License
+          </button>
+
+          <button
+            type="button"
+            className={view === 'proxy' ? 'nav-item nav-item--active' : 'nav-item'}
+            onClick={() => {
+              setSelectedEmployee(null);
+              setView('proxy');
+            }}
+          >
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="9" />
+              <path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" />
+            </svg>
+            Proxy
           </button>
 
           {isAdmin && (
@@ -830,6 +899,90 @@ export default function App() {
                           className="license-row__delete"
                           onClick={() => handleDeleteLicense(license.id)}
                           title="Delete license"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          </>
+        )}
+
+        {view === 'proxy' && (
+          <>
+            {isAdmin && (
+              <section className="panel">
+                <h2>Add proxy</h2>
+                <form className="license-form" onSubmit={handleAddProxy}>
+                  <input
+                    className="cred-form__input"
+                    placeholder="host:port:user:pass or user:pass@host:port"
+                    value={newProxy}
+                    onChange={(e) => setNewProxy(e.target.value)}
+                    autoComplete="off"
+                    spellCheck={false}
+                  />
+                  <select
+                    className="cred-form__input license-form__select"
+                    value={newProxyEmployee}
+                    onChange={(e) => setNewProxyEmployee(e.target.value)}
+                  >
+                    <option value="">Assign to employee…</option>
+                    {employees.map((employee) => (
+                      <option key={employee.username} value={employee.username}>
+                        {employee.username}
+                      </option>
+                    ))}
+                  </select>
+                  <button type="submit" disabled={!newProxy.trim() || !newProxyEmployee}>
+                    Add proxy
+                  </button>
+                </form>
+                {newProxy.trim() &&
+                  (() => {
+                    const parsed = parseProxyString(newProxy);
+                    return parsed ? (
+                      <div className="proxy-preview">
+                        <span><b>IP:</b> {parsed.host || '—'}</span>
+                        <span><b>Port:</b> {parsed.port || '—'}</span>
+                        <span><b>Username:</b> {parsed.user || '—'}</span>
+                        <span><b>Password:</b> {parsed.pass || '—'}</span>
+                      </div>
+                    ) : (
+                      <p className="cred-note">Could not parse this proxy format.</p>
+                    );
+                  })()}
+              </section>
+            )}
+
+            <section className="panel">
+              <h2>{isAdmin ? `Proxies (${proxies.length})` : 'Your proxies'}</h2>
+              {proxies.length === 0 ? (
+                <p className="empty-note">
+                  {isAdmin
+                    ? 'No proxies yet. Add one above and assign it to an employee.'
+                    : 'No proxy assigned to you yet.'}
+                </p>
+              ) : (
+                <div className="proxy-list">
+                  {proxies.map((proxy) => (
+                    <div key={proxy.id} className="proxy-row">
+                      <div className="proxy-row__fields">
+                        <span><span className="proxy-row__label">IP</span> {proxy.host || '—'}</span>
+                        <span><span className="proxy-row__label">Port</span> {proxy.port || '—'}</span>
+                        <span><span className="proxy-row__label">Username</span> {proxy.username || '—'}</span>
+                        <span><span className="proxy-row__label">Password</span> {proxy.password || '—'}</span>
+                        {isAdmin && <span className="owner-tag">{proxy.employee}</span>}
+                      </div>
+                      {isAdmin && (
+                        <button
+                          type="button"
+                          className="license-row__delete"
+                          onClick={() => handleDeleteProxy(proxy.id)}
+                          title="Delete proxy"
                         >
                           ✕
                         </button>

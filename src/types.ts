@@ -23,6 +23,18 @@ export interface License {
   createdAt: number;
 }
 
+export interface Proxy {
+  id: string;
+  raw: string;
+  type: string;
+  host: string;
+  port: string;
+  username: string;
+  password: string;
+  employee: string;
+  createdAt: number;
+}
+
 export interface TrackedAccount {
   username: string;
   addedAt: number;

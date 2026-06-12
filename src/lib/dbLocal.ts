@@ -3,6 +3,7 @@ import type {
   Employee,
   FollowerSnapshot,
   License,
+  Proxy,
   ReelHistory,
   ReelSnapshot,
   TrackedAccount,
@@ -21,6 +22,10 @@ interface InstatrackerDB extends DBSchema {
     key: string;
     value: License;
   };
+  proxies: {
+    key: string;
+    value: Proxy;
+  };
   followerHistory: {
     key: number;
     value: FollowerSnapshot;
@@ -37,7 +42,7 @@ let dbPromise: Promise<IDBPDatabase<InstatrackerDB>> | null = null;
 
 function getDb() {
   if (!dbPromise) {
-    dbPromise = openDB<InstatrackerDB>('instatracker-v1', 4, {
+    dbPromise = openDB<InstatrackerDB>('instatracker-v1', 5, {
       upgrade(db, oldVersion) {
         if (!db.objectStoreNames.contains('accounts')) {
           db.createObjectStore('accounts', { keyPath: 'username' });
@@ -49,6 +54,10 @@ function getDb() {
 
         if (!db.objectStoreNames.contains('licenses')) {
           db.createObjectStore('licenses', { keyPath: 'id' });
+        }
+
+        if (!db.objectStoreNames.contains('proxies')) {
+          db.createObjectStore('proxies', { keyPath: 'id' });
         }
 
         if (oldVersion < 2) {
@@ -127,6 +136,25 @@ export async function addLicense(license: License): Promise<void> {
 export async function deleteLicense(id: string): Promise<void> {
   const db = await getDb();
   await db.delete('licenses', id);
+}
+
+export async function getProxies(employee?: string): Promise<Proxy[]> {
+  const db = await getDb();
+  let proxies = await db.getAll('proxies');
+  if (employee !== undefined) {
+    proxies = proxies.filter((p) => p.employee === employee);
+  }
+  return proxies.sort((a, b) => a.createdAt - b.createdAt);
+}
+
+export async function addProxy(proxy: Proxy): Promise<void> {
+  const db = await getDb();
+  await db.put('proxies', proxy);
+}
+
+export async function deleteProxy(id: string): Promise<void> {
+  const db = await getDb();
+  await db.delete('proxies', id);
 }
 
 export async function addAccount(account: TrackedAccount): Promise<void> {

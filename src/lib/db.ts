@@ -21,4 +21,7 @@ export const {
   getLicenses,
   addLicense,
   deleteLicense,
+  getProxies,
+  addProxy,
+  deleteProxy,
 } = impl;

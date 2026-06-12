@@ -4,6 +4,7 @@ import type {
   Employee,
   FollowerSnapshot,
   License,
+  Proxy,
   ReelHistory,
   ReelSnapshot,
   TrackedAccount,
@@ -202,6 +203,62 @@ export async function addLicense(license: License): Promise<void> {
 
 export async function deleteLicense(id: string): Promise<void> {
   const { error } = await client().from('licenses').delete().eq('id', id);
+  if (error) throw new Error(error.message);
+}
+
+interface ProxyRow {
+  id: string;
+  raw: string | null;
+  type: string | null;
+  host: string | null;
+  port: string | null;
+  username: string | null;
+  password: string | null;
+  employee: string | null;
+  created_at: number | null;
+}
+
+function toProxy(row: ProxyRow): Proxy {
+  return {
+    id: row.id,
+    raw: row.raw ?? '',
+    type: row.type ?? 'http',
+    host: row.host ?? '',
+    port: row.port ?? '',
+    username: row.username ?? '',
+    password: row.password ?? '',
+    employee: row.employee ?? '',
+    createdAt: row.created_at ?? 0,
+  };
+}
+
+export async function getProxies(employee?: string): Promise<Proxy[]> {
+  let query = client().from('proxies').select('*').order('created_at', { ascending: true });
+  if (employee !== undefined) {
+    query = query.eq('employee', employee);
+  }
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+  return (data as ProxyRow[]).map(toProxy);
+}
+
+export async function addProxy(proxy: Proxy): Promise<void> {
+  const { error } = await client().from('proxies').upsert({
+    id: proxy.id,
+    raw: proxy.raw,
+    type: proxy.type,
+    host: proxy.host,
+    port: proxy.port,
+    username: proxy.username,
+    password: proxy.password,
+    employee: proxy.employee,
+    created_at: proxy.createdAt,
+  });
+  if (error) throw new Error(error.message);
+}
+
+export async function deleteProxy(id: string): Promise<void> {
+  const { error } = await client().from('proxies').delete().eq('id', id);
   if (error) throw new Error(error.message);
 }
 
