@@ -3,6 +3,7 @@ import { groupReelHistories } from './dbLocal';
 import { matchesEmployee } from './assignment';
 import type {
   Bio,
+  ContentReel,
   Cta,
   Employee,
   FollowerSnapshot,
@@ -398,6 +399,72 @@ export async function addStory(story: StoryNote): Promise<void> {
 
 export async function deleteStory(id: string): Promise<void> {
   const { error } = await client().from('stories').delete().eq('id', id);
+  if (error) throw new Error(error.message);
+}
+
+interface ContentRow {
+  id: string;
+  caption: string | null;
+  video_url: string | null;
+  employees: unknown;
+  all_employees: boolean | null;
+  created_at: number | null;
+}
+
+function toContent(row: ContentRow): ContentReel {
+  return {
+    id: row.id,
+    caption: row.caption ?? '',
+    videoUrl: row.video_url ?? '',
+    employees: Array.isArray(row.employees) ? (row.employees as string[]) : [],
+    allEmployees: row.all_employees ?? false,
+    createdAt: row.created_at ?? 0,
+  };
+}
+
+export async function getContent(employee?: string): Promise<ContentReel[]> {
+  const { data, error } = await client()
+    .from('content')
+    .select('*')
+    .order('created_at', { ascending: false });
+  if (error) throw new Error(error.message);
+  let rows = (data as ContentRow[]).map(toContent);
+  if (employee !== undefined) {
+    rows = rows.filter((r) => r.allEmployees || r.employees.includes(employee));
+  }
+  return rows;
+}
+
+export async function addContent(reel: ContentReel, file?: Blob): Promise<void> {
+  const db = client();
+  let videoUrl = reel.videoUrl;
+
+  if (file) {
+    const ext = file.type === 'video/webm' ? 'webm' : 'mp4';
+    const path = `content/${reel.id}.${ext}`;
+    const { error: uploadError } = await db.storage.from('media').upload(path, file, {
+      upsert: true,
+      contentType: file.type || 'video/mp4',
+      cacheControl: '604800',
+    });
+    if (uploadError) throw new Error(uploadError.message);
+    const { data } = db.storage.from('media').getPublicUrl(path);
+    videoUrl = data?.publicUrl ?? videoUrl;
+  }
+
+  const { error } = await db.from('content').upsert({
+    id: reel.id,
+    caption: reel.caption,
+    video_url: videoUrl,
+    employees: reel.employees,
+    all_employees: reel.allEmployees,
+    created_at: reel.createdAt,
+  });
+  if (error) throw new Error(error.message);
+}
+
+export async function deleteContent(id: string): Promise<void> {
+  const { error } = await client().from('content').delete().eq('id', id);
   if (error) throw new Error(error.message);
 }
 

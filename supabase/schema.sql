@@ -92,6 +92,16 @@ create table if not exists stories (
   created_at bigint
 );
 
+-- Uploaded content reels assigned to employees (or all).
+create table if not exists content (
+  id text primary key,
+  caption text,
+  video_url text,
+  employees jsonb default '[]'::jsonb,
+  all_employees boolean default false,
+  created_at bigint
+);
+
 create table if not exists follower_snapshots (
   id bigint generated always as identity primary key,
   username text not null,
@@ -135,6 +145,7 @@ alter table proxies enable row level security;
 alter table bios enable row level security;
 alter table ctas enable row level security;
 alter table stories enable row level security;
+alter table content enable row level security;
 
 drop policy if exists "allow anon all" on accounts;
 drop policy if exists "allow anon all" on follower_snapshots;
@@ -145,6 +156,7 @@ drop policy if exists "allow anon all" on proxies;
 drop policy if exists "allow anon all" on bios;
 drop policy if exists "allow anon all" on ctas;
 drop policy if exists "allow anon all" on stories;
+drop policy if exists "allow anon all" on content;
 
 create policy "allow anon all" on accounts
   for all to anon using (true) with check (true);
@@ -163,6 +175,8 @@ create policy "allow anon all" on bios
 create policy "allow anon all" on ctas
   for all to anon using (true) with check (true);
 create policy "allow anon all" on stories
+  for all to anon using (true) with check (true);
+create policy "allow anon all" on content
   for all to anon using (true) with check (true);
 
 -- Storage bucket for cached profile pictures, reel thumbnails, and story images.

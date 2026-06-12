@@ -2,6 +2,7 @@ import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
 import { matchesEmployee } from './assignment';
 import type {
   Bio,
+  ContentReel,
   Cta,
   Employee,
   FollowerSnapshot,
@@ -12,6 +13,8 @@ import type {
   StoryNote,
   TrackedAccount,
 } from '../types';
+
+type ContentRecord = Omit<ContentReel, 'videoUrl'> & { videoUrl?: string; blob?: Blob };
 
 interface InstatrackerDB extends DBSchema {
   accounts: {
@@ -42,6 +45,10 @@ interface InstatrackerDB extends DBSchema {
     key: string;
     value: StoryNote;
   };
+  content: {
+    key: string;
+    value: ContentRecord;
+  };
   followerHistory: {
     key: number;
     value: FollowerSnapshot;
@@ -58,7 +65,7 @@ let dbPromise: Promise<IDBPDatabase<InstatrackerDB>> | null = null;
 
 function getDb() {
   if (!dbPromise) {
-    dbPromise = openDB<InstatrackerDB>('instatracker-v1', 8, {
+    dbPromise = openDB<InstatrackerDB>('instatracker-v1', 9, {
       upgrade(db, oldVersion) {
         if (!db.objectStoreNames.contains('accounts')) {
           db.createObjectStore('accounts', { keyPath: 'username' });
@@ -86,6 +93,10 @@ function getDb() {
 
         if (!db.objectStoreNames.contains('stories')) {
           db.createObjectStore('stories', { keyPath: 'id' });
+        }
+
+        if (!db.objectStoreNames.contains('content')) {
+          db.createObjectStore('content', { keyPath: 'id' });
         }
 
         if (oldVersion < 2) {
@@ -235,6 +246,43 @@ export async function addStory(story: StoryNote): Promise<void> {
 export async function deleteStory(id: string): Promise<void> {
   const db = await getDb();
   await db.delete('stories', id);
+}
+
+export async function getContent(employee?: string): Promise<ContentReel[]> {
+  const db = await getDb();
+  let rows = await db.getAll('content');
+  if (employee !== undefined) {
+    rows = rows.filter((r) => r.allEmployees || r.employees.includes(employee));
+  }
+  return rows
+    .sort((a, b) => b.createdAt - a.createdAt)
+    .map((r) => ({
+      id: r.id,
+      caption: r.caption,
+      videoUrl: r.blob ? URL.createObjectURL(r.blob) : (r.videoUrl ?? ''),
+      employees: r.employees,
+      allEmployees: r.allEmployees,
+      createdAt: r.createdAt,
+    }));
+}
+
+export async function addContent(reel: ContentReel, file?: Blob): Promise<void> {
+  const db = await getDb();
+  const record: ContentRecord = {
+    id: reel.id,
+    caption: reel.caption,
+    employees: reel.employees,
+    allEmployees: reel.allEmployees,
+    createdAt: reel.createdAt,
+  };
+  if (file) record.blob = file;
+  else record.videoUrl = reel.videoUrl;
+  await db.put('content', record);
+}
+
+export async function deleteContent(id: string): Promise<void> {
+  const db = await getDb();
+  await db.delete('content', id);
 }
 
 export async function deleteCta(id: string): Promise<void> {

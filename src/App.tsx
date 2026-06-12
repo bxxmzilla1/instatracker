@@ -34,6 +34,9 @@ import {
   getStories,
   addStory,
   deleteStory,
+  getContent,
+  addContent,
+  deleteContent,
   removeAccount,
   saveFollowerSnapshot,
   saveReelSnapshots,
@@ -46,6 +49,7 @@ import { cacheImage, imgKey } from './lib/media';
 import { formatCount, formatDate, proxiedImage } from './lib/format';
 import type {
   Bio,
+  ContentReel,
   Cta,
   Employee,
   FollowerSnapshot,
@@ -92,7 +96,7 @@ export default function App() {
   const [failedRefresh, setFailedRefresh] = useState<Set<string>>(() => new Set());
   const [accountSearch, setAccountSearch] = useState('');
   const [view, setView] = useState<
-    'dashboard' | 'accounts' | 'employee' | 'license' | 'proxy' | 'bio' | 'cta' | 'story'
+    'dashboard' | 'accounts' | 'employee' | 'license' | 'proxy' | 'bio' | 'cta' | 'story' | 'content'
   >('dashboard');
   const [showCredentials, setShowCredentials] = useState(false);
   const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
@@ -135,6 +139,13 @@ export default function App() {
   const [newStoryText, setNewStoryText] = useState('');
   const [newStoryEmployees, setNewStoryEmployees] = useState<Set<string>>(() => new Set());
   const [newStoryAll, setNewStoryAll] = useState(false);
+  const [content, setContent] = useState<ContentReel[]>([]);
+  const [newContentFile, setNewContentFile] = useState<File | null>(null);
+  const [newContentCaption, setNewContentCaption] = useState('');
+  const [newContentEmployees, setNewContentEmployees] = useState<Set<string>>(() => new Set());
+  const [newContentAll, setNewContentAll] = useState(false);
+  const [uploadingContent, setUploadingContent] = useState(false);
+  const contentFileRef = useRef<HTMLInputElement>(null);
 
   const isAdmin = session?.role === 'admin';
 
@@ -198,6 +209,12 @@ export default function App() {
     setStories(await getStories(filter));
   }, [session]);
 
+  const loadContent = useCallback(async () => {
+    if (!session) return;
+    const filter = session.role === 'employee' ? session.username : undefined;
+    setContent(await getContent(filter));
+  }, [session]);
+
   const loadDashboardData = useCallback(async () => {
     const [reels, followers] = await Promise.all([
       getAllReelSnapshots(),
@@ -232,6 +249,7 @@ export default function App() {
         await loadBios();
         await loadCtas();
         await loadStories();
+        await loadContent();
         if (session?.role === 'admin') {
           setEmployees(await getEmployees());
         }
@@ -242,7 +260,16 @@ export default function App() {
       }
     }
     init();
-  }, [session, loadDashboardData, loadLicenses, loadProxies, loadBios, loadCtas, loadStories]);
+  }, [
+    session,
+    loadDashboardData,
+    loadLicenses,
+    loadProxies,
+    loadBios,
+    loadCtas,
+    loadStories,
+    loadContent,
+  ]);
 
   useEffect(() => {
     if (!session) return;
@@ -715,6 +742,55 @@ export default function App() {
     await loadStories();
   }
 
+  async function submitContent() {
+    if (!newContentFile) {
+      setError('Select a reel video to upload.');
+      return;
+    }
+    if (!newContentAll && newContentEmployees.size === 0) {
+      setError('Select at least one employee or choose all employees.');
+      return;
+    }
+    setUploadingContent(true);
+    try {
+      await addContent(
+        {
+          id: crypto.randomUUID(),
+          caption: newContentCaption,
+          videoUrl: '',
+          employees: newContentAll ? [] : [...newContentEmployees],
+          allEmployees: newContentAll,
+          createdAt: Date.now(),
+        },
+        newContentFile,
+      );
+      await loadContent();
+      setNewContentFile(null);
+      setNewContentCaption('');
+      setNewContentEmployees(new Set());
+      setNewContentAll(false);
+      if (contentFileRef.current) contentFileRef.current.value = '';
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not upload reel.');
+    } finally {
+      setUploadingContent(false);
+    }
+  }
+
+  function toggleContentEmployee(username: string) {
+    setNewContentEmployees((prev) => {
+      const next = new Set(prev);
+      if (next.has(username)) next.delete(username);
+      else next.add(username);
+      return next;
+    });
+  }
+
+  async function handleDeleteContent(id: string) {
+    await deleteContent(id);
+    await loadContent();
+  }
+
   function openEditProxy(proxy: Proxy) {
     setEditItem({
       kind: 'proxy',
@@ -969,7 +1045,9 @@ export default function App() {
                 ? 'CTA'
                 : view === 'story'
                   ? 'Stories'
-                  : 'Accounts';
+                  : view === 'content'
+                    ? 'Content'
+                    : 'Accounts';
 
   const showAddForm = view === 'accounts';
 
@@ -1107,6 +1185,21 @@ export default function App() {
               <circle cx="12" cy="12" r="3.5" />
             </svg>
             Stories
+          </button>
+
+          <button
+            type="button"
+            className={view === 'content' ? 'nav-item nav-item--active' : 'nav-item'}
+            onClick={() => {
+              setSelectedEmployee(null);
+              setView('content');
+            }}
+          >
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
+              <rect x="3" y="4" width="18" height="16" rx="2" />
+              <path d="M10 9l5 3-5 3z" fill="currentColor" stroke="none" />
+            </svg>
+            Content
           </button>
 
           {isAdmin && (
@@ -1638,6 +1731,112 @@ export default function App() {
                           </>
                         )}
                       </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          </>
+        )}
+
+        {view === 'content' && (
+          <>
+            {isAdmin && (
+              <section className="panel">
+                <h2>Upload reel</h2>
+                <form
+                  className="bio-form"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    submitContent();
+                  }}
+                >
+                  <label className="content-upload">
+                    <input
+                      ref={contentFileRef}
+                      type="file"
+                      accept="video/*"
+                      onChange={(e) => setNewContentFile(e.target.files?.[0] ?? null)}
+                    />
+                    <span className="content-upload__hint">
+                      {newContentFile ? newContentFile.name : 'Choose a reel video (MP4/WebM)'}
+                    </span>
+                  </label>
+
+                  <textarea
+                    className="bio-form__textarea"
+                    placeholder="Write a caption…"
+                    value={newContentCaption}
+                    onChange={(e) => setNewContentCaption(e.target.value)}
+                    rows={3}
+                  />
+
+                  <AssignmentPicker
+                    employees={employees}
+                    selected={newContentEmployees}
+                    all={newContentAll}
+                    onToggle={toggleContentEmployee}
+                    onAllChange={setNewContentAll}
+                  />
+
+                  <button
+                    type="submit"
+                    disabled={
+                      uploadingContent ||
+                      !newContentFile ||
+                      (!newContentAll && newContentEmployees.size === 0)
+                    }
+                  >
+                    {uploadingContent ? 'Uploading…' : 'Upload reel'}
+                  </button>
+                </form>
+              </section>
+            )}
+
+            <section className="panel">
+              <h2>{isAdmin ? `Reels (${content.length})` : 'Your reels'}</h2>
+              {content.length === 0 ? (
+                <p className="empty-note">
+                  {isAdmin
+                    ? 'No reels yet. Upload one above and assign it to employees.'
+                    : 'No reel assigned to you yet.'}
+                </p>
+              ) : (
+                <div className="content-grid">
+                  {content.map((reel) => (
+                    <div key={reel.id} className="content-tile">
+                      <video
+                        className="content-tile__video"
+                        src={reel.videoUrl}
+                        autoPlay
+                        loop
+                        muted
+                        playsInline
+                      />
+                      {reel.caption && <p className="content-tile__caption">{reel.caption}</p>}
+                      {isAdmin && (
+                        <div className="content-tile__meta">
+                          <div className="content-tile__assign">
+                            {reel.allEmployees ? (
+                              <span className="owner-tag">All employees</span>
+                            ) : (
+                              reel.employees.map((u) => (
+                                <span key={u} className="owner-tag">
+                                  {u}
+                                </span>
+                              ))
+                            )}
+                          </div>
+                          <button
+                            type="button"
+                            className="license-row__delete"
+                            onClick={() => handleDeleteContent(reel.id)}
+                            title="Delete reel"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>

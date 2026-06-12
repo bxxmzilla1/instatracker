@@ -64,6 +64,15 @@ export interface StoryNote {
   createdAt: number;
 }
 
+export interface ContentReel {
+  id: string;
+  caption: string;
+  videoUrl: string;
+  employees: string[];
+  allEmployees: boolean;
+  createdAt: number;
+}
+
 export interface TrackedAccount {
   username: string;
   addedAt: number;

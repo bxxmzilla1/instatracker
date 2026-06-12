@@ -33,4 +33,7 @@ export const {
   getStories,
   addStory,
   deleteStory,
+  getContent,
+  addContent,
+  deleteContent,
 } = impl;
