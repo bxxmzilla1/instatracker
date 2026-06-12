@@ -619,6 +619,44 @@ button:disabled {
 }
 
 /* Account list */
+.account-search {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0 0.75rem;
+  margin-bottom: 0.75rem;
+  color: var(--faint);
+}
+
+.account-search:focus-within {
+  border-color: var(--accent);
+}
+
+.account-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  padding: 0.6rem 0;
+  outline: none;
+}
+
+.account-search__clear {
+  background: transparent;
+  color: var(--faint);
+  padding: 0.2rem 0.4rem;
+  border-radius: 6px;
+}
+
+.account-search__clear:hover {
+  background: var(--surface-3);
+  color: var(--text);
+}
+
 .account-list {
   display: flex;
   flex-direction: column;

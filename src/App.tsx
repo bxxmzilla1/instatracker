@@ -69,6 +69,7 @@ export default function App() {
     null,
   );
   const [failedRefresh, setFailedRefresh] = useState<Set<string>>(() => new Set());
+  const [accountSearch, setAccountSearch] = useState('');
   const [view, setView] = useState<'dashboard' | 'accounts' | 'employee' | 'license'>('dashboard');
   const [showCredentials, setShowCredentials] = useState(false);
   const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
@@ -550,6 +551,15 @@ export default function App() {
 
   const showAddForm = view === 'accounts';
 
+  const searchWords = accountSearch.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const filteredAccounts =
+    searchWords.length > 0
+      ? accounts.filter((a) => {
+          const haystack = `${a.username} ${a.fullName ?? ''}`.toLowerCase();
+          return searchWords.every((word) => haystack.includes(word));
+        })
+      : accounts;
+
   const loadingBlock = (
     <div className="loading-block">
       <span className="spinner" aria-hidden />
@@ -855,6 +865,28 @@ export default function App() {
             <h2>Tracked ({accounts.length})</h2>
           </div>
 
+          {!accountsLoading && accounts.length > 0 && (
+            <div className="account-search">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="11" cy="11" r="7" />
+                <path d="m20 20-3.5-3.5" />
+              </svg>
+              <input
+                type="text"
+                placeholder="Search accounts…"
+                value={accountSearch}
+                onChange={(e) => setAccountSearch(e.target.value)}
+                autoComplete="off"
+                spellCheck={false}
+              />
+              {accountSearch && (
+                <button type="button" className="account-search__clear" onClick={() => setAccountSearch('')}>
+                  ✕
+                </button>
+              )}
+            </div>
+          )}
+
           {accountsLoading ? (
             loadingBlock
           ) : accounts.length === 0 ? (
@@ -863,9 +895,11 @@ export default function App() {
                 ? 'This employee has not added any accounts yet.'
                 : 'No accounts yet. Add a username above to start tracking.'}
             </p>
+          ) : filteredAccounts.length === 0 ? (
+            <p className="empty-note">No accounts match “{accountSearch}”.</p>
           ) : (
             <div className="account-list">
-              {accounts.map((account) => (
+              {filteredAccounts.map((account) => (
                 <AccountCard
                   key={account.username}
                   account={account}
