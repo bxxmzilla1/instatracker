@@ -951,6 +951,10 @@ export default function App() {
                   <span>Last check</span>
                   <strong>{selectedAccount.lastCheckedAt ? formatDate(selectedAccount.lastCheckedAt) : 'Never'}</strong>
                 </div>
+                <div className="metric-card">
+                  <span>Submitted Date</span>
+                  <strong>{formatDate(selectedAccount.addedAt)}</strong>
+                </div>
               </div>
 
               {(selectedAccount.fullName || selectedAccount.bio) && (
