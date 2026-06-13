@@ -8,7 +8,7 @@ import { CopyField } from './components/CopyField';
 import { Dashboard } from './components/Dashboard';
 import { Login } from './components/Login';
 import { ReelCard } from './components/ReelCard';
-import { checkHealth, fetchProfile, fetchReels, fetchStories } from './lib/api';
+import { checkHealth, fetchProfile, fetchReels } from './lib/api';
 import {
   addAccount,
   addEmployee,
@@ -60,7 +60,6 @@ import type {
   ReelSnapshot,
   Session,
   StoryNote,
-  StoryPreview,
   TrackedAccount,
 } from './types';
 
@@ -352,36 +351,14 @@ export default function App() {
         reelsWarning = reelsError instanceof Error ? reelsError.message : 'Could not load reels';
       }
 
-      let stories: StoryPreview[] = [];
-      try {
-        const parsedStories = await fetchStories(username);
-        stories = parsedStories.map((story) => ({
-          id: story.id,
-          thumbnailUrl: story.thumbnailUrl,
-          isVideo: story.isVideo,
-          expiringAt: story.expiringAt,
-        }));
-      } catch {
-        stories = [];
-      }
-
       const now = Date.now();
       const existing = accounts.find((a) => a.username === profile.username.toLowerCase());
       const defaultOwner = session?.role === 'employee' ? session.username : 'admin';
       const handle = profile.username.toLowerCase();
 
       // Cache all images into Supabase Storage so they load fast and never expire.
-      const [cachedProfilePic, cachedStories, cachedReels] = await Promise.all([
+      const [cachedProfilePic, cachedReels] = await Promise.all([
         cacheImage(profile.profilePicUrl, `profiles/${imgKey(handle)}.jpg`),
-        Promise.all(
-          stories.map(async (story) => ({
-            ...story,
-            thumbnailUrl: await cacheImage(
-              story.thumbnailUrl,
-              `stories/${imgKey(handle)}-${imgKey(story.id)}.jpg`,
-            ),
-          })),
-        ),
         Promise.all(
           reels.map(async (reel) => ({
             ...reel,
@@ -401,7 +378,7 @@ export default function App() {
         lastFollowing: profile.following,
         lastMediaCount: profile.mediaCount,
         lastCheckedAt: now,
-        stories: cachedStories,
+        stories: [],
         owner: existing?.owner ?? defaultOwner,
         loginUsername: existing?.loginUsername,
         loginEmail: existing?.loginEmail,
@@ -499,7 +476,7 @@ export default function App() {
         markRefreshFailed(list[i].username);
       }
       setRefreshAllProgress({ done: i + 1, total: list.length });
-      // Pause between accounts to avoid hitting RapidAPI rate limits
+      // Pause between accounts to avoid overloading the Apify API
       if (i < list.length - 1) {
         await new Promise((resolve) => setTimeout(resolve, 2000));
       }
@@ -1371,7 +1348,7 @@ export default function App() {
 
         {!apiReady && (
           <div className="banner banner--warn">
-            Set <code>RAPIDAPI_KEY</code> in Vercel for the Instagram Followers/Following/Stories/Info API, then redeploy.
+            Set <code>APIFY_TOKEN</code> in Vercel to fetch Instagram data via Apify, then redeploy.
           </div>
         )}
 
@@ -2337,7 +2314,6 @@ export default function App() {
                 <AccountCard
                   key={account.username}
                   account={account}
-                  hasStory={Boolean(account.stories && account.stories.length > 0)}
                   totalViews={viewsByUsername.get(account.username) ?? 0}
                   ownerTag={
                     isAdmin && account.owner && account.owner !== 'admin'
@@ -2456,32 +2432,6 @@ export default function App() {
                       <p className="profile-meta__value">{selectedAccount.bio}</p>
                     </div>
                   )}
-                </div>
-              )}
-
-              {selectedAccount.stories && selectedAccount.stories.length > 0 && (
-                <div className="section-block">
-                  <h3>
-                    Active story <span className="story-pill">{selectedAccount.stories.length}</span>
-                  </h3>
-                  <div className="story-strip">
-                    {selectedAccount.stories.map((story) => (
-                      <button
-                        key={story.id}
-                        type="button"
-                        className="story-thumb"
-                        onClick={() => story.thumbnailUrl && setFullscreenImage(story.thumbnailUrl)}
-                        disabled={!story.thumbnailUrl}
-                      >
-                        {story.thumbnailUrl ? (
-                          <img src={proxiedImage(story.thumbnailUrl)} alt="Story" loading="lazy" />
-                        ) : (
-                          <span className="story-thumb__placeholder">▶</span>
-                        )}
-                        {story.isVideo && <span className="story-thumb__badge">▶</span>}
-                      </button>
-                    ))}
-                  </div>
                 </div>
               )}
 

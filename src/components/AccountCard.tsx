@@ -8,7 +8,6 @@ interface Props {
   totalViews?: number;
   selected?: boolean;
   refreshing?: boolean;
-  hasStory?: boolean;
   ownerTag?: string;
   unableToRefresh?: boolean;
   onSelect: () => void;
@@ -20,7 +19,6 @@ export function AccountCard({
   account,
   selected,
   refreshing,
-  hasStory,
   ownerTag,
   unableToRefresh,
   onSelect,
@@ -33,7 +31,7 @@ export function AccountCard({
   return (
     <article className={`account-card ${selected ? 'account-card--selected' : ''}`}>
       <button type="button" className="account-card__main" onClick={onSelect}>
-        <div className={`account-card__avatar ${hasStory ? 'account-card__avatar--story' : ''}`}>
+        <div className="account-card__avatar">
           {showImage ? (
             <img
               src={proxiedImage(account.profilePicUrl)}
