@@ -44,7 +44,7 @@ import {
 } from './lib/db';
 import { parseProxyString } from './lib/proxy';
 import { assignedEmployees } from './lib/assignment';
-import { latestByReel } from './lib/dashboard';
+import { latestByReel, withMonotonicReelViews } from './lib/dashboard';
 import { cacheImage, imgKey } from './lib/media';
 import { formatCount, formatDate, proxiedImage } from './lib/format';
 import type {
@@ -240,7 +240,7 @@ export default function App() {
       getAllReelSnapshots(),
       getAllFollowerSnapshots(),
     ]);
-    setAllReelSnapshots(reels);
+    setAllReelSnapshots(withMonotonicReelViews(reels));
     setAllFollowerSnapshots(followers);
   }, []);
 

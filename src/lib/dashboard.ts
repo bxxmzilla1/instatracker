@@ -207,6 +207,34 @@ export function latestByReel(snapshots: ReelSnapshot[]): ReelSnapshot[] {
   return [...map.values()];
 }
 
+/**
+ * Instagram reel view counts only ever increase. The scraper, however, can
+ * intermittently report a missing/`0` view count, which would otherwise look
+ * like a sudden drop and corrupt the daily-gain bars. This clamps each reel's
+ * views to the running maximum over time so a transient `0` never erases views
+ * that were already captured — guaranteeing new views from existing accounts
+ * and the full backlog from newly added accounts always show on the date bars.
+ */
+export function withMonotonicReelViews(snapshots: ReelSnapshot[]): ReelSnapshot[] {
+  const byId = new Map<string, ReelSnapshot[]>();
+  for (const snapshot of snapshots) {
+    const arr = byId.get(snapshot.id);
+    if (arr) arr.push(snapshot);
+    else byId.set(snapshot.id, [snapshot]);
+  }
+
+  const result: ReelSnapshot[] = [];
+  for (const arr of byId.values()) {
+    arr.sort((a, b) => a.capturedAt - b.capturedAt);
+    let max = 0;
+    for (const snapshot of arr) {
+      max = Math.max(max, snapshot.views);
+      result.push(snapshot.views === max ? snapshot : { ...snapshot, views: max });
+    }
+  }
+  return result;
+}
+
 export function computeStats(
   accounts: TrackedAccount[],
   reelSnapshots: ReelSnapshot[],
