@@ -32,6 +32,7 @@ export function parseProfileResponse(data: unknown, username: string): ParsedPro
     fullName: pickString(user.full_name, user.fullName, result.full_name),
     profilePicUrl: pickString(
       user.profile_pic_url_hd,
+      user.profilePicUrlHD,
       hdProfile?.url,
       user.profile_pic_url,
       user.profilePicUrl,
@@ -40,22 +41,25 @@ export function parseProfileResponse(data: unknown, username: string): ParsedPro
     followers: pickNumber(
       user.follower_count,
       user.followers,
+      user.followersCount,
       edgeFollowedBy?.count,
       result.follower_count,
     ),
     following: pickNumber(
       user.following_count,
       user.following,
+      user.followsCount,
       edgeFollow?.count,
       result.following_count,
     ),
     mediaCount: pickNumber(
       user.media_count,
       user.posts,
+      user.postsCount,
       edgeMedia?.count,
       result.media_count,
     ),
-    isVerified: Boolean(user.is_verified ?? user.isVerified ?? result.is_verified),
+    isVerified: Boolean(user.is_verified ?? user.isVerified ?? user.verified ?? result.is_verified),
     biography: pickString(user.biography, user.bio, result.biography),
   };
 }
@@ -100,6 +104,8 @@ export function parseReelsResponse(data: unknown): ParsedReel[] {
     const thumbnailUrl = pickString(
       media.thumbnail_url,
       media.display_url,
+      media.image,
+      (media.images as Array<Record<string, unknown>>)?.[0]?.url,
       media.image_versions2?.candidates?.[0]?.url,
       node.thumbnail_url,
       node.display_url,

@@ -1,11 +1,21 @@
-export const RAPIDAPI_HOST = 'instagram-api-followers-following-stories-info.p.rapidapi.com';
+// Instagram data is fetched from Apify Actors (https://apify.com) and normalized
+// into the field names the frontend parser (src/lib/parse.ts) already understands,
+// so the rest of the app keeps working unchanged.
 
-const INVALID_API_KEYS = new Set([
+// Profile data — returns followersCount, followsCount, postsCount, etc.
+export const APIFY_PROFILE_ACTOR = 'dSCLg0C3YEZ83HzYX';
+// Post data — returns posts/reels with view_count, like_count, comment_count, etc.
+export const APIFY_POSTS_ACTOR = 'pmQcv69sB1UwguQUY';
+
+const POSTS_PER_PROFILE = 12;
+
+const INVALID_TOKENS = new Set([
   '',
   'undefined',
   'null',
-  'your_rapidapi_key_here',
-  'your_actual_key',
+  'your_apify_token_here',
+  '<your_api_token>',
+  'your_actual_token',
 ]);
 
 export function normalizeUsername(username) {
@@ -13,160 +23,142 @@ export function normalizeUsername(username) {
 }
 
 export function hasValidApiKey() {
-  const key = process.env.RAPIDAPI_KEY?.trim();
-  if (!key) return false;
-  return !INVALID_API_KEYS.has(key.toLowerCase());
+  const token = process.env.APIFY_TOKEN?.trim();
+  if (!token) return false;
+  return !INVALID_TOKENS.has(token.toLowerCase());
 }
 
-function extractApiError(data) {
-  if (!data || typeof data !== 'object') return null;
-
-  const record = data;
-  const nestedError =
-    record.error && typeof record.error === 'object' ? record.error : null;
-
-  const message = [
-    record.message,
-    typeof record.error === 'string' ? record.error : null,
-    nestedError?.message,
-    nestedError?.code,
-    record.msg,
-    record.detail,
-  ].find((value) => typeof value === 'string' && value.trim());
-
-  if (message) return message;
-
-  if (record.success === false) {
-    return 'Instagram API returned an error';
+function extractApifyError(data, status) {
+  if (data && typeof data === 'object' && !Array.isArray(data)) {
+    const err = data.error;
+    const message =
+      (err && typeof err === 'object' && err.message) ||
+      (typeof err === 'string' && err) ||
+      data.message;
+    if (typeof message === 'string' && message.trim()) return message;
   }
-
-  return null;
+  return `Apify request failed (${status})`;
 }
 
-function isQuotaExhausted(status, message) {
-  if (status === 402) return true;
-  const lower = (message || '').toLowerCase();
-  return lower.includes('no quota') || lower.includes('quota available') || lower.includes('out of');
-}
-
-const MAX_ATTEMPTS = 5;
-const BASE_BACKOFF_MS = 2000;
-
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function isRateLimited(status, message) {
-  if (status === 429 || status === 503) return true;
-  const lower = (message || '').toLowerCase();
-  return (
-    lower.includes('rate limit') ||
-    lower.includes('too many requests') ||
-    lower.includes('quota') ||
-    lower.includes('throttl')
-  );
-}
-
-async function callInstagramGet(endpoint, params = {}) {
+async function runActorSync(actorId, input) {
   if (!hasValidApiKey()) {
     throw new Error(
-      'RAPIDAPI_KEY is missing or invalid. Add your real RapidAPI key in Vercel Environment Variables.',
+      'APIFY_TOKEN is missing or invalid. Add your Apify API token in Vercel Environment Variables.',
     );
   }
 
-  const query = new URLSearchParams();
-  for (const [key, value] of Object.entries(params)) {
-    if (value !== undefined && value !== null && value !== '') {
-      query.set(key, String(value));
-    }
+  const token = process.env.APIFY_TOKEN.trim();
+  const url = `https://api.apify.com/v2/acts/${actorId}/run-sync-get-dataset-items`;
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(input),
+  });
+
+  const text = await response.text();
+  let data = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = null;
   }
 
-  const url = `https://${RAPIDAPI_HOST}${endpoint}${query.size ? `?${query}` : ''}`;
-  let lastError = null;
-
-  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
-    if (attempt > 0) {
-      // Exponential backoff with jitter: 2s, 4s, 8s, 16s
-      const backoff = BASE_BACKOFF_MS * Math.pow(2, attempt - 1);
-      const jitter = Math.floor(Math.random() * 500);
-      await sleep(backoff + jitter);
-    }
-
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'x-rapidapi-host': RAPIDAPI_HOST,
-        'x-rapidapi-key': process.env.RAPIDAPI_KEY.trim(),
-      },
-    });
-
-    const data = await response.json().catch(() => ({}));
-    const apiError = extractApiError(data);
-
-    // 402 / "No quota available" — the RapidAPI plan is out of requests.
-    // Retrying will not help, so fail fast with an actionable message.
-    if (isQuotaExhausted(response.status, apiError)) {
-      throw new Error(
-        'RapidAPI quota exhausted — your Instagram API plan is out of requests. ' +
-          'Upgrade the plan or wait for the quota to reset at rapidapi.com.',
-      );
-    }
-
-    if (isRateLimited(response.status, apiError)) {
-      lastError = new Error(
-        apiError && /quota/i.test(apiError)
-          ? `RapidAPI quota exceeded: ${apiError}`
-          : 'Instagram API is rate-limited. Retrying…',
-      );
-      continue;
-    }
-
-    if (response.status === 401 || response.status === 403) {
-      throw new Error(
-        apiError ||
-          'RapidAPI rejected the request (401/403). Check that RAPIDAPI_KEY is valid and subscribed to the Instagram API in Vercel.',
-      );
-    }
-
-    if (!response.ok) {
-      throw new Error(apiError || `API request failed (${response.status})`);
-    }
-
-    if (data.success === false) {
-      lastError = new Error(apiError || 'Instagram API request failed');
-      continue;
-    }
-
-    if (apiError && data.success !== true) {
-      throw new Error(apiError);
-    }
-
-    return data;
+  if (!response.ok) {
+    throw new Error(extractApifyError(data, response.status));
   }
 
-  throw lastError ?? new Error('Instagram API request failed after multiple attempts.');
+  if (Array.isArray(data)) return data;
+
+  // A non-array response usually means the run errored.
+  const message = extractApifyError(data, response.status);
+  throw new Error(message);
 }
 
 export async function fetchInstagramProfile(username) {
   const normalized = normalizeUsername(username);
-  const data = await callInstagramGet('/api/v1/user/profile', { username: normalized });
+  const items = await runActorSync(APIFY_PROFILE_ACTOR, {
+    usernames: [normalized],
+    includeAboutSection: false,
+  });
 
-  if (!data?.data) {
+  const profile =
+    items.find((item) => item && (item.username || item.followersCount != null)) || items[0];
+
+  if (!profile || (profile.error && profile.followersCount == null)) {
     throw new Error(`@${normalized} was not found or the account is private.`);
   }
 
-  return data;
+  // Emit a RapidAPI-compatible shape so src/lib/parse.ts maps it without changes.
+  return {
+    data: {
+      user: {
+        username: String(profile.username || normalized).toLowerCase(),
+        full_name: profile.fullName ?? '',
+        biography: profile.biography ?? '',
+        profile_pic_url_hd: profile.profilePicUrlHD ?? profile.profilePicUrl ?? '',
+        profile_pic_url: profile.profilePicUrl ?? '',
+        follower_count: profile.followersCount ?? 0,
+        following_count: profile.followsCount ?? 0,
+        media_count: profile.postsCount ?? 0,
+        is_verified: Boolean(profile.verified),
+      },
+    },
+  };
 }
 
-export async function fetchInstagramReels(username, paginationToken) {
+function isReel(post) {
+  if (!post || typeof post !== 'object') return false;
+  return (
+    post.product_type === 'clips' ||
+    post.type === 'Video' ||
+    Array.isArray(post.video_versions) ||
+    post.view_count != null ||
+    post.video_duration != null
+  );
+}
+
+export async function fetchInstagramReels(username) {
   const normalized = normalizeUsername(username);
-  return callInstagramGet('/api/v1/user/reels', {
-    username: normalized,
-    pagination_token: paginationToken,
+  const posts = await runActorSync(APIFY_POSTS_ACTOR, {
+    instagramUsernames: [normalized],
+    postsPerProfile: POSTS_PER_PROFILE,
   });
+
+  const items = posts.filter(isReel).map((post) => {
+    const caption =
+      typeof post.caption === 'string'
+        ? post.caption
+        : (post.caption && typeof post.caption === 'object' ? post.caption.text : '') || '';
+
+    const takenAt = post.date ? Math.floor(Date.parse(post.date) / 1000) : undefined;
+
+    return {
+      pk: String(post.pk ?? post.id ?? post.shortcode ?? ''),
+      id: String(post.id ?? post.pk ?? post.shortcode ?? ''),
+      shortcode: post.shortcode ?? post.code ?? '',
+      caption,
+      thumbnail_url:
+        post.image ??
+        (Array.isArray(post.images) ? post.images?.[0]?.url : undefined) ??
+        post.display_url ??
+        '',
+      play_count: post.view_count ?? post.play_count ?? 0,
+      view_count: post.view_count ?? 0,
+      like_count: post.like_count ?? 0,
+      comment_count: post.comment_count ?? 0,
+      taken_at: Number.isFinite(takenAt) ? takenAt : undefined,
+    };
+  });
+
+  return { items };
 }
 
-export async function fetchInstagramStories(username) {
-  const normalized = normalizeUsername(username);
-  return callInstagramGet('/api/v1/user/stories', { username: normalized });
+export async function fetchInstagramStories() {
+  // The configured Apify Actors do not provide stories; return an empty set so
+  // the frontend gracefully shows no stories instead of erroring.
+  return { items: [] };
 }
