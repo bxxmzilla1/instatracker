@@ -545,6 +545,8 @@ export async function getAllFollowerSnapshots(): Promise<FollowerSnapshot[]> {
 export async function getAllReelSnapshots(): Promise<ReelSnapshot[]> {
   return fetchAllRows('reel_snapshots', toReelSnapshot);
 }
+
+export async function saveReelSnapshots(snapshots: ReelSnapshot[]): Promise<void> {
   if (snapshots.length === 0) return;
   const rows = snapshots.map((snapshot) => ({
     reel_id: snapshot.id,
