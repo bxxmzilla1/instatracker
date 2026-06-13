@@ -495,6 +495,10 @@ export default function App() {
         markRefreshFailed(list[i].username);
       }
       setRefreshAllProgress({ done: i + 1, total: list.length });
+      // Pause between accounts to avoid hitting RapidAPI rate limits
+      if (i < list.length - 1) {
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+      }
     }
     setRefreshAllProgress(null);
 

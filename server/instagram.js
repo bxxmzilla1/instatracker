@@ -34,7 +34,8 @@ function extractApiError(data) {
   return null;
 }
 
-const MAX_ATTEMPTS = 4;
+const MAX_ATTEMPTS = 5;
+const BASE_BACKOFF_MS = 2000;
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -43,7 +44,12 @@ function sleep(ms) {
 function isRateLimited(status, message) {
   if (status === 429 || status === 503) return true;
   const lower = (message || '').toLowerCase();
-  return lower.includes('rate limit') || lower.includes('too many requests');
+  return (
+    lower.includes('rate limit') ||
+    lower.includes('too many requests') ||
+    lower.includes('quota') ||
+    lower.includes('throttl')
+  );
 }
 
 async function callInstagramGet(endpoint, params = {}) {
@@ -65,7 +71,10 @@ async function callInstagramGet(endpoint, params = {}) {
 
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
     if (attempt > 0) {
-      await sleep(700 * attempt);
+      // Exponential backoff with jitter: 2s, 4s, 8s, 16s
+      const backoff = BASE_BACKOFF_MS * Math.pow(2, attempt - 1);
+      const jitter = Math.floor(Math.random() * 500);
+      await sleep(backoff + jitter);
     }
 
     const response = await fetch(url, {

@@ -514,13 +514,37 @@ export async function getFollowerHistory(username: string): Promise<FollowerSnap
   return (data as FollowerRow[]).map(toFollowerSnapshot);
 }
 
-export async function getAllFollowerSnapshots(): Promise<FollowerSnapshot[]> {
-  const { data, error } = await client().from('follower_snapshots').select('*');
-  if (error) throw new Error(error.message);
-  return (data as FollowerRow[]).map(toFollowerSnapshot);
+async function fetchAllRows<T>(
+  table: string,
+  mapper: (row: never) => T,
+  pageSize = 1000,
+): Promise<T[]> {
+  const db = client();
+  const results: T[] = [];
+  let from = 0;
+
+  while (true) {
+    const { data, error } = await db
+      .from(table)
+      .select('*')
+      .range(from, from + pageSize - 1);
+    if (error) throw new Error(error.message);
+    if (!data || data.length === 0) break;
+    results.push(...(data as never[]).map(mapper));
+    if (data.length < pageSize) break;
+    from += pageSize;
+  }
+
+  return results;
 }
 
-export async function saveReelSnapshots(snapshots: ReelSnapshot[]): Promise<void> {
+export async function getAllFollowerSnapshots(): Promise<FollowerSnapshot[]> {
+  return fetchAllRows('follower_snapshots', toFollowerSnapshot);
+}
+
+export async function getAllReelSnapshots(): Promise<ReelSnapshot[]> {
+  return fetchAllRows('reel_snapshots', toReelSnapshot);
+}
   if (snapshots.length === 0) return;
   const rows = snapshots.map((snapshot) => ({
     reel_id: snapshot.id,
@@ -536,12 +560,6 @@ export async function saveReelSnapshots(snapshots: ReelSnapshot[]): Promise<void
   }));
   const { error } = await client().from('reel_snapshots').insert(rows);
   if (error) throw new Error(error.message);
-}
-
-export async function getAllReelSnapshots(): Promise<ReelSnapshot[]> {
-  const { data, error } = await client().from('reel_snapshots').select('*');
-  if (error) throw new Error(error.message);
-  return (data as ReelRow[]).map(toReelSnapshot);
 }
 
 export async function getReelHistories(username: string): Promise<ReelHistory[]> {
