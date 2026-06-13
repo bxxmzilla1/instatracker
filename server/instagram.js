@@ -22,16 +22,31 @@ function extractApiError(data) {
   if (!data || typeof data !== 'object') return null;
 
   const record = data;
-  const message = [record.message, record.error, record.msg, record.detail]
-    .find((value) => typeof value === 'string' && value.trim());
+  const nestedError =
+    record.error && typeof record.error === 'object' ? record.error : null;
+
+  const message = [
+    record.message,
+    typeof record.error === 'string' ? record.error : null,
+    nestedError?.message,
+    nestedError?.code,
+    record.msg,
+    record.detail,
+  ].find((value) => typeof value === 'string' && value.trim());
 
   if (message) return message;
 
   if (record.success === false) {
-    return typeof record.message === 'string' ? record.message : 'Instagram API returned an error';
+    return 'Instagram API returned an error';
   }
 
   return null;
+}
+
+function isQuotaExhausted(status, message) {
+  if (status === 402) return true;
+  const lower = (message || '').toLowerCase();
+  return lower.includes('no quota') || lower.includes('quota available') || lower.includes('out of');
 }
 
 const MAX_ATTEMPTS = 5;
@@ -87,6 +102,15 @@ async function callInstagramGet(endpoint, params = {}) {
 
     const data = await response.json().catch(() => ({}));
     const apiError = extractApiError(data);
+
+    // 402 / "No quota available" — the RapidAPI plan is out of requests.
+    // Retrying will not help, so fail fast with an actionable message.
+    if (isQuotaExhausted(response.status, apiError)) {
+      throw new Error(
+        'RapidAPI quota exhausted — your Instagram API plan is out of requests. ' +
+          'Upgrade the plan or wait for the quota to reset at rapidapi.com.',
+      );
+    }
 
     if (isRateLimited(response.status, apiError)) {
       lastError = new Error(
