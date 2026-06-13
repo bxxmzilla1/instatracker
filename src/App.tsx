@@ -456,6 +456,18 @@ export default function App() {
 
   function suspendedMessage(err: unknown, username: string) {
     const msg = err instanceof Error ? err.message : 'Refresh failed';
+
+    // API key / subscription / quota / rate-limit problems are NOT account bans.
+    // Surface the real message so the user can fix the deployment instead of
+    // wrongly assuming every account is suspended.
+    if (
+      /rapidapi|quota|rate.?limit|too many requests|missing or invalid|not subscribed|401|403|subscribe/i.test(
+        msg,
+      )
+    ) {
+      return msg;
+    }
+
     return /returned an error|not found|invalid|could not load profile|profile lookup failed|request failed|multiple attempts/i.test(
       msg,
     )

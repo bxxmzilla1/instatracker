@@ -89,8 +89,19 @@ async function callInstagramGet(endpoint, params = {}) {
     const apiError = extractApiError(data);
 
     if (isRateLimited(response.status, apiError)) {
-      lastError = new Error('Instagram API is rate-limited. Retrying…');
+      lastError = new Error(
+        apiError && /quota/i.test(apiError)
+          ? `RapidAPI quota exceeded: ${apiError}`
+          : 'Instagram API is rate-limited. Retrying…',
+      );
       continue;
+    }
+
+    if (response.status === 401 || response.status === 403) {
+      throw new Error(
+        apiError ||
+          'RapidAPI rejected the request (401/403). Check that RAPIDAPI_KEY is valid and subscribed to the Instagram API in Vercel.',
+      );
     }
 
     if (!response.ok) {
