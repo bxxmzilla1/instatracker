@@ -457,22 +457,14 @@ export default function App() {
   function suspendedMessage(err: unknown, username: string) {
     const msg = err instanceof Error ? err.message : 'Refresh failed';
 
-    // API key / subscription / quota / rate-limit problems are NOT account bans.
-    // Surface the real message so the user can fix the deployment instead of
-    // wrongly assuming every account is suspended.
-    if (
-      /rapidapi|quota|rate.?limit|too many requests|missing or invalid|not subscribed|401|403|subscribe/i.test(
-        msg,
-      )
-    ) {
-      return msg;
-    }
+    // Only treat a failure as a possible ban/suspension when the API explicitly
+    // says the specific account was not found or is private. EVERYTHING else
+    // (API key, subscription, quota, rate-limit, 5xx, network) is a system-level
+    // problem and the real message must be shown so it can actually be fixed.
+    const isAccountLevel =
+      /was not found or the account is private|account is private|user not found/i.test(msg);
 
-    return /returned an error|not found|invalid|could not load profile|profile lookup failed|request failed|multiple attempts/i.test(
-      msg,
-    )
-      ? `@${username} might be suspended/banned, please check status`
-      : msg;
+    return isAccountLevel ? `@${username} might be suspended/banned, please check status` : msg;
   }
 
   async function refreshAccount(username: string) {
