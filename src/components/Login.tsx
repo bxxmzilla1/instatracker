@@ -1,5 +1,6 @@
 import { FormEvent, useState } from 'react';
 import { getEmployees } from '../lib/db';
+import { getEmployees as getBskyEmployees } from '../lib/bsky/db';
 import type { Session } from '../types';
 
 interface Props {
@@ -44,12 +45,19 @@ export function Login({ onSuccess }: Props) {
     setLoading(true);
     setError(null);
     try {
-      const employees = await getEmployees();
-      const match = employees.find(
-        (e) => e.username.toLowerCase() === username.trim().toLowerCase() && e.password === password,
-      );
-      if (match) {
-        onSuccess({ role: 'employee', username: match.username });
+      const handle = username.trim().toLowerCase();
+      const [igEmployees, bskyEmployees] = await Promise.all([
+        getEmployees(),
+        getBskyEmployees().catch(() => []),
+      ]);
+      const igMatch = igEmployees.find((e) => e.username.toLowerCase() === handle && e.password === password);
+      if (igMatch) {
+        onSuccess({ role: 'employee', username: igMatch.username, platform: 'instagram' });
+        return;
+      }
+      const bskyMatch = bskyEmployees.find((e) => e.username.toLowerCase() === handle && e.password === password);
+      if (bskyMatch) {
+        onSuccess({ role: 'employee', username: bskyMatch.username, platform: 'bluesky' });
         return;
       }
       setError('Incorrect employee username or password');

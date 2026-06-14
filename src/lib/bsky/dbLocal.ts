@@ -1,0 +1,220 @@
+import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
+import { matchesEmployee } from '../assignment';
+import type {
+  Bio,
+  BskyAccount,
+  BskyPost,
+  Cta,
+  Employee,
+  ImageAsset,
+  Proxy,
+} from '../../types';
+
+type ImageRecord = Omit<ImageAsset, 'url'> & { url?: string; blob?: Blob };
+type PostRecord = Omit<BskyPost, 'imageUrl'> & { imageUrl?: string; blob?: Blob };
+
+interface BskyDB extends DBSchema {
+  employees: { key: string; value: Employee };
+  proxies: { key: string; value: Proxy };
+  bios: { key: string; value: Bio };
+  ctas: { key: string; value: Cta };
+  banners: { key: string; value: ImageRecord };
+  profilePics: { key: string; value: ImageRecord };
+  posts: { key: string; value: PostRecord };
+  accounts: { key: string; value: BskyAccount };
+}
+
+let dbPromise: Promise<IDBPDatabase<BskyDB>> | null = null;
+
+function getDb() {
+  if (!dbPromise) {
+    dbPromise = openDB<BskyDB>('drbossing-bsky-v1', 1, {
+      upgrade(db) {
+        for (const store of [
+          'employees',
+          'proxies',
+          'bios',
+          'ctas',
+          'banners',
+          'profilePics',
+          'posts',
+          'accounts',
+        ] as const) {
+          if (!db.objectStoreNames.contains(store)) {
+            db.createObjectStore(store, {
+              keyPath: store === 'employees' ? 'username' : 'id',
+            });
+          }
+        }
+      },
+    });
+  }
+  return dbPromise;
+}
+
+export async function getEmployees(): Promise<Employee[]> {
+  const db = await getDb();
+  const rows = await db.getAll('employees');
+  return rows.sort((a, b) => a.createdAt - b.createdAt);
+}
+
+export async function addEmployee(employee: Employee): Promise<void> {
+  const db = await getDb();
+  await db.put('employees', employee);
+}
+
+export async function deleteEmployee(username: string): Promise<void> {
+  const db = await getDb();
+  await db.delete('employees', username);
+}
+
+export async function getProxies(employee?: string): Promise<Proxy[]> {
+  const db = await getDb();
+  let rows = await db.getAll('proxies');
+  if (employee !== undefined) rows = rows.filter((p) => matchesEmployee(p, employee));
+  return rows.sort((a, b) => a.createdAt - b.createdAt);
+}
+
+export async function addProxy(proxy: Proxy): Promise<void> {
+  const db = await getDb();
+  await db.put('proxies', proxy);
+}
+
+export async function deleteProxy(id: string): Promise<void> {
+  const db = await getDb();
+  await db.delete('proxies', id);
+}
+
+export async function getBios(employee?: string): Promise<Bio[]> {
+  const db = await getDb();
+  let rows = await db.getAll('bios');
+  if (employee !== undefined) rows = rows.filter((b) => b.allEmployees || b.employees.includes(employee));
+  return rows.sort((a, b) => a.createdAt - b.createdAt);
+}
+
+export async function addBio(bio: Bio): Promise<void> {
+  const db = await getDb();
+  await db.put('bios', bio);
+}
+
+export async function deleteBio(id: string): Promise<void> {
+  const db = await getDb();
+  await db.delete('bios', id);
+}
+
+export async function getCtas(employee?: string): Promise<Cta[]> {
+  const db = await getDb();
+  let rows = await db.getAll('ctas');
+  if (employee !== undefined) rows = rows.filter((c) => c.allEmployees || c.employees.includes(employee));
+  return rows.sort((a, b) => a.createdAt - b.createdAt);
+}
+
+export async function addCta(cta: Cta): Promise<void> {
+  const db = await getDb();
+  await db.put('ctas', cta);
+}
+
+export async function deleteCta(id: string): Promise<void> {
+  const db = await getDb();
+  await db.delete('ctas', id);
+}
+
+function mapImage(r: ImageRecord): ImageAsset {
+  return {
+    id: r.id,
+    url: r.blob ? URL.createObjectURL(r.blob) : (r.url ?? ''),
+    caption: r.caption,
+    employees: r.employees,
+    allEmployees: r.allEmployees,
+    createdAt: r.createdAt,
+  };
+}
+
+async function getImages(store: 'banners' | 'profilePics', employee?: string): Promise<ImageAsset[]> {
+  const db = await getDb();
+  let rows = await db.getAll(store);
+  if (employee !== undefined) rows = rows.filter((r) => r.allEmployees || r.employees.includes(employee));
+  return rows.sort((a, b) => b.createdAt - a.createdAt).map(mapImage);
+}
+
+async function addImage(store: 'banners' | 'profilePics', asset: ImageAsset, file?: Blob): Promise<void> {
+  const db = await getDb();
+  const record: ImageRecord = {
+    id: asset.id,
+    caption: asset.caption,
+    employees: asset.employees,
+    allEmployees: asset.allEmployees,
+    createdAt: asset.createdAt,
+  };
+  if (file) record.blob = file;
+  else record.url = asset.url;
+  await db.put(store, record);
+}
+
+export const getBanners = (employee?: string) => getImages('banners', employee);
+export const addBanner = (asset: ImageAsset, file?: Blob) => addImage('banners', asset, file);
+export async function deleteBanner(id: string): Promise<void> {
+  const db = await getDb();
+  await db.delete('banners', id);
+}
+
+export const getProfilePics = (employee?: string) => getImages('profilePics', employee);
+export const addProfilePic = (asset: ImageAsset, file?: Blob) => addImage('profilePics', asset, file);
+export async function deleteProfilePic(id: string): Promise<void> {
+  const db = await getDb();
+  await db.delete('profilePics', id);
+}
+
+export async function getPosts(employee?: string): Promise<BskyPost[]> {
+  const db = await getDb();
+  let rows = await db.getAll('posts');
+  if (employee !== undefined) rows = rows.filter((p) => p.allEmployees || p.employees.includes(employee));
+  return rows
+    .sort((a, b) => b.createdAt - a.createdAt)
+    .map((r) => ({
+      id: r.id,
+      text: r.text,
+      imageUrl: r.blob ? URL.createObjectURL(r.blob) : r.imageUrl,
+      employees: r.employees,
+      allEmployees: r.allEmployees,
+      scheduledAt: r.scheduledAt,
+      createdAt: r.createdAt,
+    }));
+}
+
+export async function addPost(post: BskyPost, file?: Blob): Promise<void> {
+  const db = await getDb();
+  const record: PostRecord = {
+    id: post.id,
+    text: post.text,
+    employees: post.employees,
+    allEmployees: post.allEmployees,
+    scheduledAt: post.scheduledAt,
+    createdAt: post.createdAt,
+  };
+  if (file) record.blob = file;
+  else record.imageUrl = post.imageUrl;
+  await db.put('posts', record);
+}
+
+export async function deletePost(id: string): Promise<void> {
+  const db = await getDb();
+  await db.delete('posts', id);
+}
+
+export async function getBskyAccounts(employee?: string): Promise<BskyAccount[]> {
+  const db = await getDb();
+  let rows = await db.getAll('accounts');
+  if (employee !== undefined) rows = rows.filter((a) => a.allEmployees || a.employees.includes(employee));
+  return rows.sort((a, b) => a.createdAt - b.createdAt);
+}
+
+export async function addBskyAccount(account: BskyAccount): Promise<void> {
+  const db = await getDb();
+  await db.put('accounts', account);
+}
+
+export async function deleteBskyAccount(id: string): Promise<void> {
+  const db = await getDb();
+  await db.delete('accounts', id);
+}

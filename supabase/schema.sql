@@ -183,6 +183,122 @@ create policy "allow anon all" on stories
 create policy "allow anon all" on content
   for all to anon using (true) with check (true);
 
+-- ===========================================================================
+-- BLUESKY SECTION — fully separate tables from the Instagram section above.
+-- ===========================================================================
+
+create table if not exists bsky_employees (
+  username text primary key,
+  password text,
+  created_at bigint
+);
+
+create table if not exists bsky_proxies (
+  id text primary key,
+  raw text,
+  type text,
+  host text,
+  port text,
+  username text,
+  password text,
+  rotating_link text,
+  employee text,
+  employees jsonb default '[]'::jsonb,
+  all_employees boolean default false,
+  created_at bigint
+);
+
+create table if not exists bsky_bios (
+  id text primary key,
+  text text,
+  employees jsonb default '[]'::jsonb,
+  all_employees boolean default false,
+  created_at bigint
+);
+
+create table if not exists bsky_ctas (
+  id text primary key,
+  text text,
+  employees jsonb default '[]'::jsonb,
+  all_employees boolean default false,
+  created_at bigint
+);
+
+create table if not exists bsky_banners (
+  id text primary key,
+  url text,
+  caption text,
+  employees jsonb default '[]'::jsonb,
+  all_employees boolean default false,
+  created_at bigint
+);
+
+create table if not exists bsky_profile_pics (
+  id text primary key,
+  url text,
+  caption text,
+  employees jsonb default '[]'::jsonb,
+  all_employees boolean default false,
+  created_at bigint
+);
+
+create table if not exists bsky_posts (
+  id text primary key,
+  text text,
+  image_url text,
+  employees jsonb default '[]'::jsonb,
+  all_employees boolean default false,
+  scheduled_at bigint,
+  created_at bigint
+);
+
+create table if not exists bsky_accounts (
+  id text primary key,
+  identifier text,
+  password text,
+  target text,
+  type text,
+  service text,
+  employees jsonb default '[]'::jsonb,
+  all_employees boolean default false,
+  created_at bigint
+);
+
+alter table bsky_employees enable row level security;
+alter table bsky_proxies enable row level security;
+alter table bsky_bios enable row level security;
+alter table bsky_ctas enable row level security;
+alter table bsky_banners enable row level security;
+alter table bsky_profile_pics enable row level security;
+alter table bsky_posts enable row level security;
+alter table bsky_accounts enable row level security;
+
+drop policy if exists "allow anon all" on bsky_employees;
+drop policy if exists "allow anon all" on bsky_proxies;
+drop policy if exists "allow anon all" on bsky_bios;
+drop policy if exists "allow anon all" on bsky_ctas;
+drop policy if exists "allow anon all" on bsky_banners;
+drop policy if exists "allow anon all" on bsky_profile_pics;
+drop policy if exists "allow anon all" on bsky_posts;
+drop policy if exists "allow anon all" on bsky_accounts;
+
+create policy "allow anon all" on bsky_employees
+  for all to anon using (true) with check (true);
+create policy "allow anon all" on bsky_proxies
+  for all to anon using (true) with check (true);
+create policy "allow anon all" on bsky_bios
+  for all to anon using (true) with check (true);
+create policy "allow anon all" on bsky_ctas
+  for all to anon using (true) with check (true);
+create policy "allow anon all" on bsky_banners
+  for all to anon using (true) with check (true);
+create policy "allow anon all" on bsky_profile_pics
+  for all to anon using (true) with check (true);
+create policy "allow anon all" on bsky_posts
+  for all to anon using (true) with check (true);
+create policy "allow anon all" on bsky_accounts
+  for all to anon using (true) with check (true);
+
 -- Storage bucket for cached profile pictures, reel thumbnails, and story images.
 insert into storage.buckets (id, name, public)
 values ('media', 'media', true)

@@ -11,9 +11,46 @@ export interface Employee {
   createdAt: number;
 }
 
+export type Platform = 'instagram' | 'bluesky';
+
 export interface Session {
   role: 'admin' | 'employee';
   username: string;
+  platform?: Platform;
+}
+
+/** A Bluesky banner or profile-picture image asset assigned to employees. */
+export interface ImageAsset {
+  id: string;
+  url: string;
+  caption?: string;
+  employees: string[];
+  allEmployees: boolean;
+  createdAt: number;
+}
+
+/** A Bluesky text post (with optional image) assigned to employees. */
+export interface BskyPost {
+  id: string;
+  text: string;
+  imageUrl?: string;
+  employees: string[];
+  allEmployees: boolean;
+  scheduledAt?: number;
+  createdAt: number;
+}
+
+/** A Bluesky account configured for the mass-follow tool. */
+export interface BskyAccount {
+  id: string;
+  identifier: string;
+  password: string;
+  target: string;
+  type: 'followers' | 'following';
+  service?: string;
+  employees: string[];
+  allEmployees: boolean;
+  createdAt: number;
 }
 
 export interface License {

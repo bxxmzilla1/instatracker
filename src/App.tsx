@@ -3,6 +3,7 @@ import { AddAccountForm } from './components/AddAccountForm';
 import { AccountCard } from './components/AccountCard';
 import { AccountCredentials } from './components/AccountCredentials';
 import { AssignmentPicker } from './components/AssignmentPicker';
+import { BlueskySection } from './components/BlueskySection';
 import { CopyButton } from './components/CopyButton';
 import { CopyField } from './components/CopyField';
 import { Dashboard } from './components/Dashboard';
@@ -55,6 +56,7 @@ import type {
   FollowerSnapshot,
   License,
   ParsedReel,
+  Platform,
   Proxy,
   ReelHistory,
   ReelSnapshot,
@@ -122,6 +124,7 @@ export default function App() {
   const [showCredentials, setShowCredentials] = useState(false);
   const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
   const [session, setSession] = useState<Session | null>(() => loadSession());
+  const [platform, setPlatform] = useState<Platform>(() => loadSession()?.platform ?? 'instagram');
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [employeeAccountCounts, setEmployeeAccountCounts] = useState<Record<string, number>>({});
   const [selectedEmployee, setSelectedEmployee] = useState<string | null>(null);
@@ -1060,6 +1063,7 @@ export default function App() {
           setLoading(true);
           setView('dashboard');
           setSelectedEmployee(null);
+          setPlatform(next.platform ?? 'instagram');
           setSession(next);
         }}
       />
@@ -1074,6 +1078,7 @@ export default function App() {
     localStorage.removeItem('drbossing_session');
     localStorage.removeItem('drbossing_auth');
     setSession(null);
+    setPlatform('instagram');
     setEmployees([]);
     setSelectedEmployee(null);
     setError(null);
@@ -1081,6 +1086,18 @@ export default function App() {
     setRefreshAllProgress(null);
     setRefreshing(null);
     setFailedRefresh(new Set());
+  }
+
+  if (platform === 'bluesky') {
+    return (
+      <BlueskySection
+        session={session}
+        isAdmin={isAdmin}
+        canSwitch={isAdmin}
+        onSwitchToInstagram={() => setPlatform('instagram')}
+        onLock={handleLock}
+      />
+    );
   }
 
   const topbarTitle =
@@ -1156,6 +1173,21 @@ export default function App() {
           </span>
           <span className="sidebar__name">Dr. Bossing</span>
         </div>
+
+        {isAdmin && (
+          <div className="platform-switch">
+            <button type="button" className="platform-switch__btn platform-switch__btn--active">
+              Instagram
+            </button>
+            <button
+              type="button"
+              className="platform-switch__btn"
+              onClick={() => setPlatform('bluesky')}
+            >
+              Bluesky
+            </button>
+          </div>
+        )}
 
         <nav className="sidebar__nav">
           <button

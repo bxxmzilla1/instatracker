@@ -16,6 +16,7 @@
     "node": ">=18"
   },
   "dependencies": {
+    "@atproto/api": "^0.13.35",
     "@supabase/supabase-js": "^2.108.1",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",

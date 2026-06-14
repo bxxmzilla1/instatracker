@@ -1,0 +1,336 @@
+import { supabase } from '../supabase';
+import { matchesEmployee } from '../assignment';
+import type {
+  Bio,
+  BskyAccount,
+  BskyPost,
+  Cta,
+  Employee,
+  ImageAsset,
+  Proxy,
+} from '../../types';
+
+function client() {
+  if (!supabase) throw new Error('Supabase is not configured.');
+  return supabase;
+}
+
+export async function getEmployees(): Promise<Employee[]> {
+  const { data, error } = await client()
+    .from('bsky_employees')
+    .select('*')
+    .order('created_at', { ascending: true });
+  if (error) throw new Error(error.message);
+  return (data as { username: string; password: string | null; created_at: number | null }[]).map(
+    (row) => ({ username: row.username, password: row.password ?? '', createdAt: row.created_at ?? 0 }),
+  );
+}
+
+export async function addEmployee(employee: Employee): Promise<void> {
+  const { error } = await client()
+    .from('bsky_employees')
+    .upsert({ username: employee.username, password: employee.password, created_at: employee.createdAt });
+  if (error) throw new Error(error.message);
+}
+
+export async function deleteEmployee(username: string): Promise<void> {
+  const { error } = await client().from('bsky_employees').delete().eq('username', username);
+  if (error) throw new Error(error.message);
+}
+
+interface ProxyRow {
+  id: string;
+  raw: string | null;
+  type: string | null;
+  host: string | null;
+  port: string | null;
+  username: string | null;
+  password: string | null;
+  rotating_link: string | null;
+  employee: string | null;
+  employees: unknown;
+  all_employees: boolean | null;
+  created_at: number | null;
+}
+
+function toProxy(row: ProxyRow): Proxy {
+  return {
+    id: row.id,
+    raw: row.raw ?? '',
+    type: row.type ?? 'http',
+    host: row.host ?? '',
+    port: row.port ?? '',
+    username: row.username ?? '',
+    password: row.password ?? '',
+    rotatingLink: row.rotating_link ?? '',
+    employees: Array.isArray(row.employees) ? (row.employees as string[]) : [],
+    allEmployees: row.all_employees ?? false,
+    employee: row.employee ?? undefined,
+    createdAt: row.created_at ?? 0,
+  };
+}
+
+export async function getProxies(employee?: string): Promise<Proxy[]> {
+  const { data, error } = await client()
+    .from('bsky_proxies')
+    .select('*')
+    .order('created_at', { ascending: true });
+  if (error) throw new Error(error.message);
+  let proxies = (data as ProxyRow[]).map(toProxy);
+  if (employee !== undefined) proxies = proxies.filter((p) => matchesEmployee(p, employee));
+  return proxies;
+}
+
+export async function addProxy(proxy: Proxy): Promise<void> {
+  const { error } = await client().from('bsky_proxies').upsert({
+    id: proxy.id,
+    raw: proxy.raw,
+    type: proxy.type,
+    host: proxy.host,
+    port: proxy.port,
+    username: proxy.username,
+    password: proxy.password,
+    rotating_link: proxy.rotatingLink,
+    employee: proxy.employee ?? null,
+    employees: proxy.employees,
+    all_employees: proxy.allEmployees,
+    created_at: proxy.createdAt,
+  });
+  if (error) throw new Error(error.message);
+}
+
+export async function deleteProxy(id: string): Promise<void> {
+  const { error } = await client().from('bsky_proxies').delete().eq('id', id);
+  if (error) throw new Error(error.message);
+}
+
+interface TextRow {
+  id: string;
+  text: string | null;
+  employees: unknown;
+  all_employees: boolean | null;
+  created_at: number | null;
+}
+
+function toText<T extends Bio | Cta>(row: TextRow): T {
+  return {
+    id: row.id,
+    text: row.text ?? '',
+    employees: Array.isArray(row.employees) ? (row.employees as string[]) : [],
+    allEmployees: row.all_employees ?? false,
+    createdAt: row.created_at ?? 0,
+  } as T;
+}
+
+async function getText<T extends Bio | Cta>(table: string, employee?: string): Promise<T[]> {
+  const { data, error } = await client().from(table).select('*').order('created_at', { ascending: true });
+  if (error) throw new Error(error.message);
+  let rows = (data as TextRow[]).map((r) => toText<T>(r));
+  if (employee !== undefined) rows = rows.filter((r) => r.allEmployees || r.employees.includes(employee));
+  return rows;
+}
+
+async function addText(table: string, item: Bio | Cta): Promise<void> {
+  const { error } = await client().from(table).upsert({
+    id: item.id,
+    text: item.text,
+    employees: item.employees,
+    all_employees: item.allEmployees,
+    created_at: item.createdAt,
+  });
+  if (error) throw new Error(error.message);
+}
+
+export const getBios = (employee?: string) => getText<Bio>('bsky_bios', employee);
+export const addBio = (bio: Bio) => addText('bsky_bios', bio);
+export async function deleteBio(id: string): Promise<void> {
+  const { error } = await client().from('bsky_bios').delete().eq('id', id);
+  if (error) throw new Error(error.message);
+}
+
+export const getCtas = (employee?: string) => getText<Cta>('bsky_ctas', employee);
+export const addCta = (cta: Cta) => addText('bsky_ctas', cta);
+export async function deleteCta(id: string): Promise<void> {
+  const { error } = await client().from('bsky_ctas').delete().eq('id', id);
+  if (error) throw new Error(error.message);
+}
+
+interface ImageRow {
+  id: string;
+  url: string | null;
+  caption: string | null;
+  employees: unknown;
+  all_employees: boolean | null;
+  created_at: number | null;
+}
+
+function toImage(row: ImageRow): ImageAsset {
+  return {
+    id: row.id,
+    url: row.url ?? '',
+    caption: row.caption ?? undefined,
+    employees: Array.isArray(row.employees) ? (row.employees as string[]) : [],
+    allEmployees: row.all_employees ?? false,
+    createdAt: row.created_at ?? 0,
+  };
+}
+
+async function uploadMedia(folder: string, id: string, file: Blob): Promise<string> {
+  const db = client();
+  const ext = file.type.includes('png') ? 'png' : file.type.includes('webp') ? 'webp' : 'jpg';
+  const path = `bsky/${folder}/${id}.${ext}`;
+  const { error } = await db.storage.from('media').upload(path, file, {
+    upsert: true,
+    contentType: file.type || 'image/jpeg',
+    cacheControl: '604800',
+  });
+  if (error) throw new Error(error.message);
+  return db.storage.from('media').getPublicUrl(path).data?.publicUrl ?? '';
+}
+
+async function getImages(table: string, employee?: string): Promise<ImageAsset[]> {
+  const { data, error } = await client().from(table).select('*').order('created_at', { ascending: false });
+  if (error) throw new Error(error.message);
+  let rows = (data as ImageRow[]).map(toImage);
+  if (employee !== undefined) rows = rows.filter((r) => r.allEmployees || r.employees.includes(employee));
+  return rows;
+}
+
+async function addImage(table: string, folder: string, asset: ImageAsset, file?: Blob): Promise<void> {
+  let url = asset.url;
+  if (file) url = await uploadMedia(folder, asset.id, file);
+  const { error } = await client().from(table).upsert({
+    id: asset.id,
+    url,
+    caption: asset.caption ?? null,
+    employees: asset.employees,
+    all_employees: asset.allEmployees,
+    created_at: asset.createdAt,
+  });
+  if (error) throw new Error(error.message);
+}
+
+export const getBanners = (employee?: string) => getImages('bsky_banners', employee);
+export const addBanner = (asset: ImageAsset, file?: Blob) => addImage('bsky_banners', 'banners', asset, file);
+export async function deleteBanner(id: string): Promise<void> {
+  const { error } = await client().from('bsky_banners').delete().eq('id', id);
+  if (error) throw new Error(error.message);
+}
+
+export const getProfilePics = (employee?: string) => getImages('bsky_profile_pics', employee);
+export const addProfilePic = (asset: ImageAsset, file?: Blob) =>
+  addImage('bsky_profile_pics', 'profile_pics', asset, file);
+export async function deleteProfilePic(id: string): Promise<void> {
+  const { error } = await client().from('bsky_profile_pics').delete().eq('id', id);
+  if (error) throw new Error(error.message);
+}
+
+interface PostRow {
+  id: string;
+  text: string | null;
+  image_url: string | null;
+  employees: unknown;
+  all_employees: boolean | null;
+  scheduled_at: number | null;
+  created_at: number | null;
+}
+
+function toPost(row: PostRow): BskyPost {
+  return {
+    id: row.id,
+    text: row.text ?? '',
+    imageUrl: row.image_url ?? undefined,
+    employees: Array.isArray(row.employees) ? (row.employees as string[]) : [],
+    allEmployees: row.all_employees ?? false,
+    scheduledAt: row.scheduled_at ?? undefined,
+    createdAt: row.created_at ?? 0,
+  };
+}
+
+export async function getPosts(employee?: string): Promise<BskyPost[]> {
+  const { data, error } = await client()
+    .from('bsky_posts')
+    .select('*')
+    .order('created_at', { ascending: false });
+  if (error) throw new Error(error.message);
+  let rows = (data as PostRow[]).map(toPost);
+  if (employee !== undefined) rows = rows.filter((p) => p.allEmployees || p.employees.includes(employee));
+  return rows;
+}
+
+export async function addPost(post: BskyPost, file?: Blob): Promise<void> {
+  let imageUrl = post.imageUrl;
+  if (file) imageUrl = await uploadMedia('posts', post.id, file);
+  const { error } = await client().from('bsky_posts').upsert({
+    id: post.id,
+    text: post.text,
+    image_url: imageUrl ?? null,
+    employees: post.employees,
+    all_employees: post.allEmployees,
+    scheduled_at: post.scheduledAt ?? null,
+    created_at: post.createdAt,
+  });
+  if (error) throw new Error(error.message);
+}
+
+export async function deletePost(id: string): Promise<void> {
+  const { error } = await client().from('bsky_posts').delete().eq('id', id);
+  if (error) throw new Error(error.message);
+}
+
+interface AccountRow {
+  id: string;
+  identifier: string | null;
+  password: string | null;
+  target: string | null;
+  type: string | null;
+  service: string | null;
+  employees: unknown;
+  all_employees: boolean | null;
+  created_at: number | null;
+}
+
+function toAccount(row: AccountRow): BskyAccount {
+  return {
+    id: row.id,
+    identifier: row.identifier ?? '',
+    password: row.password ?? '',
+    target: row.target ?? '',
+    type: row.type === 'following' ? 'following' : 'followers',
+    service: row.service ?? undefined,
+    employees: Array.isArray(row.employees) ? (row.employees as string[]) : [],
+    allEmployees: row.all_employees ?? false,
+    createdAt: row.created_at ?? 0,
+  };
+}
+
+export async function getBskyAccounts(employee?: string): Promise<BskyAccount[]> {
+  const { data, error } = await client()
+    .from('bsky_accounts')
+    .select('*')
+    .order('created_at', { ascending: true });
+  if (error) throw new Error(error.message);
+  let rows = (data as AccountRow[]).map(toAccount);
+  if (employee !== undefined) rows = rows.filter((a) => a.allEmployees || a.employees.includes(employee));
+  return rows;
+}
+
+export async function addBskyAccount(account: BskyAccount): Promise<void> {
+  const { error } = await client().from('bsky_accounts').upsert({
+    id: account.id,
+    identifier: account.identifier,
+    password: account.password,
+    target: account.target,
+    type: account.type,
+    service: account.service ?? null,
+    employees: account.employees,
+    all_employees: account.allEmployees,
+    created_at: account.createdAt,
+  });
+  if (error) throw new Error(error.message);
+}
+
+export async function deleteBskyAccount(id: string): Promise<void> {
+  const { error } = await client().from('bsky_accounts').delete().eq('id', id);
+  if (error) throw new Error(error.message);
+}
