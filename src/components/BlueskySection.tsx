@@ -77,35 +77,11 @@ interface RunState {
   live: string;
 }
 
-const LS_FOLLOW_SETTINGS = 'drbossing_bsky_follow_settings';
-
-interface FollowSettings {
-  maxFollowers: number;
-  delayMode: 'fixed' | 'random';
-  delayMs: number;
-  delayMin: number;
-  delayMax: number;
-  skipExisting: boolean;
-}
-
-const DEFAULT_FOLLOW_SETTINGS: FollowSettings = {
-  maxFollowers: 1000,
-  delayMode: 'fixed',
-  delayMs: 1500,
-  delayMin: 800,
-  delayMax: 2500,
-  skipExisting: true,
-};
-
-function loadFollowSettings(): FollowSettings {
-  try {
-    const raw = localStorage.getItem(LS_FOLLOW_SETTINGS);
-    if (raw) return { ...DEFAULT_FOLLOW_SETTINGS, ...JSON.parse(raw) };
-  } catch {
-    // ignore
-  }
-  return { ...DEFAULT_FOLLOW_SETTINGS };
-}
+// Default follow settings used when an account doesn't specify its own.
+const DEFAULT_MAX_FOLLOWERS = 1000;
+const DEFAULT_DELAY_MS = 1500;
+const DEFAULT_DELAY_MIN = 800;
+const DEFAULT_DELAY_MAX = 2500;
 
 export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagram, onLock }: Props) {
   const [view, setView] = useState<View>('dashboard');
@@ -170,8 +146,9 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   const [acctDelayMs, setAcctDelayMs] = useState(1500);
   const [acctDelayMin, setAcctDelayMin] = useState(800);
   const [acctDelayMax, setAcctDelayMax] = useState(2500);
+  const [acctMax, setAcctMax] = useState(DEFAULT_MAX_FOLLOWERS);
+  const [acctSkip, setAcctSkip] = useState(true);
 
-  const [followSettings, setFollowSettings] = useState<FollowSettings>(() => loadFollowSettings());
   const [running, setRunning] = useState(false);
   const [runState, setRunState] = useState<Record<string, RunState>>({});
   const cancelRef = useRef<Record<string, boolean>>({});
@@ -415,6 +392,8 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
       password: acctPw.trim(),
       target: acctTarget.trim(),
       type: acctType,
+      maxFollowers: acctMax,
+      skipExisting: acctSkip,
       delayMode: acctDelayMode,
       delayMs: acctDelayMs,
       delayMin: acctDelayMin,
@@ -427,6 +406,8 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     setAcctTarget('');
     setSelectedSavedId('');
     setAcctMode('select');
+    setAcctMax(DEFAULT_MAX_FOLLOWERS);
+    setAcctSkip(true);
     setAcctDelayMode('fixed');
     setAcctDelayMs(1500);
     setAcctDelayMin(800);
@@ -454,18 +435,6 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     setAcctPw('');
   }
 
-  function updateFollowSettings(patch: Partial<FollowSettings>) {
-    setFollowSettings((prev) => {
-      const next = { ...prev, ...patch };
-      try {
-        localStorage.setItem(LS_FOLLOW_SETTINGS, JSON.stringify(next));
-      } catch {
-        // ignore
-      }
-      return next;
-    });
-  }
-
   async function runOne(account: BskyAccount) {
     cancelRef.current[account.id] = false;
     setRunState((p) => ({
@@ -479,12 +448,12 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
         service: account.service,
         target: account.target,
         type: account.type,
-        maxFollowers: followSettings.maxFollowers,
-        delayMode: account.delayMode ?? followSettings.delayMode,
-        delayMs: account.delayMs ?? followSettings.delayMs,
-        delayMin: account.delayMin ?? followSettings.delayMin,
-        delayMax: account.delayMax ?? followSettings.delayMax,
-        skipExisting: followSettings.skipExisting,
+        maxFollowers: account.maxFollowers ?? DEFAULT_MAX_FOLLOWERS,
+        delayMode: account.delayMode ?? 'fixed',
+        delayMs: account.delayMs ?? DEFAULT_DELAY_MS,
+        delayMin: account.delayMin ?? DEFAULT_DELAY_MIN,
+        delayMax: account.delayMax ?? DEFAULT_DELAY_MAX,
+        skipExisting: account.skipExisting ?? true,
       },
       {
         onStatus: (state, text) =>
@@ -1263,89 +1232,6 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
 
             {view === 'follow' && (
               <>
-                <section className="panel">
-                  <div className="panel-head">
-                    <h2>Follow settings</h2>
-                    <div className="topbar__actions">
-                      {running ? (
-                        <button type="button" className="btn btn--danger" onClick={stopAll}>
-                          Stop all
-                        </button>
-                      ) : (
-                        <button type="button" className="btn" onClick={startAll} disabled={accounts.length === 0}>
-                          Start all
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                  <div className="follow-settings">
-                    <label className="cred-field">
-                      <span className="cred-field__label">Max follows per account</span>
-                      <input
-                        type="number"
-                        className="cred-form__input"
-                        value={followSettings.maxFollowers}
-                        min={1}
-                        onChange={(e) => updateFollowSettings({ maxFollowers: Number(e.target.value) })}
-                      />
-                    </label>
-                    <label className="cred-field">
-                      <span className="cred-field__label">Interval mode</span>
-                      <select
-                        className="cred-form__input"
-                        value={followSettings.delayMode}
-                        onChange={(e) => updateFollowSettings({ delayMode: e.target.value as 'fixed' | 'random' })}
-                      >
-                        <option value="fixed">Fixed delay</option>
-                        <option value="random">Random range</option>
-                      </select>
-                    </label>
-                    {followSettings.delayMode === 'fixed' ? (
-                      <label className="cred-field">
-                        <span className="cred-field__label">Delay between follows (ms)</span>
-                        <input
-                          type="number"
-                          className="cred-form__input"
-                          value={followSettings.delayMs}
-                          min={0}
-                          onChange={(e) => updateFollowSettings({ delayMs: Number(e.target.value) })}
-                        />
-                      </label>
-                    ) : (
-                      <>
-                        <label className="cred-field">
-                          <span className="cred-field__label">Min delay (ms)</span>
-                          <input
-                            type="number"
-                            className="cred-form__input"
-                            value={followSettings.delayMin}
-                            min={0}
-                            onChange={(e) => updateFollowSettings({ delayMin: Number(e.target.value) })}
-                          />
-                        </label>
-                        <label className="cred-field">
-                          <span className="cred-field__label">Max delay (ms)</span>
-                          <input
-                            type="number"
-                            className="cred-form__input"
-                            value={followSettings.delayMax}
-                            min={0}
-                            onChange={(e) => updateFollowSettings({ delayMax: Number(e.target.value) })}
-                          />
-                        </label>
-                      </>
-                    )}
-                    <label className="follow-skip">
-                      <input
-                        type="checkbox"
-                        checked={followSettings.skipExisting}
-                        onChange={(e) => updateFollowSettings({ skipExisting: e.target.checked })}
-                      />
-                      Skip people already followed
-                    </label>
-                  </div>
-                </section>
-
                 {isAdmin && (
                   <section className="panel">
                     <div className="panel-head">
@@ -1431,6 +1317,17 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                       />
 
                       <label className="cred-field">
+                        <span className="cred-field__label">Max follows for this account</span>
+                        <input
+                          type="number"
+                          className="cred-form__input"
+                          value={acctMax}
+                          min={1}
+                          onChange={(e) => setAcctMax(Number(e.target.value))}
+                        />
+                      </label>
+
+                      <label className="cred-field">
                         <span className="cred-field__label">Follow interval for this account</span>
                         <select
                           className="cred-form__input"
@@ -1477,6 +1374,15 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                         </div>
                       )}
 
+                      <label className="follow-skip">
+                        <input
+                          type="checkbox"
+                          checked={acctSkip}
+                          onChange={(e) => setAcctSkip(e.target.checked)}
+                        />
+                        Skip people already followed
+                      </label>
+
                       <AssignmentPicker
                         employees={employees}
                         selected={getAssign('acct').set}
@@ -1501,7 +1407,20 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                 )}
 
                 <section className="panel">
-                  <h2>{isAdmin ? `Accounts (${accounts.length})` : 'Your accounts'}</h2>
+                  <div className="panel-head">
+                    <h2>{isAdmin ? `Accounts (${accounts.length})` : 'Your accounts'}</h2>
+                    <div className="topbar__actions">
+                      {running ? (
+                        <button type="button" className="btn btn--danger" onClick={stopAll}>
+                          Stop all
+                        </button>
+                      ) : (
+                        <button type="button" className="btn" onClick={startAll} disabled={accounts.length === 0}>
+                          Start all
+                        </button>
+                      )}
+                    </div>
+                  </div>
                   {accounts.length === 0 ? (
                     <p className="empty-note">No accounts configured yet.</p>
                   ) : (
@@ -1520,8 +1439,8 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                                 <span className="follow-card__target">
                                   ⏱{' '}
                                   {acct.delayMode === 'random'
-                                    ? `${acct.delayMin ?? followSettings.delayMin}–${acct.delayMax ?? followSettings.delayMax}ms`
-                                    : `${acct.delayMs ?? followSettings.delayMs}ms`}
+                                    ? `${acct.delayMin ?? DEFAULT_DELAY_MIN}–${acct.delayMax ?? DEFAULT_DELAY_MAX}ms`
+                                    : `${acct.delayMs ?? DEFAULT_DELAY_MS}ms`}
                                 </span>
                               </div>
                               <div className="row-actions">

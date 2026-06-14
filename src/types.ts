@@ -59,6 +59,8 @@ export interface BskyAccount {
   target: string;
   type: 'followers' | 'following';
   service?: string;
+  maxFollowers?: number;
+  skipExisting?: boolean;
   delayMode?: 'fixed' | 'random';
   delayMs?: number;
   delayMin?: number;
