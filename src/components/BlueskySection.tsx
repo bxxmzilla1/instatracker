@@ -168,6 +168,10 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   const [acctProxyId, setAcctProxyId] = useState('');
 
   const [running, setRunning] = useState(false);
+  // Number of follow jobs currently in flight. Tracked separately from the
+  // "Start all" batch flag so single-account runs keep flushing + show in the
+  // global indicator, and so jobs survive navigating between sidebar sections.
+  const [activeJobs, setActiveJobs] = useState(0);
   const [runState, setRunState] = useState<Record<string, RunState>>({});
   const cancelRef = useRef<Record<string, boolean>>({});
   // Buffers successful follows so they can be flushed to storage once per second
@@ -296,9 +300,10 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     }
   }, []);
 
-  // While jobs run, persist follows every second so totals + graph stay live.
+  // While any job is in flight, persist follows every second so totals + graph
+  // stay live — regardless of which sidebar section is currently shown.
   useEffect(() => {
-    if (!running) return;
+    if (activeJobs === 0) return;
     const id = window.setInterval(() => {
       void flushFollowBuffer();
     }, 1000);
@@ -306,7 +311,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
       window.clearInterval(id);
       void flushFollowBuffer();
     };
-  }, [running, flushFollowBuffer]);
+  }, [activeJobs, flushFollowBuffer]);
 
   async function handleAddEmployee(event: FormEvent) {
     event.preventDefault();
@@ -535,53 +540,58 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
 
   async function runOne(account: BskyAccount) {
     cancelRef.current[account.id] = false;
+    setActiveJobs((n) => n + 1);
     setRunState((p) => ({
       ...p,
       [account.id]: { state: 'auth', text: 'Starting…', done: 0, total: 0, result: null, live: '' },
     }));
-    const res = await runAccountJob(
-      {
-        identifier: account.identifier,
-        password: account.password,
-        service: account.service,
-        target: account.target,
-        type: account.type,
-        proxy: proxyConfigFor(account.proxyId),
-        maxFollowers: account.maxFollowers ?? DEFAULT_MAX_FOLLOWERS,
-        delayMode: account.delayMode ?? 'fixed',
-        delayMs: account.delayMs ?? DEFAULT_DELAY_MS,
-        delayMin: account.delayMin ?? DEFAULT_DELAY_MIN,
-        delayMax: account.delayMax ?? DEFAULT_DELAY_MAX,
-        skipExisting: account.skipExisting ?? true,
-      },
-      {
-        onStatus: (state, text) =>
-          setRunState((p) => ({ ...p, [account.id]: { ...p[account.id], state, text } })),
-        onProgress: (d) => {
-          if (d.status === 'followed') followBufferRef.current.push({ accountId: account.id });
-          setRunState((p) => ({
-            ...p,
-            [account.id]: {
-              ...p[account.id],
-              done: d.done,
-              total: d.total,
-              result: { success: d.success, skipped: d.skipped, failed: d.failed, total: d.total, cancelled: d.cancelled },
-              live: d.status === 'followed' ? `✓ followed @${d.label}` : p[account.id]?.live ?? '',
-            },
-          }));
+    try {
+      const res = await runAccountJob(
+        {
+          identifier: account.identifier,
+          password: account.password,
+          service: account.service,
+          target: account.target,
+          type: account.type,
+          proxy: proxyConfigFor(account.proxyId),
+          maxFollowers: account.maxFollowers ?? DEFAULT_MAX_FOLLOWERS,
+          delayMode: account.delayMode ?? 'fixed',
+          delayMs: account.delayMs ?? DEFAULT_DELAY_MS,
+          delayMin: account.delayMin ?? DEFAULT_DELAY_MIN,
+          delayMax: account.delayMax ?? DEFAULT_DELAY_MAX,
+          skipExisting: account.skipExisting ?? true,
         },
-        shouldCancel: () => cancelRef.current[account.id],
-      },
-    );
-    setRunState((p) => ({
-      ...p,
-      [account.id]: {
-        ...p[account.id],
-        state: res.ok ? (res.result.cancelled ? 'error' : 'done') : 'error',
-        text: res.ok ? (res.result.cancelled ? 'Stopped' : 'Done') : res.error ?? 'Error',
-        result: res.result,
-      },
-    }));
+        {
+          onStatus: (state, text) =>
+            setRunState((p) => ({ ...p, [account.id]: { ...p[account.id], state, text } })),
+          onProgress: (d) => {
+            if (d.status === 'followed') followBufferRef.current.push({ accountId: account.id });
+            setRunState((p) => ({
+              ...p,
+              [account.id]: {
+                ...p[account.id],
+                done: d.done,
+                total: d.total,
+                result: { success: d.success, skipped: d.skipped, failed: d.failed, total: d.total, cancelled: d.cancelled },
+                live: d.status === 'followed' ? `✓ followed @${d.label}` : p[account.id]?.live ?? '',
+              },
+            }));
+          },
+          shouldCancel: () => cancelRef.current[account.id],
+        },
+      );
+      setRunState((p) => ({
+        ...p,
+        [account.id]: {
+          ...p[account.id],
+          state: res.ok ? (res.result.cancelled ? 'error' : 'done') : 'error',
+          text: res.ok ? (res.result.cancelled ? 'Stopped' : 'Done') : res.error ?? 'Error',
+          result: res.result,
+        },
+      }));
+    } finally {
+      setActiveJobs((n) => Math.max(0, n - 1));
+    }
   }
 
   async function startAll() {
@@ -598,6 +608,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   }
 
   function stopAll() {
+    for (const id of Object.keys(runState)) cancelRef.current[id] = true;
     for (const a of accounts) cancelRef.current[a.id] = true;
   }
 
@@ -1121,6 +1132,33 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
         <header className="topbar">
           <h1>{topbarTitle}</h1>
           <div className="topbar__actions">
+            {activeJobs > 0 && (
+              <div className="follow-running" role="status">
+                <span className="follow-running__pulse" aria-hidden />
+                <span className="follow-running__text">
+                  Following · {activeJobs} {activeJobs === 1 ? 'account' : 'accounts'} ·{' '}
+                  {formatCount(
+                    Object.values(runState).reduce((s, r) => s + (r.result?.success ?? 0), 0),
+                  )}{' '}
+                  followed
+                </span>
+                {view !== 'follow' && (
+                  <button
+                    type="button"
+                    className="btn btn--ghost"
+                    onClick={() => {
+                      setSelectedEmployee(null);
+                      setView('follow');
+                    }}
+                  >
+                    View
+                  </button>
+                )}
+                <button type="button" className="btn btn--danger" onClick={stopAll}>
+                  Stop
+                </button>
+              </div>
+            )}
             {view === 'employee' && selectedEmployee && (
               <>
                 <button

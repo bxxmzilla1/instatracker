@@ -2104,6 +2104,45 @@ button:disabled {
   background: #1d4e89;
 }
 
+/* Persistent indicator shown in the topbar while follow jobs run. */
+.follow-running {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.3rem 0.4rem 0.3rem 0.75rem;
+  border-radius: 999px;
+  background: rgba(74, 163, 255, 0.12);
+  border: 1px solid rgba(74, 163, 255, 0.4);
+}
+
+.follow-running__text {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #4aa3ff;
+  white-space: nowrap;
+}
+
+.follow-running__pulse {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #4aa3ff;
+  box-shadow: 0 0 0 0 rgba(74, 163, 255, 0.6);
+  animation: follow-pulse 1.4s ease-out infinite;
+}
+
+@keyframes follow-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(74, 163, 255, 0.55);
+  }
+  70% {
+    box-shadow: 0 0 0 7px rgba(74, 163, 255, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(74, 163, 255, 0);
+  }
+}
+
 .bar-chart__label {
   margin-top: 6px;
   font-size: 0.6rem;
