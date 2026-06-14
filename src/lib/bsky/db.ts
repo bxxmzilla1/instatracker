@@ -32,4 +32,7 @@ export const {
   getSavedAccounts,
   addSavedAccount,
   deleteSavedAccount,
+  getTargets,
+  addTarget,
+  deleteTarget,
 } = impl;

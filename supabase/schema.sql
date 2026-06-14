@@ -285,6 +285,18 @@ create table if not exists bsky_saved_accounts (
   password text,
   notes text,
   owner text,
+  banned boolean,
+  created_at bigint
+);
+
+alter table bsky_saved_accounts add column if not exists banned boolean;
+
+create table if not exists bsky_targets (
+  id text primary key,
+  handle text,
+  notes text,
+  employees jsonb default '[]'::jsonb,
+  all_employees boolean default false,
   created_at bigint
 );
 
@@ -297,6 +309,7 @@ alter table bsky_profile_pics enable row level security;
 alter table bsky_posts enable row level security;
 alter table bsky_accounts enable row level security;
 alter table bsky_saved_accounts enable row level security;
+alter table bsky_targets enable row level security;
 
 drop policy if exists "allow anon all" on bsky_employees;
 drop policy if exists "allow anon all" on bsky_proxies;
@@ -307,6 +320,7 @@ drop policy if exists "allow anon all" on bsky_profile_pics;
 drop policy if exists "allow anon all" on bsky_posts;
 drop policy if exists "allow anon all" on bsky_accounts;
 drop policy if exists "allow anon all" on bsky_saved_accounts;
+drop policy if exists "allow anon all" on bsky_targets;
 
 create policy "allow anon all" on bsky_employees
   for all to anon using (true) with check (true);
@@ -325,6 +339,8 @@ create policy "allow anon all" on bsky_posts
 create policy "allow anon all" on bsky_accounts
   for all to anon using (true) with check (true);
 create policy "allow anon all" on bsky_saved_accounts
+  for all to anon using (true) with check (true);
+create policy "allow anon all" on bsky_targets
   for all to anon using (true) with check (true);
 
 -- Storage bucket for cached profile pictures, reel thumbnails, and story images.

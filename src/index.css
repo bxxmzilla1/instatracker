@@ -259,6 +259,11 @@ code {
   font-size: 0.72rem;
 }
 
+.owner-tag--banned {
+  background: rgba(248, 113, 113, 0.16);
+  color: var(--red);
+}
+
 .banned-tag {
   background: rgba(248, 113, 113, 0.16);
   color: var(--red);

@@ -4,6 +4,7 @@ import type {
   BskyAccount,
   BskyPost,
   BskySavedAccount,
+  BskyTarget,
   Cta,
   Employee,
   ImageAsset,
@@ -20,6 +21,7 @@ import {
   addProfilePic,
   addProxy,
   addSavedAccount,
+  addTarget,
   deleteBanner,
   deleteBio,
   deleteBskyAccount,
@@ -29,6 +31,7 @@ import {
   deleteProfilePic,
   deleteProxy,
   deleteSavedAccount,
+  deleteTarget,
   getBanners,
   getBios,
   getBskyAccounts,
@@ -38,6 +41,7 @@ import {
   getProfilePics,
   getProxies,
   getSavedAccounts,
+  getTargets,
 } from '../lib/bsky/db';
 import { runAccountJob, type JobResult } from '../lib/bsky/client';
 import { AssignmentPicker } from './AssignmentPicker';
@@ -50,6 +54,7 @@ import { formatCount, formatDate } from '../lib/format';
 type View =
   | 'dashboard'
   | 'accounts'
+  | 'targets'
   | 'banner'
   | 'profilepic'
   | 'bio'
@@ -103,6 +108,11 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   const [proxies, setProxies] = useState<Proxy[]>([]);
   const [accounts, setAccounts] = useState<BskyAccount[]>([]);
   const [savedAccounts, setSavedAccounts] = useState<BskySavedAccount[]>([]);
+  const [targets, setTargets] = useState<BskyTarget[]>([]);
+
+  const [newTargetHandle, setNewTargetHandle] = useState('');
+  const [newTargetNotes, setNewTargetNotes] = useState('');
+  const [showAddTarget, setShowAddTarget] = useState(false);
 
   const [newAcctHandle, setNewAcctHandle] = useState('');
   const [newAcctEmail, setNewAcctEmail] = useState('');
@@ -190,7 +200,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   }
 
   const loadAll = useCallback(async () => {
-    const [bn, pp, bi, ct, po, px, ac, sa] = await Promise.all([
+    const [bn, pp, bi, ct, po, px, ac, sa, tg] = await Promise.all([
       getBanners(ownerFilter),
       getProfilePics(ownerFilter),
       getBios(ownerFilter),
@@ -199,6 +209,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
       getProxies(ownerFilter),
       getBskyAccounts(ownerFilter),
       getSavedAccounts(ownerFilter),
+      getTargets(ownerFilter),
     ]);
     setBanners(bn);
     setProfilePics(pp);
@@ -208,6 +219,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     setProxies(px);
     setAccounts(ac);
     setSavedAccounts(sa);
+    setTargets(tg);
   }, [ownerFilter]);
 
   useEffect(() => {
@@ -541,6 +553,41 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     await loadAll();
   }
 
+  async function toggleSavedAccountBanned(acct: BskySavedAccount) {
+    await addSavedAccount({ ...acct, banned: !acct.banned });
+    await loadAll();
+  }
+
+  async function submitTarget(e: FormEvent) {
+    e.preventDefault();
+    if (!newTargetHandle.trim()) return;
+    if (isAdmin && !assignValid('target')) return;
+    const ownership = isAdmin
+      ? assignPayload('target')
+      : { employees: [session.username], allEmployees: false };
+    try {
+      await addTarget({
+        id: crypto.randomUUID(),
+        handle: newTargetHandle.trim().replace(/^@/, ''),
+        notes: newTargetNotes.trim() || undefined,
+        createdAt: Date.now(),
+        ...ownership,
+      });
+      setNewTargetHandle('');
+      setNewTargetNotes('');
+      resetAssign('target');
+      setShowAddTarget(false);
+      await loadAll();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save target profile.');
+    }
+  }
+
+  async function handleDeleteTarget(id: string) {
+    await deleteTarget(id);
+    await loadAll();
+  }
+
   const navItems: { id: View; label: string; icon: ReactNode }[] = [
     {
       id: 'dashboard',
@@ -563,6 +610,17 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
           <path d="M3.5 19c0-3 2.7-5 5.5-5s5.5 2 5.5 5" />
           <path d="M16 5.2a3 3 0 0 1 0 5.6" />
           <path d="M18 14c2.2.4 3.8 2.2 3.8 4.6" />
+        </svg>
+      ),
+    },
+    {
+      id: 'targets',
+      label: 'Target Profiles',
+      icon: (
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
+          <circle cx="12" cy="12" r="8.5" />
+          <circle cx="12" cy="12" r="4.5" />
+          <circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" />
         </svg>
       ),
     },
@@ -642,6 +700,8 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
       ? 'Dashboard'
       : view === 'accounts'
       ? 'Accounts'
+      : view === 'targets'
+      ? 'Target Profiles'
       : view === 'banner'
         ? 'Banner'
         : view === 'profilepic'
@@ -832,16 +892,13 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     </>
   );
 
+  const bannedCount = savedAccounts.filter((a) => a.banned).length;
   const dashboardCards = [
     { label: 'Employees', value: employees.length, show: isAdmin },
     { label: 'Accounts', value: savedAccounts.length, show: true },
-    { label: 'Follow Accounts', value: accounts.length, show: true },
-    { label: 'Posts', value: posts.length, show: true },
-    { label: 'Banners', value: banners.length, show: true },
-    { label: 'Profile Pictures', value: profilePics.length, show: true },
-    { label: 'Bios', value: bios.length, show: true },
-    { label: 'CTAs', value: ctas.length, show: true },
-    { label: 'Proxies', value: proxies.length, show: true },
+    { label: 'Target Profiles', value: targets.length, show: true },
+    { label: 'Follows', value: accounts.length, show: true },
+    { label: 'Banned Accounts', value: bannedCount, show: true },
   ].filter((c) => c.show);
 
   return (
@@ -1037,6 +1094,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                         <div className="proxy-row__body">
                           <div className="proxy-row__top">
                             <strong>@{acct.handle}</strong>
+                            {acct.banned && <span className="owner-tag owner-tag--banned">Banned</span>}
                             {isAdmin && acct.owner && acct.owner !== 'admin' && (
                               <span className="owner-tag">Added by {acct.owner}</span>
                             )}
@@ -1051,12 +1109,105 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                         <div className="row-actions">
                           <button
                             type="button"
+                            className="row-edit"
+                            onClick={() => toggleSavedAccountBanned(acct)}
+                            title={acct.banned ? 'Mark as active' : 'Mark as banned'}
+                          >
+                            {acct.banned ? '↩' : '⊘'}
+                          </button>
+                          <button
+                            type="button"
                             className="license-row__delete"
                             onClick={() => handleDeleteSavedAccount(acct.id)}
                             title="Delete account"
                           >
                             ✕
                           </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+            )}
+
+            {view === 'targets' && (
+              <section className="panel">
+                <div className="panel-head">
+                  <h2>
+                    {isAdmin ? `Target Profiles (${targets.length})` : `Your target profiles (${targets.length})`}
+                  </h2>
+                  <button type="button" className="btn" onClick={() => setShowAddTarget((v) => !v)}>
+                    {showAddTarget ? 'Cancel' : '+ Add target'}
+                  </button>
+                </div>
+
+                {showAddTarget && (
+                  <form className="bio-form" onSubmit={submitTarget}>
+                    <input
+                      className="cred-form__input"
+                      placeholder="Target profile (handle or bsky.app/profile/…)"
+                      value={newTargetHandle}
+                      onChange={(e) => setNewTargetHandle(e.target.value)}
+                      autoComplete="off"
+                      spellCheck={false}
+                    />
+                    <textarea
+                      className="bio-form__textarea"
+                      placeholder="Notes (optional)"
+                      value={newTargetNotes}
+                      onChange={(e) => setNewTargetNotes(e.target.value)}
+                      rows={2}
+                    />
+                    {isAdmin && (
+                      <AssignmentPicker
+                        employees={employees}
+                        selected={getAssign('target').set}
+                        all={getAssign('target').all}
+                        onToggle={(u) => toggleAssign('target', u)}
+                        onAllChange={(a) => setAssignAll('target', a)}
+                        adminOption
+                      />
+                    )}
+                    <button
+                      type="submit"
+                      disabled={!newTargetHandle.trim() || (isAdmin && !assignValid('target'))}
+                    >
+                      Add target profile
+                    </button>
+                  </form>
+                )}
+
+                {targets.length === 0 ? (
+                  <p className="empty-note">
+                    No target profiles saved yet. Use “Add target” to save one
+                    {isAdmin ? ' and assign it to employees.' : '.'}
+                  </p>
+                ) : (
+                  <div className="proxy-list">
+                    {targets.map((t) => (
+                      <div key={t.id} className="proxy-row">
+                        <div className="proxy-row__body">
+                          <div className="proxy-row__top">
+                            <strong>@{t.handle}</strong>
+                            {isAdmin && <div className="bio-row__assign">{renderAssignTags(t)}</div>}
+                          </div>
+                          <div className="proxy-row__fields">
+                            <CopyField label="Target" value={t.handle} />
+                          </div>
+                          {t.notes && <p className="bio-row__text">{t.notes}</p>}
+                        </div>
+                        <div className="row-actions">
+                          {(isAdmin || t.employees.includes(session.username)) && (
+                            <button
+                              type="button"
+                              className="license-row__delete"
+                              onClick={() => handleDeleteTarget(t.id)}
+                              title="Delete target profile"
+                            >
+                              ✕
+                            </button>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -1311,6 +1462,24 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                             autoComplete="off"
                           />
                         </>
+                      )}
+
+                      {targets.length > 0 && (
+                        <label className="cred-field">
+                          <span className="cred-field__label">Saved target profile</span>
+                          <select
+                            className="cred-form__input"
+                            value={targets.some((t) => t.handle === acctTarget) ? acctTarget : ''}
+                            onChange={(e) => setAcctTarget(e.target.value)}
+                          >
+                            <option value="">Choose a saved target…</option>
+                            {targets.map((t) => (
+                              <option key={t.id} value={t.handle}>
+                                @{t.handle}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
                       )}
 
                       <input

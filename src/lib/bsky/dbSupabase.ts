@@ -5,6 +5,7 @@ import type {
   BskyAccount,
   BskyPost,
   BskySavedAccount,
+  BskyTarget,
   Cta,
   Employee,
   ImageAsset,
@@ -361,6 +362,7 @@ interface SavedAccountRow {
   password: string | null;
   notes: string | null;
   owner: string | null;
+  banned: boolean | null;
   created_at: number | null;
 }
 
@@ -372,6 +374,7 @@ function toSavedAccount(row: SavedAccountRow): BskySavedAccount {
     password: row.password ?? undefined,
     notes: row.notes ?? undefined,
     owner: row.owner ?? undefined,
+    banned: row.banned ?? undefined,
     createdAt: row.created_at ?? 0,
   };
 }
@@ -396,6 +399,7 @@ export async function addSavedAccount(account: BskySavedAccount): Promise<void> 
     password: account.password ?? null,
     notes: account.notes ?? null,
     owner: account.owner ?? null,
+    banned: account.banned ?? null,
     created_at: account.createdAt,
   });
   if (error) throw new Error(error.message);
@@ -403,5 +407,53 @@ export async function addSavedAccount(account: BskySavedAccount): Promise<void> 
 
 export async function deleteSavedAccount(id: string): Promise<void> {
   const { error } = await client().from('bsky_saved_accounts').delete().eq('id', id);
+  if (error) throw new Error(error.message);
+}
+
+interface TargetRow {
+  id: string;
+  handle: string | null;
+  notes: string | null;
+  employees: unknown;
+  all_employees: boolean | null;
+  created_at: number | null;
+}
+
+function toTarget(row: TargetRow): BskyTarget {
+  return {
+    id: row.id,
+    handle: row.handle ?? '',
+    notes: row.notes ?? undefined,
+    employees: Array.isArray(row.employees) ? (row.employees as string[]) : [],
+    allEmployees: row.all_employees ?? false,
+    createdAt: row.created_at ?? 0,
+  };
+}
+
+export async function getTargets(employee?: string): Promise<BskyTarget[]> {
+  const { data, error } = await client()
+    .from('bsky_targets')
+    .select('*')
+    .order('created_at', { ascending: false });
+  if (error) throw new Error(error.message);
+  let rows = (data as TargetRow[]).map(toTarget);
+  if (employee !== undefined) rows = rows.filter((t) => t.allEmployees || t.employees.includes(employee));
+  return rows;
+}
+
+export async function addTarget(target: BskyTarget): Promise<void> {
+  const { error } = await client().from('bsky_targets').upsert({
+    id: target.id,
+    handle: target.handle,
+    notes: target.notes ?? null,
+    employees: target.employees,
+    all_employees: target.allEmployees,
+    created_at: target.createdAt,
+  });
+  if (error) throw new Error(error.message);
+}
+
+export async function deleteTarget(id: string): Promise<void> {
+  const { error } = await client().from('bsky_targets').delete().eq('id', id);
   if (error) throw new Error(error.message);
 }

@@ -5,6 +5,7 @@ import type {
   BskyAccount,
   BskyPost,
   BskySavedAccount,
+  BskyTarget,
   Cta,
   Employee,
   ImageAsset,
@@ -24,13 +25,14 @@ interface BskyDB extends DBSchema {
   posts: { key: string; value: PostRecord };
   accounts: { key: string; value: BskyAccount };
   savedAccounts: { key: string; value: BskySavedAccount };
+  targets: { key: string; value: BskyTarget };
 }
 
 let dbPromise: Promise<IDBPDatabase<BskyDB>> | null = null;
 
 function getDb() {
   if (!dbPromise) {
-    dbPromise = openDB<BskyDB>('drbossing-bsky-v1', 2, {
+    dbPromise = openDB<BskyDB>('drbossing-bsky-v1', 3, {
       upgrade(db) {
         for (const store of [
           'employees',
@@ -42,6 +44,7 @@ function getDb() {
           'posts',
           'accounts',
           'savedAccounts',
+          'targets',
         ] as const) {
           if (!db.objectStoreNames.contains(store)) {
             db.createObjectStore(store, {
@@ -238,4 +241,21 @@ export async function addSavedAccount(account: BskySavedAccount): Promise<void> 
 export async function deleteSavedAccount(id: string): Promise<void> {
   const db = await getDb();
   await db.delete('savedAccounts', id);
+}
+
+export async function getTargets(employee?: string): Promise<BskyTarget[]> {
+  const db = await getDb();
+  let rows = await db.getAll('targets');
+  if (employee !== undefined) rows = rows.filter((t) => t.allEmployees || t.employees.includes(employee));
+  return rows.sort((a, b) => b.createdAt - a.createdAt);
+}
+
+export async function addTarget(target: BskyTarget): Promise<void> {
+  const db = await getDb();
+  await db.put('targets', target);
+}
+
+export async function deleteTarget(id: string): Promise<void> {
+  const db = await getDb();
+  await db.delete('targets', id);
 }

@@ -48,6 +48,17 @@ export interface BskySavedAccount {
   password?: string;
   notes?: string;
   owner?: string;
+  banned?: boolean;
+  createdAt: number;
+}
+
+/** A saved target profile to mass-follow, assignable to employees. */
+export interface BskyTarget {
+  id: string;
+  handle: string;
+  notes?: string;
+  employees: string[];
+  allEmployees: boolean;
   createdAt: number;
 }
 
