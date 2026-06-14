@@ -287,6 +287,7 @@ interface AccountRow {
   target: string | null;
   type: string | null;
   service: string | null;
+  proxy_id: string | null;
   max_followers: number | null;
   skip_existing: boolean | null;
   delay_mode: string | null;
@@ -306,6 +307,7 @@ function toAccount(row: AccountRow): BskyAccount {
     target: row.target ?? '',
     type: row.type === 'following' ? 'following' : 'followers',
     service: row.service ?? undefined,
+    proxyId: row.proxy_id ?? undefined,
     maxFollowers: row.max_followers ?? undefined,
     skipExisting: row.skip_existing ?? undefined,
     delayMode: row.delay_mode === 'random' ? 'random' : row.delay_mode === 'fixed' ? 'fixed' : undefined,
@@ -337,6 +339,7 @@ export async function addBskyAccount(account: BskyAccount): Promise<void> {
     target: account.target,
     type: account.type,
     service: account.service ?? null,
+    proxy_id: account.proxyId ?? null,
     max_followers: account.maxFollowers ?? null,
     skip_existing: account.skipExisting ?? null,
     delay_mode: account.delayMode ?? null,

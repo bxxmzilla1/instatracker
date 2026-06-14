@@ -10,6 +10,7 @@ import {
   hasValidApiKey,
 } from './instagram.js';
 import { fetchImage } from './image.js';
+import { relayThroughProxy } from './bskyProxy.js';
 
 dotenv.config();
 
@@ -69,6 +70,15 @@ app.post('/api/stories', async (req, res) => {
     res.json(data);
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/bsky-proxy', async (req, res) => {
+  try {
+    const data = await relayThroughProxy(req.body ?? {});
+    res.status(200).json(data);
+  } catch (err) {
+    res.status(502).json({ error: err.message });
   }
 });
 

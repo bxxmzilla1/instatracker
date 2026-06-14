@@ -70,6 +70,7 @@ export interface BskyAccount {
   target: string;
   type: 'followers' | 'following';
   service?: string;
+  proxyId?: string;
   maxFollowers?: number;
   skipExisting?: boolean;
   delayMode?: 'fixed' | 'random';

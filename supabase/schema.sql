@@ -259,6 +259,7 @@ create table if not exists bsky_accounts (
   target text,
   type text,
   service text,
+  proxy_id text,
   max_followers bigint,
   skip_existing boolean,
   delay_mode text,
@@ -270,6 +271,7 @@ create table if not exists bsky_accounts (
   created_at bigint
 );
 
+alter table bsky_accounts add column if not exists proxy_id text;
 alter table bsky_accounts add column if not exists max_followers bigint;
 alter table bsky_accounts add column if not exists skip_existing boolean;
 alter table bsky_accounts add column if not exists delay_mode text;

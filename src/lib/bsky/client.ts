@@ -3,8 +3,62 @@ import { AtpAgent } from '@atproto/api';
 // Browser-side AT Protocol client. Bluesky's XRPC endpoints support CORS, so
 // every job runs directly from the browser with its own AtpAgent + session,
 // keeping accounts fully isolated and parallel (rate limits are per-account).
+//
+// When an account has a proxy assigned, requests are routed through a small
+// server-side relay (/api/bsky-proxy) that tunnels the HTTPS call through the
+// proxy — browsers can't apply per-request proxies to fetch directly.
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+export interface ProxyConfig {
+  type: string;
+  host: string;
+  port: string;
+  user?: string;
+  pass?: string;
+}
+
+async function bodyToString(body: BodyInit | null | undefined): Promise<string | null> {
+  if (body == null) return null;
+  if (typeof body === 'string') return body;
+  if (body instanceof Uint8Array) return new TextDecoder().decode(body);
+  if (body instanceof ArrayBuffer) return new TextDecoder().decode(new Uint8Array(body));
+  if (body instanceof Blob) return await body.text();
+  return String(body);
+}
+
+// Returns a WHATWG fetch that relays every request through the given proxy.
+function makeProxyFetch(proxy: ProxyConfig): typeof fetch {
+  return async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const url =
+      typeof input === 'string'
+        ? input
+        : input instanceof URL
+          ? input.toString()
+          : (input as Request).url;
+    const method =
+      init?.method ||
+      (typeof input !== 'string' && !(input instanceof URL) ? (input as Request).method : 'GET') ||
+      'GET';
+    const headers: Record<string, string> = {};
+    new Headers(init?.headers).forEach((v, k) => {
+      headers[k] = v;
+    });
+    const body = await bodyToString(init?.body);
+
+    const relay = await fetch('/api/bsky-proxy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url, method, headers, body, proxy }),
+    });
+    if (!relay.ok) {
+      const e = (await relay.json().catch(() => ({}))) as { error?: string };
+      throw new Error(e.error || `Proxy relay failed (${relay.status})`);
+    }
+    const data = (await relay.json()) as { status: number; headers: Record<string, string>; body: string };
+    return new Response(data.body, { status: data.status, headers: data.headers });
+  };
+}
 
 export function parseError(err: unknown): string {
   if (!err) return 'Unknown error';
@@ -73,6 +127,7 @@ export interface JobConfig {
   service?: string;
   target: string;
   type?: 'followers' | 'following';
+  proxy?: ProxyConfig;
   maxFollowers?: number;
   delayMode?: 'fixed' | 'random';
   delayMs?: number;
@@ -112,6 +167,7 @@ export async function runAccountJob(
     service,
     target,
     type = 'followers',
+    proxy,
     maxFollowers,
     delayMode = 'fixed',
     delayMs,
@@ -129,8 +185,11 @@ export async function runAccountJob(
     if (!identifier || !password) throw new Error('Missing handle/email or app password.');
     if (!target) throw new Error('Missing target profile.');
 
-    onStatus('auth', 'Signing in…');
-    const agent = new AtpAgent({ service: (service && service.trim()) || 'https://bsky.social' });
+    onStatus('auth', proxy ? 'Signing in (via proxy)…' : 'Signing in…');
+    const agent = new AtpAgent({
+      service: (service && service.trim()) || 'https://bsky.social',
+      ...(proxy ? { fetch: makeProxyFetch(proxy) } : {}),
+    });
     await agent.login({ identifier: identifier.trim(), password: password.trim() });
 
     if (shouldCancel()) {

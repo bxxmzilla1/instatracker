@@ -43,7 +43,7 @@ import {
   getSavedAccounts,
   getTargets,
 } from '../lib/bsky/db';
-import { runAccountJob, type JobResult } from '../lib/bsky/client';
+import { runAccountJob, type JobResult, type ProxyConfig } from '../lib/bsky/client';
 import { AssignmentPicker } from './AssignmentPicker';
 import { CopyButton } from './CopyButton';
 import { CopyField } from './CopyField';
@@ -159,6 +159,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   const [acctDelayMax, setAcctDelayMax] = useState(2500);
   const [acctMax, setAcctMax] = useState(DEFAULT_MAX_FOLLOWERS);
   const [acctSkip, setAcctSkip] = useState(true);
+  const [acctProxyId, setAcctProxyId] = useState('');
 
   const [running, setRunning] = useState(false);
   const [runState, setRunState] = useState<Record<string, RunState>>({});
@@ -411,6 +412,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
       password: acctPw.trim(),
       target: acctTarget.trim(),
       type: acctType,
+      proxyId: acctProxyId || undefined,
       maxFollowers: acctMax,
       skipExisting: acctSkip,
       delayMode: acctDelayMode,
@@ -427,6 +429,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     setAcctMode('select');
     setAcctMax(DEFAULT_MAX_FOLLOWERS);
     setAcctSkip(true);
+    setAcctProxyId('');
     setAcctDelayMode('fixed');
     setAcctDelayMs(1500);
     setAcctDelayMin(800);
@@ -454,6 +457,37 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     setAcctPw('');
   }
 
+  function proxyLabel(p: Proxy) {
+    if (p.host && p.port) return `${p.type || 'http'} · ${p.host}:${p.port}`;
+    return p.raw || p.rotatingLink || p.id;
+  }
+
+  function proxyConfigFor(id?: string): ProxyConfig | undefined {
+    if (!id) return undefined;
+    const p = proxies.find((x) => x.id === id);
+    if (!p) return undefined;
+    if (p.host && p.port) {
+      return {
+        type: p.type || 'http',
+        host: p.host,
+        port: p.port,
+        user: p.username || undefined,
+        pass: p.password || undefined,
+      };
+    }
+    const parsed = parseProxyString(p.raw || '');
+    if (parsed) {
+      return {
+        type: parsed.type,
+        host: parsed.host,
+        port: parsed.port,
+        user: parsed.user || undefined,
+        pass: parsed.pass || undefined,
+      };
+    }
+    return undefined;
+  }
+
   async function runOne(account: BskyAccount) {
     cancelRef.current[account.id] = false;
     setRunState((p) => ({
@@ -467,6 +501,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
         service: account.service,
         target: account.target,
         type: account.type,
+        proxy: proxyConfigFor(account.proxyId),
         maxFollowers: account.maxFollowers ?? DEFAULT_MAX_FOLLOWERS,
         delayMode: account.delayMode ?? 'fixed',
         delayMs: account.delayMs ?? DEFAULT_DELAY_MS,
@@ -1567,6 +1602,22 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                         </div>
                       )}
 
+                      <label className="cred-field">
+                        <span className="cred-field__label">Proxy for this account</span>
+                        <select
+                          className="cred-form__input"
+                          value={acctProxyId}
+                          onChange={(e) => setAcctProxyId(e.target.value)}
+                        >
+                          <option value="">No proxy (direct)</option>
+                          {proxies.map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {proxyLabel(p)}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+
                       <label className="follow-skip">
                         <input
                           type="checkbox"
@@ -1636,6 +1687,11 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                                     ? `${acct.delayMin ?? DEFAULT_DELAY_MIN}–${acct.delayMax ?? DEFAULT_DELAY_MAX}ms`
                                     : `${acct.delayMs ?? DEFAULT_DELAY_MS}ms`}
                                 </span>
+                                {acct.proxyId && (
+                                  <span className="follow-card__target">
+                                    🌐 {proxies.find((p) => p.id === acct.proxyId) ? proxyLabel(proxies.find((p) => p.id === acct.proxyId)!) : 'proxy'}
+                                  </span>
+                                )}
                               </div>
                               <div className="row-actions">
                                 {isAdmin && <div className="bio-row__assign">{renderAssignTags(acct)}</div>}
