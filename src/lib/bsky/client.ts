@@ -18,38 +18,25 @@ export interface ProxyConfig {
   pass?: string;
 }
 
-async function bodyToString(body: BodyInit | null | undefined): Promise<string | null> {
-  if (body == null) return null;
-  if (typeof body === 'string') return body;
-  if (body instanceof Uint8Array) return new TextDecoder().decode(body);
-  if (body instanceof ArrayBuffer) return new TextDecoder().decode(new Uint8Array(body));
-  if (body instanceof Blob) return await body.text();
-  return String(body);
-}
-
 // Returns a WHATWG fetch that relays every request through the given proxy.
+// The AT Protocol client invokes fetch with a `Request` object (carrying the
+// `authorization` header) and no separate init, so we normalize through a
+// Request to capture the method, headers, and body regardless of call shape.
 function makeProxyFetch(proxy: ProxyConfig): typeof fetch {
   return async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-    const url =
-      typeof input === 'string'
-        ? input
-        : input instanceof URL
-          ? input.toString()
-          : (input as Request).url;
-    const method =
-      init?.method ||
-      (typeof input !== 'string' && !(input instanceof URL) ? (input as Request).method : 'GET') ||
-      'GET';
+    const req = new Request(input as RequestInfo, init);
+    const url = req.url;
+    const method = req.method || 'GET';
     const headers: Record<string, string> = {};
-    new Headers(init?.headers).forEach((v, k) => {
+    req.headers.forEach((v, k) => {
       headers[k] = v;
     });
-    const body = await bodyToString(init?.body);
+    const body = method === 'GET' || method === 'HEAD' ? null : await req.text();
 
     const relay = await fetch('/api/bsky-proxy', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url, method, headers, body, proxy }),
+      body: JSON.stringify({ url, method, headers, body: body || null, proxy }),
     });
     if (!relay.ok) {
       const e = (await relay.json().catch(() => ({}))) as { error?: string };
