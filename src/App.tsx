@@ -108,13 +108,22 @@ export default function App() {
   const [failedRefresh, setFailedRefresh] = useState<Set<string>>(() => new Set());
   const [accountSearch, setAccountSearch] = useState('');
   const [view, setView] = useState<
-    'dashboard' | 'accounts' | 'employee' | 'license' | 'proxy' | 'bio' | 'cta' | 'story' | 'content'
+    | 'dashboard'
+    | 'accounts'
+    | 'employees'
+    | 'employee'
+    | 'license'
+    | 'proxy'
+    | 'bio'
+    | 'cta'
+    | 'story'
+    | 'content'
   >('dashboard');
   const [showCredentials, setShowCredentials] = useState(false);
   const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
   const [session, setSession] = useState<Session | null>(() => loadSession());
   const [employees, setEmployees] = useState<Employee[]>([]);
-  const [employeesOpen, setEmployeesOpen] = useState(true);
+  const [employeeAccountCounts, setEmployeeAccountCounts] = useState<Record<string, number>>({});
   const [selectedEmployee, setSelectedEmployee] = useState<string | null>(null);
   const [showAddEmployee, setShowAddEmployee] = useState(false);
   const [newEmpUsername, setNewEmpUsername] = useState('');
@@ -271,7 +280,14 @@ export default function App() {
         await loadStories();
         await loadContent();
         if (session?.role === 'admin') {
-          setEmployees(await getEmployees());
+          const [emps, allAccts] = await Promise.all([getEmployees(), getAccounts()]);
+          setEmployees(emps);
+          const counts: Record<string, number> = {};
+          for (const a of allAccts) {
+            const owner = a.owner ?? 'admin';
+            counts[owner] = (counts[owner] ?? 0) + 1;
+          }
+          setEmployeeAccountCounts(counts);
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to initialize');
@@ -1070,7 +1086,9 @@ export default function App() {
   const topbarTitle =
     view === 'dashboard'
       ? 'Dashboard'
-      : view === 'employee'
+      : view === 'employees'
+        ? 'Employees'
+        : view === 'employee'
         ? `Employee · ${selectedEmployee ?? ''}`
         : view === 'license'
           ? 'Blaze License'
@@ -1261,53 +1279,26 @@ export default function App() {
           </button>
 
           {isAdmin && (
-            <div className="sidebar__group">
-              <button
-                type="button"
-                className="nav-item"
-                onClick={() => setEmployeesOpen((v) => !v)}
-              >
-                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
-                  <circle cx="9" cy="8" r="3.2" />
-                  <path d="M3.5 19c0-3 2.7-5 5.5-5s5.5 2 5.5 5" />
-                  <path d="M16 5.2a3 3 0 0 1 0 5.6" />
-                  <path d="M18 14c2.2.4 3.8 2.2 3.8 4.6" />
-                </svg>
-                Employees
-                <span className={`nav-item__chevron ${employeesOpen ? 'nav-item__chevron--open' : ''}`}>
-                  ›
-                </span>
-              </button>
-
-              {employeesOpen && (
-                <div className="sidebar__sub">
-                  <button
-                    type="button"
-                    className="nav-subitem nav-subitem--add"
-                    onClick={() => setShowAddEmployee(true)}
-                  >
-                    + Add new employee
-                  </button>
-                  {employees.map((employee) => (
-                    <button
-                      key={employee.username}
-                      type="button"
-                      className={
-                        view === 'employee' && selectedEmployee === employee.username
-                          ? 'nav-subitem nav-subitem--active'
-                          : 'nav-subitem'
-                      }
-                      onClick={() => {
-                        setSelectedEmployee(employee.username);
-                        setView('employee');
-                      }}
-                    >
-                      {employee.username}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+            <button
+              type="button"
+              className={
+                view === 'employees' || view === 'employee'
+                  ? 'nav-item nav-item--active'
+                  : 'nav-item'
+              }
+              onClick={() => {
+                setSelectedEmployee(null);
+                setView('employees');
+              }}
+            >
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="9" cy="8" r="3.2" />
+                <path d="M3.5 19c0-3 2.7-5 5.5-5s5.5 2 5.5 5" />
+                <path d="M16 5.2a3 3 0 0 1 0 5.6" />
+                <path d="M18 14c2.2.4 3.8 2.2 3.8 4.6" />
+              </svg>
+              Employees
+            </button>
           )}
         </nav>
 
@@ -1325,13 +1316,25 @@ export default function App() {
           <h1>{topbarTitle}</h1>
           <div className="topbar__actions">
             {view === 'employee' && selectedEmployee && (
-              <button
-                type="button"
-                className="btn btn--ghost"
-                onClick={() => handleDeleteEmployee(selectedEmployee)}
-              >
-                Remove employee
-              </button>
+              <>
+                <button
+                  type="button"
+                  className="btn btn--ghost"
+                  onClick={() => {
+                    setSelectedEmployee(null);
+                    setView('employees');
+                  }}
+                >
+                  ‹ All employees
+                </button>
+                <button
+                  type="button"
+                  className="btn btn--ghost"
+                  onClick={() => handleDeleteEmployee(selectedEmployee)}
+                >
+                  Remove employee
+                </button>
+              </>
             )}
             {(view === 'accounts' || view === 'employee') && accounts.length > 0 && (
               <button
@@ -1418,6 +1421,56 @@ export default function App() {
               </button>
             </section>
           ))}
+
+        {view === 'employees' && isAdmin && (
+          <section className="panel">
+            <div className="panel-head">
+              <h2>Employees ({employees.length})</h2>
+              <button
+                type="button"
+                className="btn"
+                onClick={() => setShowAddEmployee(true)}
+              >
+                + Add new employee
+              </button>
+            </div>
+            {employees.length === 0 ? (
+              <p className="empty-note">
+                No employees yet. Add one to start tracking their accounts and stats.
+              </p>
+            ) : (
+              <div className="employee-grid">
+                {employees.map((employee) => (
+                  <button
+                    key={employee.username}
+                    type="button"
+                    className="employee-card"
+                    onClick={() => {
+                      setSelectedEmployee(employee.username);
+                      setView('employee');
+                    }}
+                  >
+                    <span className="employee-card__avatar" aria-hidden>
+                      {employee.username.slice(0, 1).toUpperCase()}
+                    </span>
+                    <span className="employee-card__info">
+                      <strong className="employee-card__name">{employee.username}</strong>
+                      <span className="employee-card__meta">
+                        {employeeAccountCounts[employee.username] ?? 0} account
+                        {(employeeAccountCounts[employee.username] ?? 0) === 1 ? '' : 's'}
+                        {' · joined '}
+                        {formatDate(employee.createdAt)}
+                      </span>
+                    </span>
+                    <span className="employee-card__chevron" aria-hidden>
+                      ›
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </section>
+        )}
 
         {view === 'license' && (
           <>
