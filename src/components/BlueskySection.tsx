@@ -118,6 +118,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   const [newAcctEmail, setNewAcctEmail] = useState('');
   const [newAcctPassword, setNewAcctPassword] = useState('');
   const [newAcctNotes, setNewAcctNotes] = useState('');
+  const [newAcctOwner, setNewAcctOwner] = useState('admin');
   const [showAddSavedAccount, setShowAddSavedAccount] = useState(false);
 
   // Generic add-form assignment state, scoped per form key.
@@ -526,7 +527,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   async function handleAddSavedAccount(e: FormEvent) {
     e.preventDefault();
     if (!newAcctHandle.trim()) return;
-    const owner = session.role === 'employee' ? session.username : 'admin';
+    const owner = session.role === 'employee' ? session.username : newAcctOwner;
     try {
       await addSavedAccount({
         id: crypto.randomUUID(),
@@ -541,6 +542,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
       setNewAcctEmail('');
       setNewAcctPassword('');
       setNewAcctNotes('');
+      setNewAcctOwner('admin');
       setShowAddSavedAccount(false);
       await loadAll();
     } catch (err) {
@@ -1076,6 +1078,23 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                       onChange={(e) => setNewAcctNotes(e.target.value)}
                       rows={2}
                     />
+                    {isAdmin && (
+                      <label className="cred-field">
+                        <span className="cred-field__label">Assign to</span>
+                        <select
+                          className="cred-form__input"
+                          value={newAcctOwner}
+                          onChange={(e) => setNewAcctOwner(e.target.value)}
+                        >
+                          <option value="admin">Admin only</option>
+                          {employees.map((emp) => (
+                            <option key={emp.username} value={emp.username}>
+                              {emp.username}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    )}
                     <button type="submit" disabled={!newAcctHandle.trim()}>
                       Save account
                     </button>
