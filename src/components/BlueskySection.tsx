@@ -151,8 +151,9 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   const [acctId, setAcctId] = useState('');
   const [acctPw, setAcctPw] = useState('');
   const [acctTarget, setAcctTarget] = useState('');
-  const [acctType, setAcctType] = useState<'followers' | 'following'>('followers');
+  const [acctType] = useState<'followers' | 'following'>('followers');
   const [selectedSavedId, setSelectedSavedId] = useState('');
+  const [acctMode, setAcctMode] = useState<'select' | 'new'>('select');
 
   const [followSettings, setFollowSettings] = useState<FollowSettings>(() => loadFollowSettings());
   const [running, setRunning] = useState(false);
@@ -389,7 +390,9 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
 
   async function submitAccount(e: FormEvent) {
     e.preventDefault();
-    if (!acctId.trim() || !acctPw.trim() || !acctTarget.trim() || !assignValid('acct')) return;
+    if (!acctTarget.trim() || !assignValid('acct')) return;
+    if (acctMode === 'select' && !selectedSavedId) return;
+    if (acctMode === 'new' && (!acctId.trim() || !acctPw.trim())) return;
     await addBskyAccount({
       id: crypto.randomUUID(),
       identifier: acctId.trim(),
@@ -402,8 +405,8 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     setAcctId('');
     setAcctPw('');
     setAcctTarget('');
-    setAcctType('followers');
     setSelectedSavedId('');
+    setAcctMode('select');
     resetAssign('acct');
     await loadAll();
   }
@@ -413,8 +416,18 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     const acct = savedAccounts.find((a) => a.id === id);
     if (acct) {
       setAcctId(acct.handle);
-      if (acct.password) setAcctPw(acct.password);
+      setAcctPw(acct.password ?? '');
+    } else {
+      setAcctId('');
+      setAcctPw('');
     }
+  }
+
+  function changeAcctMode(mode: 'select' | 'new') {
+    setAcctMode(mode);
+    setSelectedSavedId('');
+    setAcctId('');
+    setAcctPw('');
   }
 
   function updateFollowSettings(patch: Partial<FollowSettings>) {
@@ -1285,37 +1298,68 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                     </div>
                     {openForms.has('acct') && (
                     <form className="bio-form" onSubmit={submitAccount}>
-                      <label className="cred-field">
-                        <span className="cred-field__label">Select account</span>
-                        <select
-                          className="cred-form__input"
-                          value={selectedSavedId}
-                          onChange={(e) => pickSavedAccount(e.target.value)}
+                      <div className="platform-switch">
+                        <button
+                          type="button"
+                          className={
+                            acctMode === 'select'
+                              ? 'platform-switch__btn platform-switch__btn--active'
+                              : 'platform-switch__btn'
+                          }
+                          onClick={() => changeAcctMode('select')}
                         >
-                          <option value="">Select account</option>
-                          {savedAccounts.map((a) => (
-                            <option key={a.id} value={a.id}>
-                              @{a.handle}
-                              {a.owner && a.owner !== 'admin' ? ` · ${a.owner}` : ''}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <input
-                        className="cred-form__input"
-                        placeholder="Handle or email (e.g. name.bsky.social)"
-                        value={acctId}
-                        onChange={(e) => setAcctId(e.target.value)}
-                        autoComplete="off"
-                      />
-                      <input
-                        className="cred-form__input"
-                        type="text"
-                        placeholder="App password (xxxx-xxxx-xxxx-xxxx)"
-                        value={acctPw}
-                        onChange={(e) => setAcctPw(e.target.value)}
-                        autoComplete="off"
-                      />
+                          Select account
+                        </button>
+                        <button
+                          type="button"
+                          className={
+                            acctMode === 'new'
+                              ? 'platform-switch__btn platform-switch__btn--active'
+                              : 'platform-switch__btn'
+                          }
+                          onClick={() => changeAcctMode('new')}
+                        >
+                          Add new account
+                        </button>
+                      </div>
+
+                      {acctMode === 'select' ? (
+                        <label className="cred-field">
+                          <span className="cred-field__label">Select account</span>
+                          <select
+                            className="cred-form__input"
+                            value={selectedSavedId}
+                            onChange={(e) => pickSavedAccount(e.target.value)}
+                          >
+                            <option value="">Select account</option>
+                            {savedAccounts.map((a) => (
+                              <option key={a.id} value={a.id}>
+                                @{a.handle}
+                                {a.owner && a.owner !== 'admin' ? ` · ${a.owner}` : ''}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      ) : (
+                        <>
+                          <input
+                            className="cred-form__input"
+                            placeholder="Handle or email (e.g. name.bsky.social)"
+                            value={acctId}
+                            onChange={(e) => setAcctId(e.target.value)}
+                            autoComplete="off"
+                          />
+                          <input
+                            className="cred-form__input"
+                            type="text"
+                            placeholder="App password (xxxx-xxxx-xxxx-xxxx)"
+                            value={acctPw}
+                            onChange={(e) => setAcctPw(e.target.value)}
+                            autoComplete="off"
+                          />
+                        </>
+                      )}
+
                       <input
                         className="cred-form__input"
                         placeholder="Target profile (handle or bsky.app/profile/…)"
@@ -1323,14 +1367,6 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                         onChange={(e) => setAcctTarget(e.target.value)}
                         autoComplete="off"
                       />
-                      <select
-                        className="cred-form__input"
-                        value={acctType}
-                        onChange={(e) => setAcctType(e.target.value as 'followers' | 'following')}
-                      >
-                        <option value="followers">Follow target's followers</option>
-                        <option value="following">Follow who target follows</option>
-                      </select>
                       <AssignmentPicker
                         employees={employees}
                         selected={getAssign('acct').set}
@@ -1340,7 +1376,11 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                       />
                       <button
                         type="submit"
-                        disabled={!acctId.trim() || !acctPw.trim() || !acctTarget.trim() || !assignValid('acct')}
+                        disabled={
+                          !acctTarget.trim() ||
+                          !assignValid('acct') ||
+                          (acctMode === 'select' ? !selectedSavedId : !acctId.trim() || !acctPw.trim())
+                        }
                       >
                         Add account
                       </button>
