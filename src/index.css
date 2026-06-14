@@ -806,6 +806,11 @@ code {
   color: rgba(255, 255, 255, 0.55);
 }
 
+.login .login__tab:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.85);
+}
+
 .login .login__tab--active,
 .login .login__tab--active:hover {
   background: #ffffff;
