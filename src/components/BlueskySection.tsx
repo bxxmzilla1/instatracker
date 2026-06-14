@@ -141,6 +141,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   const [acctPw, setAcctPw] = useState('');
   const [acctTarget, setAcctTarget] = useState('');
   const [acctType, setAcctType] = useState<'followers' | 'following'>('followers');
+  const [selectedSavedId, setSelectedSavedId] = useState('');
 
   const [followSettings, setFollowSettings] = useState<FollowSettings>(() => loadFollowSettings());
   const [running, setRunning] = useState(false);
@@ -391,8 +392,18 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     setAcctPw('');
     setAcctTarget('');
     setAcctType('followers');
+    setSelectedSavedId('');
     resetAssign('acct');
     await loadAll();
+  }
+
+  function pickSavedAccount(id: string) {
+    setSelectedSavedId(id);
+    const acct = savedAccounts.find((a) => a.id === id);
+    if (acct) {
+      setAcctId(acct.handle);
+      if (acct.password) setAcctPw(acct.password);
+    }
   }
 
   function updateFollowSettings(patch: Partial<FollowSettings>) {
@@ -1209,6 +1220,22 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                   <section className="panel">
                     <h2>Add account</h2>
                     <form className="bio-form" onSubmit={submitAccount}>
+                      <label className="cred-field">
+                        <span className="cred-field__label">Select account</span>
+                        <select
+                          className="cred-form__input"
+                          value={selectedSavedId}
+                          onChange={(e) => pickSavedAccount(e.target.value)}
+                        >
+                          <option value="">Select account</option>
+                          {savedAccounts.map((a) => (
+                            <option key={a.id} value={a.id}>
+                              @{a.handle}
+                              {a.owner && a.owner !== 'admin' ? ` · ${a.owner}` : ''}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
                       <input
                         className="cred-form__input"
                         placeholder="Handle or email (e.g. name.bsky.social)"
