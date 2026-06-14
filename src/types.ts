@@ -62,6 +62,14 @@ export interface BskyTarget {
   createdAt: number;
 }
 
+/** A recorded batch of follows performed by a Bluesky follow account. */
+export interface BskyFollowEvent {
+  id: string;
+  accountId: string;
+  count: number;
+  capturedAt: number;
+}
+
 /** A Bluesky account configured for the mass-follow tool. */
 export interface BskyAccount {
   id: string;

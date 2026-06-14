@@ -2,6 +2,7 @@ import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState
 import type {
   Bio,
   BskyAccount,
+  BskyFollowEvent,
   BskyPost,
   BskySavedAccount,
   BskyTarget,
@@ -17,6 +18,7 @@ import {
   addBskyAccount,
   addCta,
   addEmployee,
+  addFollowEvent,
   addPost,
   addProfilePic,
   addProxy,
@@ -37,6 +39,7 @@ import {
   getBskyAccounts,
   getCtas,
   getEmployees,
+  getFollowEvents,
   getPosts,
   getProfilePics,
   getProxies,
@@ -45,6 +48,7 @@ import {
 } from '../lib/bsky/db';
 import { runAccountJob, type JobResult, type ProxyConfig } from '../lib/bsky/client';
 import { AssignmentPicker } from './AssignmentPicker';
+import { BskyFollowChart, type FollowBar } from './BskyFollowChart';
 import { CopyButton } from './CopyButton';
 import { CopyField } from './CopyField';
 import { assignedEmployees } from '../lib/assignment';
@@ -109,6 +113,8 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   const [accounts, setAccounts] = useState<BskyAccount[]>([]);
   const [savedAccounts, setSavedAccounts] = useState<BskySavedAccount[]>([]);
   const [targets, setTargets] = useState<BskyTarget[]>([]);
+  const [followEvents, setFollowEvents] = useState<BskyFollowEvent[]>([]);
+  const [chartMonthOffset, setChartMonthOffset] = useState(0);
 
   const [newTargetHandle, setNewTargetHandle] = useState('');
   const [newTargetNotes, setNewTargetNotes] = useState('');
@@ -164,6 +170,9 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   const [running, setRunning] = useState(false);
   const [runState, setRunState] = useState<Record<string, RunState>>({});
   const cancelRef = useRef<Record<string, boolean>>({});
+  // Buffers successful follows so they can be flushed to storage once per second
+  // (keeps the dashboard "Follows" count + graph live without a write per follow).
+  const followBufferRef = useRef<{ accountId: string }[]>([]);
 
   const ownerFilter = useMemo(() => {
     if (session.role === 'employee') return session.username;
@@ -202,7 +211,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   }
 
   const loadAll = useCallback(async () => {
-    const [bn, pp, bi, ct, po, px, ac, sa, tg] = await Promise.all([
+    const [bn, pp, bi, ct, po, px, ac, sa, tg, fe] = await Promise.all([
       getBanners(ownerFilter),
       getProfilePics(ownerFilter),
       getBios(ownerFilter),
@@ -212,6 +221,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
       getBskyAccounts(ownerFilter),
       getSavedAccounts(ownerFilter),
       getTargets(ownerFilter),
+      getFollowEvents(),
     ]);
     setBanners(bn);
     setProfilePics(pp);
@@ -222,6 +232,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     setAccounts(ac);
     setSavedAccounts(sa);
     setTargets(tg);
+    setFollowEvents(fe);
   }, [ownerFilter]);
 
   useEffect(() => {
@@ -262,6 +273,40 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
       setEmployeeCounts(counts);
     })();
   }, [isAdmin, employees]);
+
+  // Drain buffered follows into persisted events (one row per account per tick).
+  const flushFollowBuffer = useCallback(async () => {
+    const buf = followBufferRef.current;
+    if (buf.length === 0) return;
+    followBufferRef.current = [];
+    const counts = new Map<string, number>();
+    for (const b of buf) counts.set(b.accountId, (counts.get(b.accountId) ?? 0) + 1);
+    const now = Date.now();
+    const events: BskyFollowEvent[] = [];
+    for (const [accountId, count] of counts) {
+      events.push({ id: crypto.randomUUID(), accountId, count, capturedAt: now });
+    }
+    setFollowEvents((prev) => [...prev, ...events]);
+    for (const ev of events) {
+      try {
+        await addFollowEvent(ev);
+      } catch {
+        // keep the in-memory tally even if the write fails
+      }
+    }
+  }, []);
+
+  // While jobs run, persist follows every second so totals + graph stay live.
+  useEffect(() => {
+    if (!running) return;
+    const id = window.setInterval(() => {
+      void flushFollowBuffer();
+    }, 1000);
+    return () => {
+      window.clearInterval(id);
+      void flushFollowBuffer();
+    };
+  }, [running, flushFollowBuffer]);
 
   async function handleAddEmployee(event: FormEvent) {
     event.preventDefault();
@@ -512,7 +557,8 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
       {
         onStatus: (state, text) =>
           setRunState((p) => ({ ...p, [account.id]: { ...p[account.id], state, text } })),
-        onProgress: (d) =>
+        onProgress: (d) => {
+          if (d.status === 'followed') followBufferRef.current.push({ accountId: account.id });
           setRunState((p) => ({
             ...p,
             [account.id]: {
@@ -522,7 +568,8 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
               result: { success: d.success, skipped: d.skipped, failed: d.failed, total: d.total, cancelled: d.cancelled },
               live: d.status === 'followed' ? `✓ followed @${d.label}` : p[account.id]?.live ?? '',
             },
-          })),
+          }));
+        },
         shouldCancel: () => cancelRef.current[account.id],
       },
     );
@@ -930,11 +977,75 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   );
 
   const bannedCount = savedAccounts.filter((a) => a.banned).length;
+
+  // Only count follows belonging to accounts the current user can see.
+  const visibleAccountIds = useMemo(() => new Set(accounts.map((a) => a.id)), [accounts]);
+  const visibleFollowEvents = useMemo(
+    () => followEvents.filter((e) => visibleAccountIds.has(e.accountId)),
+    [followEvents, visibleAccountIds],
+  );
+  const totalFollows = useMemo(
+    () => visibleFollowEvents.reduce((sum, e) => sum + e.count, 0),
+    [visibleFollowEvents],
+  );
+
+  // An account counts as "new" when it was created on today's calendar day,
+  // and "old" once it rolls over to a previous day.
+  const followChartMonth = useMemo(() => {
+    const d = new Date();
+    d.setDate(1);
+    d.setMonth(d.getMonth() + chartMonthOffset);
+    return { year: d.getFullYear(), month: d.getMonth() };
+  }, [chartMonthOffset]);
+
+  const followBars: FollowBar[] = useMemo(() => {
+    const { year, month } = followChartMonth;
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const newAcctIds = new Set(
+      accounts.filter((a) => a.createdAt >= todayStart.getTime()).map((a) => a.id),
+    );
+    const now = new Date();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const isCurrent = year === now.getFullYear() && month === now.getMonth();
+    const isPast = year < now.getFullYear() || (year === now.getFullYear() && month < now.getMonth());
+    const lastDay = isCurrent ? now.getDate() : isPast ? daysInMonth : 0;
+    const bars: FollowBar[] = [];
+    for (let day = 1; day <= daysInMonth; day += 1) {
+      const start = new Date(year, month, day, 0, 0, 0, 0).getTime();
+      const end = new Date(year, month, day, 23, 59, 59, 999).getTime();
+      let newValue = 0;
+      let oldValue = 0;
+      if (day <= lastDay) {
+        for (const ev of visibleFollowEvents) {
+          if (ev.capturedAt >= start && ev.capturedAt <= end) {
+            if (newAcctIds.has(ev.accountId)) newValue += ev.count;
+            else oldValue += ev.count;
+          }
+        }
+      }
+      bars.push({
+        day,
+        newValue,
+        oldValue,
+        isFuture: day > lastDay,
+        isToday: isCurrent && day === lastDay,
+      });
+    }
+    return bars;
+  }, [accounts, visibleFollowEvents, followChartMonth]);
+
+  const monthFollowTotal = followBars.reduce((s, b) => s + b.newValue + b.oldValue, 0);
+  const followMonthLabel = new Date(followChartMonth.year, followChartMonth.month, 1).toLocaleString(
+    undefined,
+    { month: 'long', year: 'numeric' },
+  );
+
   const dashboardCards = [
     { label: 'Employees', value: employees.length, show: isAdmin },
     { label: 'Accounts', value: savedAccounts.length, show: true },
     { label: 'Target Profiles', value: targets.length, show: true },
-    { label: 'Follows', value: accounts.length, show: true },
+    { label: 'Follows', value: totalFollows, show: true },
     { label: 'Banned Accounts', value: bannedCount, show: true },
   ].filter((c) => c.show);
 
@@ -1058,9 +1169,52 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                     </div>
                   ))}
                 </div>
+
+                <div className="dashboard__chart">
+                  <div className="dashboard__chart-head">
+                    <div className="bsky-legend">
+                      <span className="bsky-legend__item">
+                        <span className="bsky-legend__dot bsky-legend__dot--new" />
+                        New accounts
+                      </span>
+                      <span className="bsky-legend__item">
+                        <span className="bsky-legend__dot bsky-legend__dot--old" />
+                        Old accounts
+                      </span>
+                    </div>
+                    <div className="month-nav">
+                      <button
+                        type="button"
+                        className="month-nav__btn"
+                        onClick={() => setChartMonthOffset((o) => o - 1)}
+                        aria-label="Previous month"
+                      >
+                        ‹
+                      </button>
+                      <span className="month-nav__label">{followMonthLabel}</span>
+                      <button
+                        type="button"
+                        className="month-nav__btn"
+                        onClick={() => setChartMonthOffset((o) => o + 1)}
+                        disabled={chartMonthOffset >= 0}
+                        aria-label="Next month"
+                      >
+                        ›
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="trend-chart__summary">
+                    <strong>{formatCount(monthFollowTotal)}</strong>
+                    <span className="delta">new follows this month{running ? ' · live' : ''}</span>
+                  </div>
+
+                  <BskyFollowChart bars={followBars} />
+                </div>
+
                 <p className="empty-note">
-                  Manage your Bluesky banners, profile pictures, bios, posts, CTAs, proxies and run
-                  mass-follow jobs from the menu on the left.
+                  Live follow totals update every second while jobs run. Bars split each day's new
+                  follows by accounts added today (new) versus earlier (old).
                 </p>
               </section>
             )}

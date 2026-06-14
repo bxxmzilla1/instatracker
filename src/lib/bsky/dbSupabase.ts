@@ -3,6 +3,7 @@ import { matchesEmployee } from '../assignment';
 import type {
   Bio,
   BskyAccount,
+  BskyFollowEvent,
   BskyPost,
   BskySavedAccount,
   BskyTarget,
@@ -458,5 +459,41 @@ export async function addTarget(target: BskyTarget): Promise<void> {
 
 export async function deleteTarget(id: string): Promise<void> {
   const { error } = await client().from('bsky_targets').delete().eq('id', id);
+  if (error) throw new Error(error.message);
+}
+
+interface FollowEventRow {
+  id: string;
+  account_id: string | null;
+  count: number | null;
+  captured_at: number | null;
+}
+
+function toFollowEvent(row: FollowEventRow): BskyFollowEvent {
+  return {
+    id: row.id,
+    accountId: row.account_id ?? '',
+    count: row.count ?? 0,
+    capturedAt: row.captured_at ?? 0,
+  };
+}
+
+export async function getFollowEvents(): Promise<BskyFollowEvent[]> {
+  const { data, error } = await client()
+    .from('bsky_follow_events')
+    .select('*')
+    .order('captured_at', { ascending: true });
+  // Fail soft so the dashboard still loads before the schema migration is applied.
+  if (error) return [];
+  return (data as FollowEventRow[]).map(toFollowEvent);
+}
+
+export async function addFollowEvent(event: BskyFollowEvent): Promise<void> {
+  const { error } = await client().from('bsky_follow_events').upsert({
+    id: event.id,
+    account_id: event.accountId,
+    count: event.count,
+    captured_at: event.capturedAt,
+  });
   if (error) throw new Error(error.message);
 }

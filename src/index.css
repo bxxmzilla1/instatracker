@@ -2058,6 +2058,52 @@ button:disabled {
   transition: height 0.3s ease;
 }
 
+/* Stacked follow bars (Bluesky dashboard): new accounts on top, old below. */
+.bsky-bar {
+  width: 100%;
+  min-height: 0;
+  display: block;
+  transition: height 0.3s ease;
+}
+
+.bsky-bar--new {
+  background: #4aa3ff;
+  border-radius: 5px 5px 0 0;
+}
+
+.bsky-bar--old {
+  background: #1d4e89;
+}
+
+.bsky-legend {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+
+.bsky-legend__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+  color: var(--muted, #9aa);
+}
+
+.bsky-legend__dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  display: inline-block;
+}
+
+.bsky-legend__dot--new {
+  background: #4aa3ff;
+}
+
+.bsky-legend__dot--old {
+  background: #1d4e89;
+}
+
 .bar-chart__label {
   margin-top: 6px;
   font-size: 0.6rem;

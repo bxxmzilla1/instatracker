@@ -302,6 +302,14 @@ create table if not exists bsky_targets (
   created_at bigint
 );
 
+-- Recorded follow batches used for the Bluesky follows dashboard graph.
+create table if not exists bsky_follow_events (
+  id text primary key,
+  account_id text,
+  count bigint,
+  captured_at bigint
+);
+
 alter table bsky_employees enable row level security;
 alter table bsky_proxies enable row level security;
 alter table bsky_bios enable row level security;
@@ -312,6 +320,7 @@ alter table bsky_posts enable row level security;
 alter table bsky_accounts enable row level security;
 alter table bsky_saved_accounts enable row level security;
 alter table bsky_targets enable row level security;
+alter table bsky_follow_events enable row level security;
 
 drop policy if exists "allow anon all" on bsky_employees;
 drop policy if exists "allow anon all" on bsky_proxies;
@@ -323,6 +332,7 @@ drop policy if exists "allow anon all" on bsky_posts;
 drop policy if exists "allow anon all" on bsky_accounts;
 drop policy if exists "allow anon all" on bsky_saved_accounts;
 drop policy if exists "allow anon all" on bsky_targets;
+drop policy if exists "allow anon all" on bsky_follow_events;
 
 create policy "allow anon all" on bsky_employees
   for all to anon using (true) with check (true);
@@ -343,6 +353,8 @@ create policy "allow anon all" on bsky_accounts
 create policy "allow anon all" on bsky_saved_accounts
   for all to anon using (true) with check (true);
 create policy "allow anon all" on bsky_targets
+  for all to anon using (true) with check (true);
+create policy "allow anon all" on bsky_follow_events
   for all to anon using (true) with check (true);
 
 -- Storage bucket for cached profile pictures, reel thumbnails, and story images.

@@ -3,6 +3,7 @@ import { matchesEmployee } from '../assignment';
 import type {
   Bio,
   BskyAccount,
+  BskyFollowEvent,
   BskyPost,
   BskySavedAccount,
   BskyTarget,
@@ -26,13 +27,14 @@ interface BskyDB extends DBSchema {
   accounts: { key: string; value: BskyAccount };
   savedAccounts: { key: string; value: BskySavedAccount };
   targets: { key: string; value: BskyTarget };
+  followEvents: { key: string; value: BskyFollowEvent };
 }
 
 let dbPromise: Promise<IDBPDatabase<BskyDB>> | null = null;
 
 function getDb() {
   if (!dbPromise) {
-    dbPromise = openDB<BskyDB>('drbossing-bsky-v1', 3, {
+    dbPromise = openDB<BskyDB>('drbossing-bsky-v1', 4, {
       upgrade(db) {
         for (const store of [
           'employees',
@@ -45,6 +47,7 @@ function getDb() {
           'accounts',
           'savedAccounts',
           'targets',
+          'followEvents',
         ] as const) {
           if (!db.objectStoreNames.contains(store)) {
             db.createObjectStore(store, {
@@ -258,4 +261,15 @@ export async function addTarget(target: BskyTarget): Promise<void> {
 export async function deleteTarget(id: string): Promise<void> {
   const db = await getDb();
   await db.delete('targets', id);
+}
+
+export async function getFollowEvents(): Promise<BskyFollowEvent[]> {
+  const db = await getDb();
+  const rows = await db.getAll('followEvents');
+  return rows.sort((a, b) => a.capturedAt - b.capturedAt);
+}
+
+export async function addFollowEvent(event: BskyFollowEvent): Promise<void> {
+  const db = await getDb();
+  await db.put('followEvents', event);
 }

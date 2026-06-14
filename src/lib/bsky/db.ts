@@ -35,4 +35,6 @@ export const {
   getTargets,
   addTarget,
   deleteTarget,
+  getFollowEvents,
+  addFollowEvent,
 } = impl;
