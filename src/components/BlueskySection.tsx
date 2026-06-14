@@ -124,6 +124,17 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
 
   // Generic add-form assignment state, scoped per form key.
   const [assign, setAssign] = useState<Record<string, { set: Set<string>; all: boolean }>>({});
+  // Which add-forms are expanded (hidden behind an "Add" button by default).
+  const [openForms, setOpenForms] = useState<Set<string>>(() => new Set());
+
+  function toggleForm(key: string) {
+    setOpenForms((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
 
   const [bioText, setBioText] = useState('');
   const [ctaText, setCtaText] = useState('');
@@ -662,29 +673,40 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     <>
       {isAdmin && (
         <section className="panel">
-          <h2>Add {title.toLowerCase()}</h2>
-          <form className="bio-form" onSubmit={submit}>
-            <label className="content-upload">
-              <input type="file" accept="image/*" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
-              <span className="content-upload__hint">{file ? file.name : `Choose a ${title.toLowerCase()} image`}</span>
-            </label>
-            <input
-              className="cred-form__input"
-              placeholder="Caption (optional)"
-              value={caption}
-              onChange={(e) => setCaption(e.target.value)}
-            />
-            <AssignmentPicker
-              employees={employees}
-              selected={getAssign(key).set}
-              all={getAssign(key).all}
-              onToggle={(u) => toggleAssign(key, u)}
-              onAllChange={(a) => setAssignAll(key, a)}
-            />
-            <button type="submit" disabled={uploading || !file || !assignValid(key)}>
-              {uploading ? 'Uploading…' : `Add ${title.toLowerCase()}`}
+          <div className="panel-head">
+            <h2>Add {title.toLowerCase()}</h2>
+            <button
+              type="button"
+              className={`panel-add-toggle ${openForms.has(key) ? 'panel-add-toggle--open' : ''}`}
+              onClick={() => toggleForm(key)}
+            >
+              {openForms.has(key) ? 'Hide' : 'Add'}
             </button>
-          </form>
+          </div>
+          {openForms.has(key) && (
+            <form className="bio-form" onSubmit={submit}>
+              <label className="content-upload">
+                <input type="file" accept="image/*" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+                <span className="content-upload__hint">{file ? file.name : `Choose a ${title.toLowerCase()} image`}</span>
+              </label>
+              <input
+                className="cred-form__input"
+                placeholder="Caption (optional)"
+                value={caption}
+                onChange={(e) => setCaption(e.target.value)}
+              />
+              <AssignmentPicker
+                employees={employees}
+                selected={getAssign(key).set}
+                all={getAssign(key).all}
+                onToggle={(u) => toggleAssign(key, u)}
+                onAllChange={(a) => setAssignAll(key, a)}
+              />
+              <button type="submit" disabled={uploading || !file || !assignValid(key)}>
+                {uploading ? 'Uploading…' : `Add ${title.toLowerCase()}`}
+              </button>
+            </form>
+          )}
         </section>
       )}
       <section className="panel">
@@ -735,26 +757,37 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     <>
       {isAdmin && (
         <section className="panel">
-          <h2>Add {title.toLowerCase()}</h2>
-          <form className="bio-form" onSubmit={submit}>
-            <textarea
-              className="bio-form__textarea"
-              placeholder={`Write the ${title.toLowerCase()}…`}
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              rows={4}
-            />
-            <AssignmentPicker
-              employees={employees}
-              selected={getAssign(key).set}
-              all={getAssign(key).all}
-              onToggle={(u) => toggleAssign(key, u)}
-              onAllChange={(a) => setAssignAll(key, a)}
-            />
-            <button type="submit" disabled={!text.trim() || !assignValid(key)}>
-              Add {title.toLowerCase()}
+          <div className="panel-head">
+            <h2>Add {title.toLowerCase()}</h2>
+            <button
+              type="button"
+              className={`panel-add-toggle ${openForms.has(key) ? 'panel-add-toggle--open' : ''}`}
+              onClick={() => toggleForm(key)}
+            >
+              {openForms.has(key) ? 'Hide' : 'Add'}
             </button>
-          </form>
+          </div>
+          {openForms.has(key) && (
+            <form className="bio-form" onSubmit={submit}>
+              <textarea
+                className="bio-form__textarea"
+                placeholder={`Write the ${title.toLowerCase()}…`}
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                rows={4}
+              />
+              <AssignmentPicker
+                employees={employees}
+                selected={getAssign(key).set}
+                all={getAssign(key).all}
+                onToggle={(u) => toggleAssign(key, u)}
+                onAllChange={(a) => setAssignAll(key, a)}
+              />
+              <button type="submit" disabled={!text.trim() || !assignValid(key)}>
+                Add {title.toLowerCase()}
+              </button>
+            </form>
+          )}
         </section>
       )}
       <section className="panel">
@@ -1032,30 +1065,41 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
               <>
                 {isAdmin && (
                   <section className="panel">
-                    <h2>Add post</h2>
-                    <form className="bio-form" onSubmit={submitPost}>
-                      <textarea
-                        className="bio-form__textarea"
-                        placeholder="Write the post text…"
-                        value={postText}
-                        onChange={(e) => setPostText(e.target.value)}
-                        rows={4}
-                      />
-                      <label className="content-upload">
-                        <input type="file" accept="image/*" onChange={(e) => setPostFile(e.target.files?.[0] ?? null)} />
-                        <span className="content-upload__hint">{postFile ? postFile.name : 'Attach an image (optional)'}</span>
-                      </label>
-                      <AssignmentPicker
-                        employees={employees}
-                        selected={getAssign('post').set}
-                        all={getAssign('post').all}
-                        onToggle={(u) => toggleAssign('post', u)}
-                        onAllChange={(a) => setAssignAll('post', a)}
-                      />
-                      <button type="submit" disabled={uploading || (!postText.trim() && !postFile) || !assignValid('post')}>
-                        {uploading ? 'Uploading…' : 'Add post'}
+                    <div className="panel-head">
+                      <h2>Add post</h2>
+                      <button
+                        type="button"
+                        className={`panel-add-toggle ${openForms.has('post') ? 'panel-add-toggle--open' : ''}`}
+                        onClick={() => toggleForm('post')}
+                      >
+                        {openForms.has('post') ? 'Hide' : 'Add'}
                       </button>
-                    </form>
+                    </div>
+                    {openForms.has('post') && (
+                      <form className="bio-form" onSubmit={submitPost}>
+                        <textarea
+                          className="bio-form__textarea"
+                          placeholder="Write the post text…"
+                          value={postText}
+                          onChange={(e) => setPostText(e.target.value)}
+                          rows={4}
+                        />
+                        <label className="content-upload">
+                          <input type="file" accept="image/*" onChange={(e) => setPostFile(e.target.files?.[0] ?? null)} />
+                          <span className="content-upload__hint">{postFile ? postFile.name : 'Attach an image (optional)'}</span>
+                        </label>
+                        <AssignmentPicker
+                          employees={employees}
+                          selected={getAssign('post').set}
+                          all={getAssign('post').all}
+                          onToggle={(u) => toggleAssign('post', u)}
+                          onAllChange={(a) => setAssignAll('post', a)}
+                        />
+                        <button type="submit" disabled={uploading || (!postText.trim() && !postFile) || !assignValid('post')}>
+                          {uploading ? 'Uploading…' : 'Add post'}
+                        </button>
+                      </form>
+                    )}
                   </section>
                 )}
                 <section className="panel">
@@ -1091,35 +1135,46 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
               <>
                 {isAdmin && (
                   <section className="panel">
-                    <h2>Add proxy</h2>
-                    <form className="license-form" onSubmit={submitProxy}>
-                      <input
-                        className="cred-form__input"
-                        placeholder="host:port:user:pass or user:pass@host:port"
-                        value={proxyRaw}
-                        onChange={(e) => setProxyRaw(e.target.value)}
-                        autoComplete="off"
-                        spellCheck={false}
-                      />
-                      <select
-                        className="cred-form__input license-form__select proxy-type-select"
-                        value={proxyType}
-                        onChange={(e) => setProxyType(e.target.value)}
+                    <div className="panel-head">
+                      <h2>Add proxy</h2>
+                      <button
+                        type="button"
+                        className={`panel-add-toggle ${openForms.has('proxy') ? 'panel-add-toggle--open' : ''}`}
+                        onClick={() => toggleForm('proxy')}
                       >
-                        <option value="http">HTTP</option>
-                        <option value="socks5">SOCKS5</option>
-                      </select>
-                      <AssignmentPicker
-                        employees={employees}
-                        selected={getAssign('proxy').set}
-                        all={getAssign('proxy').all}
-                        onToggle={(u) => toggleAssign('proxy', u)}
-                        onAllChange={(a) => setAssignAll('proxy', a)}
-                      />
-                      <button type="submit" disabled={!proxyRaw.trim() || !assignValid('proxy')}>
-                        Add proxy
+                        {openForms.has('proxy') ? 'Hide' : 'Add'}
                       </button>
-                    </form>
+                    </div>
+                    {openForms.has('proxy') && (
+                      <form className="license-form" onSubmit={submitProxy}>
+                        <input
+                          className="cred-form__input"
+                          placeholder="host:port:user:pass or user:pass@host:port"
+                          value={proxyRaw}
+                          onChange={(e) => setProxyRaw(e.target.value)}
+                          autoComplete="off"
+                          spellCheck={false}
+                        />
+                        <select
+                          className="cred-form__input license-form__select proxy-type-select"
+                          value={proxyType}
+                          onChange={(e) => setProxyType(e.target.value)}
+                        >
+                          <option value="http">HTTP</option>
+                          <option value="socks5">SOCKS5</option>
+                        </select>
+                        <AssignmentPicker
+                          employees={employees}
+                          selected={getAssign('proxy').set}
+                          all={getAssign('proxy').all}
+                          onToggle={(u) => toggleAssign('proxy', u)}
+                          onAllChange={(a) => setAssignAll('proxy', a)}
+                        />
+                        <button type="submit" disabled={!proxyRaw.trim() || !assignValid('proxy')}>
+                          Add proxy
+                        </button>
+                      </form>
+                    )}
                   </section>
                 )}
                 <section className="panel">
@@ -1218,7 +1273,17 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
 
                 {isAdmin && (
                   <section className="panel">
-                    <h2>Add account</h2>
+                    <div className="panel-head">
+                      <h2>Add account</h2>
+                      <button
+                        type="button"
+                        className={`panel-add-toggle ${openForms.has('acct') ? 'panel-add-toggle--open' : ''}`}
+                        onClick={() => toggleForm('acct')}
+                      >
+                        {openForms.has('acct') ? 'Hide' : 'Add'}
+                      </button>
+                    </div>
+                    {openForms.has('acct') && (
                     <form className="bio-form" onSubmit={submitAccount}>
                       <label className="cred-field">
                         <span className="cred-field__label">Select account</span>
@@ -1280,6 +1345,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                         Add account
                       </button>
                     </form>
+                    )}
                   </section>
                 )}
 
