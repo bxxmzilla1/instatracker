@@ -259,10 +259,19 @@ create table if not exists bsky_accounts (
   target text,
   type text,
   service text,
+  delay_mode text,
+  delay_ms bigint,
+  delay_min bigint,
+  delay_max bigint,
   employees jsonb default '[]'::jsonb,
   all_employees boolean default false,
   created_at bigint
 );
+
+alter table bsky_accounts add column if not exists delay_mode text;
+alter table bsky_accounts add column if not exists delay_ms bigint;
+alter table bsky_accounts add column if not exists delay_min bigint;
+alter table bsky_accounts add column if not exists delay_max bigint;
 
 -- Saved Bluesky accounts added by the admin or employees.
 create table if not exists bsky_saved_accounts (

@@ -286,6 +286,10 @@ interface AccountRow {
   target: string | null;
   type: string | null;
   service: string | null;
+  delay_mode: string | null;
+  delay_ms: number | null;
+  delay_min: number | null;
+  delay_max: number | null;
   employees: unknown;
   all_employees: boolean | null;
   created_at: number | null;
@@ -299,6 +303,10 @@ function toAccount(row: AccountRow): BskyAccount {
     target: row.target ?? '',
     type: row.type === 'following' ? 'following' : 'followers',
     service: row.service ?? undefined,
+    delayMode: row.delay_mode === 'random' ? 'random' : row.delay_mode === 'fixed' ? 'fixed' : undefined,
+    delayMs: row.delay_ms ?? undefined,
+    delayMin: row.delay_min ?? undefined,
+    delayMax: row.delay_max ?? undefined,
     employees: Array.isArray(row.employees) ? (row.employees as string[]) : [],
     allEmployees: row.all_employees ?? false,
     createdAt: row.created_at ?? 0,
@@ -324,6 +332,10 @@ export async function addBskyAccount(account: BskyAccount): Promise<void> {
     target: account.target,
     type: account.type,
     service: account.service ?? null,
+    delay_mode: account.delayMode ?? null,
+    delay_ms: account.delayMs ?? null,
+    delay_min: account.delayMin ?? null,
+    delay_max: account.delayMax ?? null,
     employees: account.employees,
     all_employees: account.allEmployees,
     created_at: account.createdAt,

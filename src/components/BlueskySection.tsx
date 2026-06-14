@@ -81,18 +81,30 @@ const LS_FOLLOW_SETTINGS = 'drbossing_bsky_follow_settings';
 
 interface FollowSettings {
   maxFollowers: number;
+  delayMode: 'fixed' | 'random';
   delayMs: number;
+  delayMin: number;
+  delayMax: number;
   skipExisting: boolean;
 }
+
+const DEFAULT_FOLLOW_SETTINGS: FollowSettings = {
+  maxFollowers: 1000,
+  delayMode: 'fixed',
+  delayMs: 1500,
+  delayMin: 800,
+  delayMax: 2500,
+  skipExisting: true,
+};
 
 function loadFollowSettings(): FollowSettings {
   try {
     const raw = localStorage.getItem(LS_FOLLOW_SETTINGS);
-    if (raw) return { maxFollowers: 1000, delayMs: 1500, skipExisting: true, ...JSON.parse(raw) };
+    if (raw) return { ...DEFAULT_FOLLOW_SETTINGS, ...JSON.parse(raw) };
   } catch {
     // ignore
   }
-  return { maxFollowers: 1000, delayMs: 1500, skipExisting: true };
+  return { ...DEFAULT_FOLLOW_SETTINGS };
 }
 
 export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagram, onLock }: Props) {
@@ -154,6 +166,10 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   const [acctType] = useState<'followers' | 'following'>('followers');
   const [selectedSavedId, setSelectedSavedId] = useState('');
   const [acctMode, setAcctMode] = useState<'select' | 'new'>('select');
+  const [acctDelayMode, setAcctDelayMode] = useState<'fixed' | 'random'>('fixed');
+  const [acctDelayMs, setAcctDelayMs] = useState(1500);
+  const [acctDelayMin, setAcctDelayMin] = useState(800);
+  const [acctDelayMax, setAcctDelayMax] = useState(2500);
 
   const [followSettings, setFollowSettings] = useState<FollowSettings>(() => loadFollowSettings());
   const [running, setRunning] = useState(false);
@@ -399,6 +415,10 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
       password: acctPw.trim(),
       target: acctTarget.trim(),
       type: acctType,
+      delayMode: acctDelayMode,
+      delayMs: acctDelayMs,
+      delayMin: acctDelayMin,
+      delayMax: acctDelayMax,
       createdAt: Date.now(),
       ...assignPayload('acct'),
     });
@@ -407,6 +427,10 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     setAcctTarget('');
     setSelectedSavedId('');
     setAcctMode('select');
+    setAcctDelayMode('fixed');
+    setAcctDelayMs(1500);
+    setAcctDelayMin(800);
+    setAcctDelayMax(2500);
     resetAssign('acct');
     await loadAll();
   }
@@ -456,8 +480,10 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
         target: account.target,
         type: account.type,
         maxFollowers: followSettings.maxFollowers,
-        delayMode: 'fixed',
-        delayMs: followSettings.delayMs,
+        delayMode: account.delayMode ?? followSettings.delayMode,
+        delayMs: account.delayMs ?? followSettings.delayMs,
+        delayMin: account.delayMin ?? followSettings.delayMin,
+        delayMax: account.delayMax ?? followSettings.delayMax,
         skipExisting: followSettings.skipExisting,
       },
       {
@@ -1264,15 +1290,51 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                       />
                     </label>
                     <label className="cred-field">
-                      <span className="cred-field__label">Delay between follows (ms)</span>
-                      <input
-                        type="number"
+                      <span className="cred-field__label">Interval mode</span>
+                      <select
                         className="cred-form__input"
-                        value={followSettings.delayMs}
-                        min={0}
-                        onChange={(e) => updateFollowSettings({ delayMs: Number(e.target.value) })}
-                      />
+                        value={followSettings.delayMode}
+                        onChange={(e) => updateFollowSettings({ delayMode: e.target.value as 'fixed' | 'random' })}
+                      >
+                        <option value="fixed">Fixed delay</option>
+                        <option value="random">Random range</option>
+                      </select>
                     </label>
+                    {followSettings.delayMode === 'fixed' ? (
+                      <label className="cred-field">
+                        <span className="cred-field__label">Delay between follows (ms)</span>
+                        <input
+                          type="number"
+                          className="cred-form__input"
+                          value={followSettings.delayMs}
+                          min={0}
+                          onChange={(e) => updateFollowSettings({ delayMs: Number(e.target.value) })}
+                        />
+                      </label>
+                    ) : (
+                      <>
+                        <label className="cred-field">
+                          <span className="cred-field__label">Min delay (ms)</span>
+                          <input
+                            type="number"
+                            className="cred-form__input"
+                            value={followSettings.delayMin}
+                            min={0}
+                            onChange={(e) => updateFollowSettings({ delayMin: Number(e.target.value) })}
+                          />
+                        </label>
+                        <label className="cred-field">
+                          <span className="cred-field__label">Max delay (ms)</span>
+                          <input
+                            type="number"
+                            className="cred-form__input"
+                            value={followSettings.delayMax}
+                            min={0}
+                            onChange={(e) => updateFollowSettings({ delayMax: Number(e.target.value) })}
+                          />
+                        </label>
+                      </>
+                    )}
                     <label className="follow-skip">
                       <input
                         type="checkbox"
@@ -1367,12 +1429,61 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                         onChange={(e) => setAcctTarget(e.target.value)}
                         autoComplete="off"
                       />
+
+                      <label className="cred-field">
+                        <span className="cred-field__label">Follow interval for this account</span>
+                        <select
+                          className="cred-form__input"
+                          value={acctDelayMode}
+                          onChange={(e) => setAcctDelayMode(e.target.value as 'fixed' | 'random')}
+                        >
+                          <option value="fixed">Fixed delay</option>
+                          <option value="random">Random range</option>
+                        </select>
+                      </label>
+                      {acctDelayMode === 'fixed' ? (
+                        <label className="cred-field">
+                          <span className="cred-field__label">Delay between follows (ms)</span>
+                          <input
+                            type="number"
+                            className="cred-form__input"
+                            value={acctDelayMs}
+                            min={0}
+                            onChange={(e) => setAcctDelayMs(Number(e.target.value))}
+                          />
+                        </label>
+                      ) : (
+                        <div className="follow-range">
+                          <label className="cred-field">
+                            <span className="cred-field__label">Min delay (ms)</span>
+                            <input
+                              type="number"
+                              className="cred-form__input"
+                              value={acctDelayMin}
+                              min={0}
+                              onChange={(e) => setAcctDelayMin(Number(e.target.value))}
+                            />
+                          </label>
+                          <label className="cred-field">
+                            <span className="cred-field__label">Max delay (ms)</span>
+                            <input
+                              type="number"
+                              className="cred-form__input"
+                              value={acctDelayMax}
+                              min={0}
+                              onChange={(e) => setAcctDelayMax(Number(e.target.value))}
+                            />
+                          </label>
+                        </div>
+                      )}
+
                       <AssignmentPicker
                         employees={employees}
                         selected={getAssign('acct').set}
                         all={getAssign('acct').all}
                         onToggle={(u) => toggleAssign('acct', u)}
                         onAllChange={(a) => setAssignAll('acct', a)}
+                        adminOption
                       />
                       <button
                         type="submit"
@@ -1405,6 +1516,12 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                                 <strong>@{acct.identifier}</strong>
                                 <span className="follow-card__target">
                                   {acct.type === 'followers' ? 'followers of' : 'following of'} @{acct.target}
+                                </span>
+                                <span className="follow-card__target">
+                                  ⏱{' '}
+                                  {acct.delayMode === 'random'
+                                    ? `${acct.delayMin ?? followSettings.delayMin}–${acct.delayMax ?? followSettings.delayMax}ms`
+                                    : `${acct.delayMs ?? followSettings.delayMs}ms`}
                                 </span>
                               </div>
                               <div className="row-actions">

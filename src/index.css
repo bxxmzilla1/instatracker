@@ -2473,6 +2473,15 @@ button:disabled {
   font-size: 0.9rem;
 }
 
+.follow-range {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.follow-range .cred-field {
+  flex: 1;
+}
+
 .follow-list {
   display: flex;
   flex-direction: column;

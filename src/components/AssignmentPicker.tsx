@@ -7,9 +7,10 @@ interface Props {
   all: boolean;
   onToggle: (username: string) => void;
   onAllChange: (all: boolean) => void;
+  adminOption?: boolean;
 }
 
-export function AssignmentPicker({ employees, selected, all, onToggle, onAllChange }: Props) {
+export function AssignmentPicker({ employees, selected, all, onToggle, onAllChange, adminOption }: Props) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -21,11 +22,14 @@ export function AssignmentPicker({ employees, selected, all, onToggle, onAllChan
     return () => document.removeEventListener('mousedown', onDoc);
   }, []);
 
+  const onlyAdmin = selected.has('admin') && selected.size === 1;
   const summary = all
     ? 'All employees'
     : selected.size === 0
       ? 'Assign to…'
-      : `${selected.size} selected`;
+      : onlyAdmin
+        ? 'Admin only'
+        : `${selected.size} selected`;
 
   return (
     <div className="assign-dropdown" ref={ref}>
@@ -49,6 +53,17 @@ export function AssignmentPicker({ employees, selected, all, onToggle, onAllChan
             />
             Select All
           </label>
+
+          {!all && adminOption && (
+            <label className="assign-dropdown__item">
+              <input
+                type="checkbox"
+                checked={selected.has('admin')}
+                onChange={() => onToggle('admin')}
+              />
+              Admin only
+            </label>
+          )}
 
           {!all &&
             (employees.length === 0 ? (
