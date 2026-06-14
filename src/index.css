@@ -728,81 +728,7 @@ code {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2.4rem;
   width: min(380px, 100%);
-}
-
-/* Faceted black & white diamond */
-.login__diamond {
-  position: relative;
-  width: 140px;
-  height: 150px;
-  clip-path: polygon(20% 0, 80% 0, 100% 34%, 50% 100%, 0 34%);
-  background:
-    linear-gradient(110deg, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0) 42%),
-    linear-gradient(250deg, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0) 48%),
-    conic-gradient(
-      from 215deg at 50% 34%,
-      #cfcfcf,
-      #161616 16%,
-      #f4f4f4 34%,
-      #3a3a3a 54%,
-      #d2d2d2 70%,
-      #0c0c0c 86%,
-      #cfcfcf 100%
-    );
-  filter: drop-shadow(0 26px 60px rgba(255, 255, 255, 0.12));
-  animation: login-diamond-float 8s ease-in-out infinite;
-}
-
-/* Facet edge lines from the crown corners to the tip + table edges */
-.login__diamond::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background:
-    linear-gradient(to bottom right, transparent calc(50% - 0.5px), rgba(0, 0, 0, 0.35) 50%, transparent calc(50% + 0.5px)),
-    linear-gradient(to bottom left, transparent calc(50% - 0.5px), rgba(0, 0, 0, 0.35) 50%, transparent calc(50% + 0.5px)),
-    linear-gradient(to right, transparent calc(50% - 0.5px), rgba(255, 255, 255, 0.25) 50%, transparent calc(50% + 0.5px)),
-    linear-gradient(to bottom, transparent calc(34% - 0.5px), rgba(0, 0, 0, 0.3) 34%, transparent calc(34% + 0.5px));
-}
-
-/* Light sweep across the diamond facets */
-.login__diamond::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(58deg, transparent 36%, rgba(255, 255, 255, 0.75) 50%, transparent 64%);
-  mix-blend-mode: screen;
-  animation: login-diamond-sheen 5s ease-in-out infinite;
-}
-
-@keyframes login-diamond-float {
-  0%,
-  100% {
-    transform: translateY(0) rotate(0deg);
-  }
-  50% {
-    transform: translateY(-10px) rotate(1.5deg);
-  }
-}
-
-@keyframes login-diamond-sheen {
-  0% {
-    transform: translateX(-60%);
-    opacity: 0;
-  }
-  25% {
-    opacity: 1;
-  }
-  60% {
-    transform: translateX(60%);
-    opacity: 0;
-  }
-  100% {
-    transform: translateX(60%);
-    opacity: 0;
-  }
 }
 
 .login__card {
@@ -903,9 +829,7 @@ code {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .login__bg,
-  .login__diamond,
-  .login__diamond::after {
+  .login__bg {
     animation: none;
   }
 }

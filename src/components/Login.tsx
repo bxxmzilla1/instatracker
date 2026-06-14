@@ -89,7 +89,6 @@ export function Login({ onSuccess }: Props) {
     <div className="login">
       <div className="login__bg" aria-hidden />
       <div className="login__stage">
-        <div className="login__diamond" aria-hidden />
         <div className="login__card">
         <div className="login__brand">
           <span className="login__mark" aria-hidden>
