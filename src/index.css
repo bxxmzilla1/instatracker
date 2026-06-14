@@ -686,50 +686,228 @@ code {
 
 /* Login */
 .login {
+  position: relative;
   min-height: 100vh;
   display: grid;
   place-items: center;
   padding: 1.5rem;
+  background: #050506;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+/* Slowly rotating prismatic glow behind everything (grayscale) */
+.login__bg {
+  position: absolute;
+  inset: -30%;
+  z-index: 0;
+  background: conic-gradient(
+    from 0deg at 50% 50%,
+    #000 0deg,
+    #2a2a2a 45deg,
+    #ffffff 110deg,
+    #1c1c1c 175deg,
+    #000 230deg,
+    #d8d8d8 300deg,
+    #000 360deg
+  );
+  filter: blur(140px);
+  opacity: 0.22;
+  animation: login-prism-spin 28s linear infinite;
+}
+
+@keyframes login-prism-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.login__stage {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2.4rem;
+  width: min(380px, 100%);
+}
+
+/* Faceted black & white diamond */
+.login__diamond {
+  position: relative;
+  width: 140px;
+  height: 150px;
+  clip-path: polygon(20% 0, 80% 0, 100% 34%, 50% 100%, 0 34%);
+  background:
+    linear-gradient(110deg, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0) 42%),
+    linear-gradient(250deg, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0) 48%),
+    conic-gradient(
+      from 215deg at 50% 34%,
+      #cfcfcf,
+      #161616 16%,
+      #f4f4f4 34%,
+      #3a3a3a 54%,
+      #d2d2d2 70%,
+      #0c0c0c 86%,
+      #cfcfcf 100%
+    );
+  filter: drop-shadow(0 26px 60px rgba(255, 255, 255, 0.12));
+  animation: login-diamond-float 8s ease-in-out infinite;
+}
+
+/* Facet edge lines from the crown corners to the tip + table edges */
+.login__diamond::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(to bottom right, transparent calc(50% - 0.5px), rgba(0, 0, 0, 0.35) 50%, transparent calc(50% + 0.5px)),
+    linear-gradient(to bottom left, transparent calc(50% - 0.5px), rgba(0, 0, 0, 0.35) 50%, transparent calc(50% + 0.5px)),
+    linear-gradient(to right, transparent calc(50% - 0.5px), rgba(255, 255, 255, 0.25) 50%, transparent calc(50% + 0.5px)),
+    linear-gradient(to bottom, transparent calc(34% - 0.5px), rgba(0, 0, 0, 0.3) 34%, transparent calc(34% + 0.5px));
+}
+
+/* Light sweep across the diamond facets */
+.login__diamond::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(58deg, transparent 36%, rgba(255, 255, 255, 0.75) 50%, transparent 64%);
+  mix-blend-mode: screen;
+  animation: login-diamond-sheen 5s ease-in-out infinite;
+}
+
+@keyframes login-diamond-float {
+  0%,
+  100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-10px) rotate(1.5deg);
+  }
+}
+
+@keyframes login-diamond-sheen {
+  0% {
+    transform: translateX(-60%);
+    opacity: 0;
+  }
+  25% {
+    opacity: 1;
+  }
+  60% {
+    transform: translateX(60%);
+    opacity: 0;
+  }
+  100% {
+    transform: translateX(60%);
+    opacity: 0;
+  }
 }
 
 .login__card {
-  width: min(380px, 100%);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 18px;
-  padding: 2rem;
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  background: rgba(12, 12, 14, 0.66);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 20px;
+  padding: 2.1rem;
   display: flex;
   flex-direction: column;
   gap: 0.85rem;
+  backdrop-filter: blur(16px) saturate(120%);
+  -webkit-backdrop-filter: blur(16px) saturate(120%);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 .login__brand {
   display: flex;
   align-items: center;
   gap: 0.65rem;
+  justify-content: center;
+}
+
+.login__mark {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  color: #0a0a0a;
+  background: linear-gradient(135deg, #ffffff, #b8b8b8);
+  box-shadow: 0 4px 18px rgba(255, 255, 255, 0.18);
 }
 
 .login__brand h1 {
   margin: 0;
   font-size: 1.4rem;
+  color: #fff;
+  letter-spacing: 0.01em;
 }
 
 .login__subtitle {
   margin: 0 0 0.5rem;
-  color: var(--muted);
+  color: rgba(255, 255, 255, 0.55);
 }
 
 .login__input {
-  background: var(--surface-2);
-  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 10px;
   padding: 0.8rem 1rem;
-  color: var(--text);
+  color: #f4f4f5;
   outline: none;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.login__input::placeholder {
+  color: rgba(255, 255, 255, 0.4);
 }
 
 .login__input:focus {
-  border-color: var(--accent);
+  border-color: rgba(255, 255, 255, 0.75);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* Monochrome tabs + button (scoped to the lock screen) */
+.login .login__tabs {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+.login .login__tab {
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.login .login__tab--active,
+.login .login__tab--active:hover {
+  background: #ffffff;
+  color: #0a0a0a;
+}
+
+.login .login__button {
+  background: #ffffff;
+  color: #0a0a0a;
+  font-weight: 600;
+  transition: opacity 0.15s ease, transform 0.05s ease;
+}
+
+.login .login__button:hover:not(:disabled) {
+  background: #f0f0f0;
+}
+
+.login .login__button:disabled {
+  background: rgba(255, 255, 255, 0.25);
+  color: rgba(10, 10, 10, 0.6);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login__bg,
+  .login__diamond,
+  .login__diamond::after {
+    animation: none;
+  }
 }
 
 .login__remember {

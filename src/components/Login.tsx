@@ -1,7 +1,9 @@
 import { FormEvent, useState } from 'react';
 import { getEmployees } from '../lib/db';
 import { getEmployees as getBskyEmployees } from '../lib/bsky/db';
-import type { Session } from '../types';
+import { getEmployees as getBskyEmployeesLocal } from '../lib/bsky/dbLocal';
+import { isSupabaseConfigured } from '../lib/supabase';
+import type { Employee, Session } from '../types';
 
 interface Props {
   onSuccess: (session: Session) => void;
@@ -46,20 +48,35 @@ export function Login({ onSuccess }: Props) {
     setError(null);
     try {
       const handle = username.trim().toLowerCase();
+      const pass = password.trim();
+      const matches = (e: Employee) =>
+        e.username.trim().toLowerCase() === handle && (e.password ?? '').trim() === pass;
+
+      // Fetch both employee lists independently so a failure in one platform
+      // never blocks logging in on the other.
       const [igEmployees, bskyEmployees] = await Promise.all([
-        getEmployees(),
-        getBskyEmployees().catch(() => []),
+        getEmployees().catch(() => [] as Employee[]),
+        getBskyEmployees().catch(() => [] as Employee[]),
       ]);
-      const igMatch = igEmployees.find((e) => e.username.toLowerCase() === handle && e.password === password);
+
+      const igMatch = igEmployees.find(matches);
       if (igMatch) {
         onSuccess({ role: 'employee', username: igMatch.username, platform: 'instagram' });
         return;
       }
-      const bskyMatch = bskyEmployees.find((e) => e.username.toLowerCase() === handle && e.password === password);
+
+      let bskyMatch = bskyEmployees.find(matches);
+      // Fallback: if Supabase is configured but the account was stored locally
+      // (or the remote lookup failed), also check the local Bluesky store.
+      if (!bskyMatch && isSupabaseConfigured) {
+        const localBsky = await getBskyEmployeesLocal().catch(() => [] as Employee[]);
+        bskyMatch = localBsky.find(matches);
+      }
       if (bskyMatch) {
         onSuccess({ role: 'employee', username: bskyMatch.username, platform: 'bluesky' });
         return;
       }
+
       setError('Incorrect employee username or password');
     } catch {
       setError('Could not verify employee. Try again.');
@@ -70,13 +87,15 @@ export function Login({ onSuccess }: Props) {
 
   return (
     <div className="login">
-      <div className="login__card">
+      <div className="login__bg" aria-hidden />
+      <div className="login__stage">
+        <div className="login__diamond" aria-hidden />
+        <div className="login__card">
         <div className="login__brand">
-          <span className="sidebar__logo" aria-hidden>
-            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2">
-              <rect x="3" y="3" width="18" height="18" rx="5" />
-              <circle cx="12" cy="12" r="4" />
-              <circle cx="17.5" cy="6.5" r="1.2" fill="currentColor" stroke="none" />
+          <span className="login__mark" aria-hidden>
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.6">
+              <path d="M6 3h12l4 6-10 12L2 9z" />
+              <path d="M2 9h20M9 3 7 9l5 12M15 3l2 6-5 12" />
             </svg>
           </span>
           <h1>Dr. Bossing</h1>
@@ -149,6 +168,7 @@ export function Login({ onSuccess }: Props) {
             </button>
           </form>
         )}
+        </div>
       </div>
     </div>
   );
