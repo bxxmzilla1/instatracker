@@ -383,9 +383,15 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
 
   async function submitAccount(e: FormEvent) {
     e.preventDefault();
-    if (!acctTarget.trim() || !assignValid('acct')) return;
+    if (!acctTarget.trim()) return;
+    if (isAdmin && !assignValid('acct')) return;
     if (acctMode === 'select' && !selectedSavedId) return;
     if (acctMode === 'new' && (!acctId.trim() || !acctPw.trim())) return;
+    // Employees own the accounts they add (assigned only to themselves);
+    // admins choose the assignment via the picker.
+    const ownership = isAdmin
+      ? assignPayload('acct')
+      : { employees: [session.username], allEmployees: false };
     await addBskyAccount({
       id: crypto.randomUUID(),
       identifier: acctId.trim(),
@@ -399,7 +405,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
       delayMin: acctDelayMin,
       delayMax: acctDelayMax,
       createdAt: Date.now(),
-      ...assignPayload('acct'),
+      ...ownership,
     });
     setAcctId('');
     setAcctPw('');
@@ -1232,8 +1238,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
 
             {view === 'follow' && (
               <>
-                {isAdmin && (
-                  <section className="panel">
+                <section className="panel">
                     <div className="panel-head">
                       <h2>Add account</h2>
                       <button
@@ -1383,19 +1388,21 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                         Skip people already followed
                       </label>
 
-                      <AssignmentPicker
-                        employees={employees}
-                        selected={getAssign('acct').set}
-                        all={getAssign('acct').all}
-                        onToggle={(u) => toggleAssign('acct', u)}
-                        onAllChange={(a) => setAssignAll('acct', a)}
-                        adminOption
-                      />
+                      {isAdmin && (
+                        <AssignmentPicker
+                          employees={employees}
+                          selected={getAssign('acct').set}
+                          all={getAssign('acct').all}
+                          onToggle={(u) => toggleAssign('acct', u)}
+                          onAllChange={(a) => setAssignAll('acct', a)}
+                          adminOption
+                        />
+                      )}
                       <button
                         type="submit"
                         disabled={
                           !acctTarget.trim() ||
-                          !assignValid('acct') ||
+                          (isAdmin && !assignValid('acct')) ||
                           (acctMode === 'select' ? !selectedSavedId : !acctId.trim() || !acctPw.trim())
                         }
                       >
@@ -1404,7 +1411,6 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                     </form>
                     )}
                   </section>
-                )}
 
                 <section className="panel">
                   <div className="panel-head">
@@ -1450,7 +1456,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                                     ▶
                                   </button>
                                 )}
-                                {isAdmin && (
+                                {(isAdmin || acct.employees.includes(session.username)) && (
                                   <button type="button" className="license-row__delete" onClick={() => handleDeleteAccount(acct.id)} title="Delete">
                                     ✕
                                   </button>
