@@ -125,6 +125,17 @@ export default function App() {
   const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
   const [session, setSession] = useState<Session | null>(() => loadSession());
   const [platform, setPlatform] = useState<Platform>(() => loadSession()?.platform ?? 'instagram');
+
+  // Keep the persisted session in sync with the active platform so a reload
+  // restores the platform the user was last on (e.g. Bluesky).
+  useEffect(() => {
+    if (!session) return;
+    try {
+      localStorage.setItem('drbossing_session', JSON.stringify({ ...session, platform }));
+    } catch {
+      // ignore
+    }
+  }, [session, platform]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [employeeAccountCounts, setEmployeeAccountCounts] = useState<Record<string, number>>({});
   const [selectedEmployee, setSelectedEmployee] = useState<string | null>(null);
