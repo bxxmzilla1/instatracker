@@ -167,6 +167,10 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   const [acctSkip, setAcctSkip] = useState(true);
   const [acctProxyId, setAcctProxyId] = useState('');
 
+  // Inline editing of a configured follow account.
+  const [editingAccountId, setEditingAccountId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState<BskyAccount | null>(null);
+
   const [running, setRunning] = useState(false);
   // Number of follow jobs currently in flight. Tracked separately from the
   // "Start all" batch flag so single-account runs keep flushing + show in the
@@ -615,6 +619,39 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   async function handleDeleteAccount(id: string) {
     await deleteBskyAccount(id);
     await loadAll();
+  }
+
+  function startEditAccount(acct: BskyAccount) {
+    setEditingAccountId(acct.id);
+    setEditDraft({ ...acct });
+  }
+
+  function cancelEditAccount() {
+    setEditingAccountId(null);
+    setEditDraft(null);
+  }
+
+  function updateDraft<K extends keyof BskyAccount>(key: K, value: BskyAccount[K]) {
+    setEditDraft((d) => (d ? { ...d, [key]: value } : d));
+  }
+
+  async function saveEditAccount(e: FormEvent) {
+    e.preventDefault();
+    if (!editDraft) return;
+    if (!editDraft.identifier.trim() || !editDraft.password.trim() || !editDraft.target.trim()) return;
+    try {
+      await addBskyAccount({
+        ...editDraft,
+        identifier: editDraft.identifier.trim(),
+        password: editDraft.password.trim(),
+        target: editDraft.target.trim(),
+        proxyId: editDraft.proxyId || undefined,
+      });
+      cancelEditAccount();
+      await loadAll();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not update account.');
+    }
   }
 
   async function handleAddSavedAccount(e: FormEvent) {
@@ -1865,56 +1902,210 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                       {accounts.map((acct) => {
                         const rs = runState[acct.id];
                         const pct = rs && rs.total ? Math.round((rs.done / rs.total) * 100) : 0;
+                        const canManage = isAdmin || acct.employees.includes(session.username);
+                        const isEditing = editingAccountId === acct.id && editDraft;
                         return (
                           <div key={acct.id} className={`follow-card follow-card--${rs?.state ?? 'idle'}`}>
-                            <div className="follow-card__head">
-                              <div>
-                                <strong>@{acct.identifier}</strong>
-                                <span className="follow-card__target">
-                                  {acct.type === 'followers' ? 'followers of' : 'following of'} @{acct.target}
-                                </span>
-                                <span className="follow-card__target">
-                                  ⏱{' '}
-                                  {acct.delayMode === 'random'
-                                    ? `${acct.delayMin ?? DEFAULT_DELAY_MIN}–${acct.delayMax ?? DEFAULT_DELAY_MAX}ms`
-                                    : `${acct.delayMs ?? DEFAULT_DELAY_MS}ms`}
-                                </span>
-                                {acct.proxyId && (
-                                  <span className="follow-card__target">
-                                    🌐 {proxies.find((p) => p.id === acct.proxyId) ? proxyLabel(proxies.find((p) => p.id === acct.proxyId)!) : 'proxy'}
-                                  </span>
+                            {isEditing ? (
+                              <form className="bio-form follow-card__edit" onSubmit={saveEditAccount}>
+                                <input
+                                  className="cred-form__input"
+                                  placeholder="Handle or email (e.g. name.bsky.social)"
+                                  value={editDraft!.identifier}
+                                  onChange={(e) => updateDraft('identifier', e.target.value)}
+                                  autoComplete="off"
+                                />
+                                <input
+                                  className="cred-form__input"
+                                  type="text"
+                                  placeholder="App password (xxxx-xxxx-xxxx-xxxx)"
+                                  value={editDraft!.password}
+                                  onChange={(e) => updateDraft('password', e.target.value)}
+                                  autoComplete="off"
+                                />
+
+                                {targets.length > 0 && (
+                                  <label className="cred-field">
+                                    <span className="cred-field__label">Saved target profile</span>
+                                    <select
+                                      className="cred-form__input"
+                                      value={targets.some((t) => t.handle === editDraft!.target) ? editDraft!.target : ''}
+                                      onChange={(e) => updateDraft('target', e.target.value)}
+                                    >
+                                      <option value="">Choose a saved target…</option>
+                                      {targets.map((t) => (
+                                        <option key={t.id} value={t.handle}>
+                                          @{t.handle}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </label>
                                 )}
-                              </div>
-                              <div className="row-actions">
-                                {isAdmin && <div className="bio-row__assign">{renderAssignTags(acct)}</div>}
-                                {!running && (
-                                  <button type="button" className="row-edit" title="Run this account" onClick={() => runOne(acct)}>
-                                    ▶
+
+                                <input
+                                  className="cred-form__input"
+                                  placeholder="Target profile (handle or bsky.app/profile/…)"
+                                  value={editDraft!.target}
+                                  onChange={(e) => updateDraft('target', e.target.value)}
+                                  autoComplete="off"
+                                />
+
+                                <label className="cred-field">
+                                  <span className="cred-field__label">Max follows for this account</span>
+                                  <input
+                                    type="number"
+                                    className="cred-form__input"
+                                    value={editDraft!.maxFollowers ?? DEFAULT_MAX_FOLLOWERS}
+                                    min={1}
+                                    onChange={(e) => updateDraft('maxFollowers', Number(e.target.value))}
+                                  />
+                                </label>
+
+                                <label className="cred-field">
+                                  <span className="cred-field__label">Follow interval for this account</span>
+                                  <select
+                                    className="cred-form__input"
+                                    value={editDraft!.delayMode ?? 'fixed'}
+                                    onChange={(e) => updateDraft('delayMode', e.target.value as 'fixed' | 'random')}
+                                  >
+                                    <option value="fixed">Fixed delay</option>
+                                    <option value="random">Random range</option>
+                                  </select>
+                                </label>
+                                {(editDraft!.delayMode ?? 'fixed') === 'fixed' ? (
+                                  <label className="cred-field">
+                                    <span className="cred-field__label">Delay between follows (ms)</span>
+                                    <input
+                                      type="number"
+                                      className="cred-form__input"
+                                      value={editDraft!.delayMs ?? DEFAULT_DELAY_MS}
+                                      min={0}
+                                      onChange={(e) => updateDraft('delayMs', Number(e.target.value))}
+                                    />
+                                  </label>
+                                ) : (
+                                  <div className="follow-range">
+                                    <label className="cred-field">
+                                      <span className="cred-field__label">Min delay (ms)</span>
+                                      <input
+                                        type="number"
+                                        className="cred-form__input"
+                                        value={editDraft!.delayMin ?? DEFAULT_DELAY_MIN}
+                                        min={0}
+                                        onChange={(e) => updateDraft('delayMin', Number(e.target.value))}
+                                      />
+                                    </label>
+                                    <label className="cred-field">
+                                      <span className="cred-field__label">Max delay (ms)</span>
+                                      <input
+                                        type="number"
+                                        className="cred-form__input"
+                                        value={editDraft!.delayMax ?? DEFAULT_DELAY_MAX}
+                                        min={0}
+                                        onChange={(e) => updateDraft('delayMax', Number(e.target.value))}
+                                      />
+                                    </label>
+                                  </div>
+                                )}
+
+                                <label className="cred-field">
+                                  <span className="cred-field__label">Proxy for this account</span>
+                                  <select
+                                    className="cred-form__input"
+                                    value={editDraft!.proxyId ?? ''}
+                                    onChange={(e) => updateDraft('proxyId', e.target.value || undefined)}
+                                  >
+                                    <option value="">No proxy (direct)</option>
+                                    {proxies.map((p) => (
+                                      <option key={p.id} value={p.id}>
+                                        {proxyLabel(p)}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
+
+                                <label className="follow-skip">
+                                  <input
+                                    type="checkbox"
+                                    checked={editDraft!.skipExisting ?? true}
+                                    onChange={(e) => updateDraft('skipExisting', e.target.checked)}
+                                  />
+                                  Skip people already followed
+                                </label>
+
+                                <div className="row-actions">
+                                  <button
+                                    type="submit"
+                                    disabled={
+                                      !editDraft!.identifier.trim() ||
+                                      !editDraft!.password.trim() ||
+                                      !editDraft!.target.trim()
+                                    }
+                                  >
+                                    Save changes
                                   </button>
-                                )}
-                                {(isAdmin || acct.employees.includes(session.username)) && (
-                                  <button type="button" className="license-row__delete" onClick={() => handleDeleteAccount(acct.id)} title="Delete">
-                                    ✕
+                                  <button type="button" className="btn btn--ghost" onClick={cancelEditAccount}>
+                                    Cancel
                                   </button>
-                                )}
-                              </div>
-                            </div>
-                            {rs && (
+                                </div>
+                              </form>
+                            ) : (
                               <>
-                                <div className="refresh-progress__track follow-card__track">
-                                  <div className="refresh-progress__fill" style={{ width: `${pct}%` }} />
-                                </div>
-                                <div className="follow-card__status">
-                                  <span className={`follow-dot follow-dot--${rs.state}`} />
-                                  <span>{rs.text}</span>
-                                  {rs.result && (
-                                    <span className="follow-card__counts">
-                                      {rs.result.success} followed · {rs.result.skipped} skipped · {rs.result.failed} failed
-                                      {rs.result.total ? ` / ${rs.result.total}` : ''}
+                                <div className="follow-card__head">
+                                  <div>
+                                    <strong>@{acct.identifier}</strong>
+                                    <span className="follow-card__target">
+                                      {acct.type === 'followers' ? 'followers of' : 'following of'} @{acct.target}
                                     </span>
-                                  )}
+                                    <span className="follow-card__target">
+                                      ⏱{' '}
+                                      {acct.delayMode === 'random'
+                                        ? `${acct.delayMin ?? DEFAULT_DELAY_MIN}–${acct.delayMax ?? DEFAULT_DELAY_MAX}ms`
+                                        : `${acct.delayMs ?? DEFAULT_DELAY_MS}ms`}
+                                    </span>
+                                    {acct.proxyId && (
+                                      <span className="follow-card__target">
+                                        🌐 {proxies.find((p) => p.id === acct.proxyId) ? proxyLabel(proxies.find((p) => p.id === acct.proxyId)!) : 'proxy'}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="row-actions">
+                                    {isAdmin && <div className="bio-row__assign">{renderAssignTags(acct)}</div>}
+                                    {!running && canManage && (
+                                      <button type="button" className="row-edit" title="Edit this account" onClick={() => startEditAccount(acct)}>
+                                        ✎
+                                      </button>
+                                    )}
+                                    {!running && (
+                                      <button type="button" className="row-edit" title="Run this account" onClick={() => runOne(acct)}>
+                                        ▶
+                                      </button>
+                                    )}
+                                    {canManage && (
+                                      <button type="button" className="license-row__delete" onClick={() => handleDeleteAccount(acct.id)} title="Delete">
+                                        ✕
+                                      </button>
+                                    )}
+                                  </div>
                                 </div>
-                                {rs.live && <p className="follow-card__live">{rs.live}</p>}
+                                {rs && (
+                                  <>
+                                    <div className="refresh-progress__track follow-card__track">
+                                      <div className="refresh-progress__fill" style={{ width: `${pct}%` }} />
+                                    </div>
+                                    <div className="follow-card__status">
+                                      <span className={`follow-dot follow-dot--${rs.state}`} />
+                                      <span>{rs.text}</span>
+                                      {rs.result && (
+                                        <span className="follow-card__counts">
+                                          {rs.result.success} followed · {rs.result.skipped} skipped · {rs.result.failed} failed
+                                          {rs.result.total ? ` / ${rs.result.total}` : ''}
+                                        </span>
+                                      )}
+                                    </div>
+                                    {rs.live && <p className="follow-card__live">{rs.live}</p>}
+                                  </>
+                                )}
                               </>
                             )}
                           </div>
