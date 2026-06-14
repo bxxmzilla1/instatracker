@@ -3,6 +3,7 @@ import type {
   Bio,
   BskyAccount,
   BskyPost,
+  BskySavedAccount,
   Cta,
   Employee,
   ImageAsset,
@@ -18,6 +19,7 @@ import {
   addPost,
   addProfilePic,
   addProxy,
+  addSavedAccount,
   deleteBanner,
   deleteBio,
   deleteBskyAccount,
@@ -26,6 +28,7 @@ import {
   deletePost,
   deleteProfilePic,
   deleteProxy,
+  deleteSavedAccount,
   getBanners,
   getBios,
   getBskyAccounts,
@@ -34,6 +37,7 @@ import {
   getPosts,
   getProfilePics,
   getProxies,
+  getSavedAccounts,
 } from '../lib/bsky/db';
 import { runAccountJob, type JobResult } from '../lib/bsky/client';
 import { AssignmentPicker } from './AssignmentPicker';
@@ -45,6 +49,7 @@ import { formatCount, formatDate } from '../lib/format';
 
 type View =
   | 'dashboard'
+  | 'accounts'
   | 'banner'
   | 'profilepic'
   | 'bio'
@@ -109,6 +114,13 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   const [posts, setPosts] = useState<BskyPost[]>([]);
   const [proxies, setProxies] = useState<Proxy[]>([]);
   const [accounts, setAccounts] = useState<BskyAccount[]>([]);
+  const [savedAccounts, setSavedAccounts] = useState<BskySavedAccount[]>([]);
+
+  const [newAcctHandle, setNewAcctHandle] = useState('');
+  const [newAcctEmail, setNewAcctEmail] = useState('');
+  const [newAcctPassword, setNewAcctPassword] = useState('');
+  const [newAcctNotes, setNewAcctNotes] = useState('');
+  const [showAddSavedAccount, setShowAddSavedAccount] = useState(false);
 
   // Generic add-form assignment state, scoped per form key.
   const [assign, setAssign] = useState<Record<string, { set: Set<string>; all: boolean }>>({});
@@ -172,7 +184,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   }
 
   const loadAll = useCallback(async () => {
-    const [bn, pp, bi, ct, po, px, ac] = await Promise.all([
+    const [bn, pp, bi, ct, po, px, ac, sa] = await Promise.all([
       getBanners(ownerFilter),
       getProfilePics(ownerFilter),
       getBios(ownerFilter),
@@ -180,6 +192,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
       getPosts(ownerFilter),
       getProxies(ownerFilter),
       getBskyAccounts(ownerFilter),
+      getSavedAccounts(ownerFilter),
     ]);
     setBanners(bn);
     setProfilePics(pp);
@@ -188,6 +201,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     setPosts(po);
     setProxies(px);
     setAccounts(ac);
+    setSavedAccounts(sa);
   }, [ownerFilter]);
 
   useEffect(() => {
@@ -461,6 +475,36 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     await loadAll();
   }
 
+  async function handleAddSavedAccount(e: FormEvent) {
+    e.preventDefault();
+    if (!newAcctHandle.trim()) return;
+    const owner = session.role === 'employee' ? session.username : 'admin';
+    try {
+      await addSavedAccount({
+        id: crypto.randomUUID(),
+        handle: newAcctHandle.trim().replace(/^@/, ''),
+        email: newAcctEmail.trim() || undefined,
+        password: newAcctPassword.trim() || undefined,
+        notes: newAcctNotes.trim() || undefined,
+        owner,
+        createdAt: Date.now(),
+      });
+      setNewAcctHandle('');
+      setNewAcctEmail('');
+      setNewAcctPassword('');
+      setNewAcctNotes('');
+      setShowAddSavedAccount(false);
+      await loadAll();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save account.');
+    }
+  }
+
+  async function handleDeleteSavedAccount(id: string) {
+    await deleteSavedAccount(id);
+    await loadAll();
+  }
+
   const navItems: { id: View; label: string; icon: ReactNode }[] = [
     {
       id: 'dashboard',
@@ -471,6 +515,18 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
           <rect x="14" y="3" width="7" height="5" rx="1.5" />
           <rect x="14" y="12" width="7" height="9" rx="1.5" />
           <rect x="3" y="16" width="7" height="5" rx="1.5" />
+        </svg>
+      ),
+    },
+    {
+      id: 'accounts',
+      label: 'Accounts',
+      icon: (
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
+          <circle cx="9" cy="8" r="3.2" />
+          <path d="M3.5 19c0-3 2.7-5 5.5-5s5.5 2 5.5 5" />
+          <path d="M16 5.2a3 3 0 0 1 0 5.6" />
+          <path d="M18 14c2.2.4 3.8 2.2 3.8 4.6" />
         </svg>
       ),
     },
@@ -548,6 +604,8 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   const topbarTitle =
     view === 'dashboard'
       ? 'Dashboard'
+      : view === 'accounts'
+      ? 'Accounts'
       : view === 'banner'
         ? 'Banner'
         : view === 'profilepic'
@@ -718,6 +776,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
 
   const dashboardCards = [
     { label: 'Employees', value: employees.length, show: isAdmin },
+    { label: 'Accounts', value: savedAccounts.length, show: true },
     { label: 'Follow Accounts', value: accounts.length, show: true },
     { label: 'Posts', value: posts.length, show: true },
     { label: 'Banners', value: banners.length, show: true },
@@ -851,6 +910,100 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                   Manage your Bluesky banners, profile pictures, bios, posts, CTAs, proxies and run
                   mass-follow jobs from the menu on the left.
                 </p>
+              </section>
+            )}
+
+            {view === 'accounts' && (
+              <section className="panel">
+                <div className="panel-head">
+                  <h2>
+                    {isAdmin ? `Accounts (${savedAccounts.length})` : `Your accounts (${savedAccounts.length})`}
+                  </h2>
+                  <button
+                    type="button"
+                    className="btn"
+                    onClick={() => setShowAddSavedAccount((v) => !v)}
+                  >
+                    {showAddSavedAccount ? 'Cancel' : '+ Save account'}
+                  </button>
+                </div>
+
+                {showAddSavedAccount && (
+                  <form className="bio-form" onSubmit={handleAddSavedAccount}>
+                    <input
+                      className="cred-form__input"
+                      placeholder="Handle (e.g. name.bsky.social)"
+                      value={newAcctHandle}
+                      onChange={(e) => setNewAcctHandle(e.target.value)}
+                      autoComplete="off"
+                      spellCheck={false}
+                    />
+                    <input
+                      className="cred-form__input"
+                      placeholder="Email (optional)"
+                      value={newAcctEmail}
+                      onChange={(e) => setNewAcctEmail(e.target.value)}
+                      autoComplete="off"
+                      spellCheck={false}
+                    />
+                    <input
+                      className="cred-form__input"
+                      type="text"
+                      placeholder="Password / app password (optional)"
+                      value={newAcctPassword}
+                      onChange={(e) => setNewAcctPassword(e.target.value)}
+                      autoComplete="off"
+                    />
+                    <textarea
+                      className="bio-form__textarea"
+                      placeholder="Notes (optional)"
+                      value={newAcctNotes}
+                      onChange={(e) => setNewAcctNotes(e.target.value)}
+                      rows={2}
+                    />
+                    <button type="submit" disabled={!newAcctHandle.trim()}>
+                      Save account
+                    </button>
+                  </form>
+                )}
+
+                {savedAccounts.length === 0 ? (
+                  <p className="empty-note">
+                    No accounts saved yet. Use “Save account” to add one
+                    {isAdmin ? '. Accounts your employees add will also appear here.' : '.'}
+                  </p>
+                ) : (
+                  <div className="proxy-list">
+                    {savedAccounts.map((acct) => (
+                      <div key={acct.id} className="proxy-row">
+                        <div className="proxy-row__body">
+                          <div className="proxy-row__top">
+                            <strong>@{acct.handle}</strong>
+                            {isAdmin && acct.owner && acct.owner !== 'admin' && (
+                              <span className="owner-tag">Added by {acct.owner}</span>
+                            )}
+                          </div>
+                          <div className="proxy-row__fields">
+                            <CopyField label="Handle" value={acct.handle} />
+                            {acct.email && <CopyField label="Email" value={acct.email} />}
+                            {acct.password && <CopyField label="Password" value={acct.password} />}
+                          </div>
+                          {acct.notes && <p className="bio-row__text">{acct.notes}</p>}
+                        </div>
+                        <div className="row-actions">
+                          <button
+                            type="button"
+                            className="license-row__delete"
+                            onClick={() => handleDeleteSavedAccount(acct.id)}
+                            title="Delete account"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </section>
             )}
 
@@ -1209,6 +1362,10 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
             {view === 'employee' && selectedEmployee && (
               <section className="panel dashboard">
                 <div className="dashboard__stats">
+                  <div className="stat-card">
+                    <span className="stat-card__label">Accounts</span>
+                    <strong className="stat-card__value">{formatCount(savedAccounts.length)}</strong>
+                  </div>
                   <div className="stat-card">
                     <span className="stat-card__label">Follow Accounts</span>
                     <strong className="stat-card__value">{formatCount(accounts.length)}</strong>

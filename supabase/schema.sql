@@ -264,6 +264,17 @@ create table if not exists bsky_accounts (
   created_at bigint
 );
 
+-- Saved Bluesky accounts added by the admin or employees.
+create table if not exists bsky_saved_accounts (
+  id text primary key,
+  handle text,
+  email text,
+  password text,
+  notes text,
+  owner text,
+  created_at bigint
+);
+
 alter table bsky_employees enable row level security;
 alter table bsky_proxies enable row level security;
 alter table bsky_bios enable row level security;
@@ -272,6 +283,7 @@ alter table bsky_banners enable row level security;
 alter table bsky_profile_pics enable row level security;
 alter table bsky_posts enable row level security;
 alter table bsky_accounts enable row level security;
+alter table bsky_saved_accounts enable row level security;
 
 drop policy if exists "allow anon all" on bsky_employees;
 drop policy if exists "allow anon all" on bsky_proxies;
@@ -281,6 +293,7 @@ drop policy if exists "allow anon all" on bsky_banners;
 drop policy if exists "allow anon all" on bsky_profile_pics;
 drop policy if exists "allow anon all" on bsky_posts;
 drop policy if exists "allow anon all" on bsky_accounts;
+drop policy if exists "allow anon all" on bsky_saved_accounts;
 
 create policy "allow anon all" on bsky_employees
   for all to anon using (true) with check (true);
@@ -297,6 +310,8 @@ create policy "allow anon all" on bsky_profile_pics
 create policy "allow anon all" on bsky_posts
   for all to anon using (true) with check (true);
 create policy "allow anon all" on bsky_accounts
+  for all to anon using (true) with check (true);
+create policy "allow anon all" on bsky_saved_accounts
   for all to anon using (true) with check (true);
 
 -- Storage bucket for cached profile pictures, reel thumbnails, and story images.

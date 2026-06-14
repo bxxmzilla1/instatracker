@@ -29,4 +29,7 @@ export const {
   getBskyAccounts,
   addBskyAccount,
   deleteBskyAccount,
+  getSavedAccounts,
+  addSavedAccount,
+  deleteSavedAccount,
 } = impl;

@@ -40,6 +40,17 @@ export interface BskyPost {
   createdAt: number;
 }
 
+/** A saved Bluesky account (added by the admin or an employee). */
+export interface BskySavedAccount {
+  id: string;
+  handle: string;
+  email?: string;
+  password?: string;
+  notes?: string;
+  owner?: string;
+  createdAt: number;
+}
+
 /** A Bluesky account configured for the mass-follow tool. */
 export interface BskyAccount {
   id: string;

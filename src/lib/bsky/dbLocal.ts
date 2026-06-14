@@ -4,6 +4,7 @@ import type {
   Bio,
   BskyAccount,
   BskyPost,
+  BskySavedAccount,
   Cta,
   Employee,
   ImageAsset,
@@ -22,13 +23,14 @@ interface BskyDB extends DBSchema {
   profilePics: { key: string; value: ImageRecord };
   posts: { key: string; value: PostRecord };
   accounts: { key: string; value: BskyAccount };
+  savedAccounts: { key: string; value: BskySavedAccount };
 }
 
 let dbPromise: Promise<IDBPDatabase<BskyDB>> | null = null;
 
 function getDb() {
   if (!dbPromise) {
-    dbPromise = openDB<BskyDB>('drbossing-bsky-v1', 1, {
+    dbPromise = openDB<BskyDB>('drbossing-bsky-v1', 2, {
       upgrade(db) {
         for (const store of [
           'employees',
@@ -39,6 +41,7 @@ function getDb() {
           'profilePics',
           'posts',
           'accounts',
+          'savedAccounts',
         ] as const) {
           if (!db.objectStoreNames.contains(store)) {
             db.createObjectStore(store, {
@@ -217,4 +220,22 @@ export async function addBskyAccount(account: BskyAccount): Promise<void> {
 export async function deleteBskyAccount(id: string): Promise<void> {
   const db = await getDb();
   await db.delete('accounts', id);
+}
+
+export async function getSavedAccounts(owner?: string): Promise<BskySavedAccount[]> {
+  const db = await getDb();
+  let rows = await db.getAll('savedAccounts');
+  if (owner === 'admin') rows = rows.filter((a) => !a.owner || a.owner === 'admin');
+  else if (owner !== undefined) rows = rows.filter((a) => a.owner === owner);
+  return rows.sort((a, b) => b.createdAt - a.createdAt);
+}
+
+export async function addSavedAccount(account: BskySavedAccount): Promise<void> {
+  const db = await getDb();
+  await db.put('savedAccounts', account);
+}
+
+export async function deleteSavedAccount(id: string): Promise<void> {
+  const db = await getDb();
+  await db.delete('savedAccounts', id);
 }

@@ -4,6 +4,7 @@ import type {
   Bio,
   BskyAccount,
   BskyPost,
+  BskySavedAccount,
   Cta,
   Employee,
   ImageAsset,
@@ -332,5 +333,57 @@ export async function addBskyAccount(account: BskyAccount): Promise<void> {
 
 export async function deleteBskyAccount(id: string): Promise<void> {
   const { error } = await client().from('bsky_accounts').delete().eq('id', id);
+  if (error) throw new Error(error.message);
+}
+
+interface SavedAccountRow {
+  id: string;
+  handle: string | null;
+  email: string | null;
+  password: string | null;
+  notes: string | null;
+  owner: string | null;
+  created_at: number | null;
+}
+
+function toSavedAccount(row: SavedAccountRow): BskySavedAccount {
+  return {
+    id: row.id,
+    handle: row.handle ?? '',
+    email: row.email ?? undefined,
+    password: row.password ?? undefined,
+    notes: row.notes ?? undefined,
+    owner: row.owner ?? undefined,
+    createdAt: row.created_at ?? 0,
+  };
+}
+
+export async function getSavedAccounts(owner?: string): Promise<BskySavedAccount[]> {
+  let query = client()
+    .from('bsky_saved_accounts')
+    .select('*')
+    .order('created_at', { ascending: false });
+  if (owner === 'admin') query = query.or('owner.eq.admin,owner.is.null');
+  else if (owner !== undefined) query = query.eq('owner', owner);
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+  return (data as SavedAccountRow[]).map(toSavedAccount);
+}
+
+export async function addSavedAccount(account: BskySavedAccount): Promise<void> {
+  const { error } = await client().from('bsky_saved_accounts').upsert({
+    id: account.id,
+    handle: account.handle,
+    email: account.email ?? null,
+    password: account.password ?? null,
+    notes: account.notes ?? null,
+    owner: account.owner ?? null,
+    created_at: account.createdAt,
+  });
+  if (error) throw new Error(error.message);
+}
+
+export async function deleteSavedAccount(id: string): Promise<void> {
+  const { error } = await client().from('bsky_saved_accounts').delete().eq('id', id);
   if (error) throw new Error(error.message);
 }
