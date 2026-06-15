@@ -62,6 +62,23 @@ export interface BskyTarget {
   createdAt: number;
 }
 
+/** Live run status for a Bluesky follow account, shared across sessions. */
+export interface BskyRun {
+  accountId: string;
+  identifier?: string;
+  owner?: string;
+  state: string;
+  text: string;
+  done: number;
+  total: number;
+  success: number;
+  skipped: number;
+  failed: number;
+  live: string;
+  active: boolean;
+  updatedAt: number;
+}
+
 /** A recorded batch of follows performed by a Bluesky follow account. */
 export interface BskyFollowEvent {
   id: string;

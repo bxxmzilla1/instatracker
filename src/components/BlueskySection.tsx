@@ -4,6 +4,7 @@ import type {
   BskyAccount,
   BskyFollowEvent,
   BskyPost,
+  BskyRun,
   BskySavedAccount,
   BskyTarget,
   Cta,
@@ -43,8 +44,10 @@ import {
   getPosts,
   getProfilePics,
   getProxies,
+  getRuns,
   getSavedAccounts,
   getTargets,
+  upsertRun,
 } from '../lib/bsky/db';
 import { runAccountJob, type JobResult, type ProxyConfig } from '../lib/bsky/client';
 import { AssignmentPicker } from './AssignmentPicker';
@@ -85,6 +88,9 @@ interface RunState {
   result: JobResult | null;
   live: string;
 }
+
+// A shared run is considered live only if its heartbeat is newer than this.
+const RUN_STALE_MS = 15000;
 
 // Default follow settings used when an account doesn't specify its own.
 const DEFAULT_MAX_FOLLOWERS = 1000;
@@ -171,6 +177,10 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   // Inline editing of a configured follow account.
   const [editingAccountId, setEditingAccountId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<BskyAccount | null>(null);
+
+  // Live run statuses written by every session, so each PC can see follow jobs
+  // running elsewhere (other admins, employees, etc.).
+  const [remoteRuns, setRemoteRuns] = useState<Record<string, BskyRun>>({});
 
   const [running, setRunning] = useState(false);
   // Number of follow jobs currently in flight. Tracked separately from the
@@ -353,6 +363,30 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   useEffect(() => {
     setSelectedFollowDay(null);
   }, [chartMonthOffset]);
+
+  // Poll shared run statuses so every session can see follow jobs running on
+  // other PCs (other admins, or employees' devices). Runs without a recent
+  // heartbeat are treated as stale and dropped.
+  useEffect(() => {
+    let active = true;
+    const refresh = async () => {
+      try {
+        const runs = await getRuns();
+        if (!active) return;
+        const map: Record<string, BskyRun> = {};
+        for (const r of runs) map[r.accountId] = r;
+        setRemoteRuns(map);
+      } catch {
+        // ignore transient fetch errors
+      }
+    };
+    void refresh();
+    const id = window.setInterval(() => void refresh(), 2000);
+    return () => {
+      active = false;
+      window.clearInterval(id);
+    };
+  }, []);
 
   async function handleAddEmployee(event: FormEvent) {
     event.preventDefault();
@@ -582,10 +616,43 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   async function runOne(account: BskyAccount) {
     cancelRef.current[account.id] = false;
     setActiveJobs((n) => n + 1);
+    // Local snapshot mirrored to the DB so other sessions can see this run.
+    const snap = {
+      state: 'auth',
+      text: 'Starting…',
+      done: 0,
+      total: 0,
+      success: 0,
+      skipped: 0,
+      failed: 0,
+      live: '',
+    };
+    let lastWrite = 0;
+    const writeRun = (active: boolean, force = false) => {
+      const now = Date.now();
+      if (!force && now - lastWrite < 1500) return;
+      lastWrite = now;
+      void upsertRun({
+        accountId: account.id,
+        identifier: account.identifier,
+        owner: account.allEmployees ? 'all' : account.employees[0],
+        state: snap.state,
+        text: snap.text,
+        done: snap.done,
+        total: snap.total,
+        success: snap.success,
+        skipped: snap.skipped,
+        failed: snap.failed,
+        live: snap.live,
+        active,
+        updatedAt: now,
+      }).catch(() => {});
+    };
     setRunState((p) => ({
       ...p,
       [account.id]: { state: 'auth', text: 'Starting…', done: 0, total: 0, result: null, live: '' },
     }));
+    writeRun(true, true);
     try {
       const res = await runAccountJob(
         {
@@ -603,10 +670,20 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
           skipExisting: account.skipExisting ?? true,
         },
         {
-          onStatus: (state, text) =>
-            setRunState((p) => ({ ...p, [account.id]: { ...p[account.id], state, text } })),
+          onStatus: (state, text) => {
+            snap.state = state;
+            snap.text = text;
+            setRunState((p) => ({ ...p, [account.id]: { ...p[account.id], state, text } }));
+            writeRun(state !== 'done' && state !== 'error');
+          },
           onProgress: (d) => {
             if (d.status === 'followed') followBufferRef.current.push({ accountId: account.id });
+            snap.done = d.done;
+            snap.total = d.total;
+            snap.success = d.success;
+            snap.skipped = d.skipped;
+            snap.failed = d.failed;
+            if (d.status === 'followed') snap.live = `✓ followed @${d.label}`;
             setRunState((p) => ({
               ...p,
               [account.id]: {
@@ -617,19 +694,27 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                 live: d.status === 'followed' ? `✓ followed @${d.label}` : p[account.id]?.live ?? '',
               },
             }));
+            writeRun(true);
           },
           shouldCancel: () => cancelRef.current[account.id],
         },
       );
+      snap.state = res.ok ? (res.result.cancelled ? 'error' : 'done') : 'error';
+      snap.text = res.ok ? (res.result.cancelled ? 'Stopped' : 'Done') : res.error ?? 'Error';
+      snap.success = res.result.success;
+      snap.skipped = res.result.skipped;
+      snap.failed = res.result.failed;
+      snap.total = res.result.total;
       setRunState((p) => ({
         ...p,
         [account.id]: {
           ...p[account.id],
-          state: res.ok ? (res.result.cancelled ? 'error' : 'done') : 'error',
-          text: res.ok ? (res.result.cancelled ? 'Stopped' : 'Done') : res.error ?? 'Error',
+          state: snap.state,
+          text: snap.text,
           result: res.result,
         },
       }));
+      writeRun(false, true);
     } finally {
       setActiveJobs((n) => Math.max(0, n - 1));
     }
@@ -1137,6 +1222,30 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     selectedFollowDay != null ? followBars.find((b) => b.day === selectedFollowDay) ?? null : null;
   const followMonthName = followMonthLabel.split(' ')[0];
 
+  // Combine this session's runs with runs reported by other sessions (other
+  // admins / employees) so the active count + indicator reflect every device.
+  const nowTs = Date.now();
+  const localActiveIds = Object.keys(runState).filter(
+    (id) => runState[id].state !== 'done' && runState[id].state !== 'error',
+  );
+  const remoteActiveIds = Object.values(remoteRuns)
+    .filter(
+      (r) =>
+        r.active &&
+        nowTs - r.updatedAt < RUN_STALE_MS &&
+        visibleAccountIds.has(r.accountId) &&
+        !localActiveIds.includes(r.accountId),
+    )
+    .map((r) => r.accountId);
+  const activeAccountIds = new Set([...localActiveIds, ...remoteActiveIds]);
+  const totalActiveCount = activeAccountIds.size;
+  let liveFollowedTotal = 0;
+  for (const id of activeAccountIds) {
+    const local = runState[id];
+    if (local?.result) liveFollowedTotal += local.result.success;
+    else liveFollowedTotal += remoteRuns[id]?.success ?? 0;
+  }
+
   const dashboardCards = [
     { label: 'Employees', value: employees.length, show: isAdmin },
     { label: 'Accounts', value: savedAccounts.length, show: true },
@@ -1217,15 +1326,13 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
         <header className="topbar">
           <h1>{topbarTitle}</h1>
           <div className="topbar__actions">
-            {activeJobs > 0 && (
+            {totalActiveCount > 0 && (
               <div className="follow-running" role="status">
                 <span className="follow-running__pulse" aria-hidden />
                 <span className="follow-running__text">
-                  Following · {activeJobs} {activeJobs === 1 ? 'account' : 'accounts'} ·{' '}
-                  {formatCount(
-                    Object.values(runState).reduce((s, r) => s + (r.result?.success ?? 0), 0),
-                  )}{' '}
-                  followed
+                  Following · {totalActiveCount} {totalActiveCount === 1 ? 'account' : 'accounts'} ·{' '}
+                  {formatCount(liveFollowedTotal)} followed
+                  {remoteActiveIds.length > 0 && activeJobs === 0 ? ' (other devices)' : ''}
                 </span>
                 {view !== 'follow' && (
                   <button
@@ -1239,9 +1346,11 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                     View
                   </button>
                 )}
-                <button type="button" className="btn btn--danger" onClick={stopAll}>
-                  Stop
-                </button>
+                {activeJobs > 0 && (
+                  <button type="button" className="btn btn--danger" onClick={stopAll}>
+                    Stop
+                  </button>
+                )}
               </div>
             )}
             {view === 'employee' && selectedEmployee && (
@@ -1968,11 +2077,36 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                   ) : (
                     <div className="follow-list">
                       {accounts.map((acct) => {
-                        const rs = runState[acct.id];
+                        const localRs = runState[acct.id];
+                        const remote = remoteRuns[acct.id];
+                        const remoteRs: RunState | null = remote
+                          ? {
+                              state: remote.state,
+                              text: remote.text,
+                              done: remote.done,
+                              total: remote.total,
+                              result: {
+                                success: remote.success,
+                                skipped: remote.skipped,
+                                failed: remote.failed,
+                                total: remote.total,
+                                cancelled: false,
+                              },
+                              live: remote.live,
+                            }
+                          : null;
+                        const rs = localRs ?? remoteRs;
                         const pct = rs && rs.total ? Math.round((rs.done / rs.total) * 100) : 0;
                         const canManage = isAdmin || acct.employees.includes(session.username);
                         const isEditing = editingAccountId === acct.id && editDraft;
-                        const isActive = Boolean(rs) && rs.state !== 'done' && rs.state !== 'error';
+                        const isLocalActive =
+                          Boolean(localRs) && localRs.state !== 'done' && localRs.state !== 'error';
+                        const isRemoteActive =
+                          !localRs &&
+                          Boolean(remote) &&
+                          remote!.active &&
+                          Date.now() - remote!.updatedAt < RUN_STALE_MS;
+                        const isActive = isLocalActive || isRemoteActive;
                         return (
                           <div key={acct.id} className={`follow-card follow-card--${rs?.state ?? 'idle'}`}>
                             {isEditing ? (
@@ -2140,10 +2274,15 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                                   </div>
                                   <div className="row-actions">
                                     {isAdmin && <div className="bio-row__assign">{renderAssignTags(acct)}</div>}
-                                    {isActive ? (
+                                    {isLocalActive ? (
                                       <button type="button" className="row-edit row-edit--stop" title="Stop this account" onClick={() => stopOne(acct.id)}>
                                         ■
                                       </button>
+                                    ) : isRemoteActive ? (
+                                      <span className="follow-card__elsewhere" title="Running on another device">
+                                        <span className="follow-running__pulse" aria-hidden />
+                                        running elsewhere
+                                      </span>
                                     ) : (
                                       <>
                                         {canManage && (

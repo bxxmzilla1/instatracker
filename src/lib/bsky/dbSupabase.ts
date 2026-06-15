@@ -5,6 +5,7 @@ import type {
   BskyAccount,
   BskyFollowEvent,
   BskyPost,
+  BskyRun,
   BskySavedAccount,
   BskyTarget,
   Cta,
@@ -512,5 +513,65 @@ export async function addFollowEvents(events: BskyFollowEvent[]): Promise<void> 
         captured_at: e.capturedAt,
       })),
     );
+  if (error) throw new Error(error.message);
+}
+
+interface AccountRunRow {
+  account_id: string;
+  identifier: string | null;
+  owner: string | null;
+  state: string | null;
+  text: string | null;
+  done: number | string | null;
+  total: number | string | null;
+  success: number | string | null;
+  skipped: number | string | null;
+  failed: number | string | null;
+  live: string | null;
+  active: boolean | null;
+  updated_at: number | string | null;
+}
+
+function toRun(row: AccountRunRow): BskyRun {
+  return {
+    accountId: row.account_id,
+    identifier: row.identifier ?? undefined,
+    owner: row.owner ?? undefined,
+    state: row.state ?? 'idle',
+    text: row.text ?? '',
+    done: Number(row.done ?? 0),
+    total: Number(row.total ?? 0),
+    success: Number(row.success ?? 0),
+    skipped: Number(row.skipped ?? 0),
+    failed: Number(row.failed ?? 0),
+    live: row.live ?? '',
+    active: row.active ?? false,
+    updatedAt: Number(row.updated_at ?? 0),
+  };
+}
+
+export async function getRuns(): Promise<BskyRun[]> {
+  const { data, error } = await client().from('bsky_account_runs').select('*');
+  // Fail soft so the UI still works before the schema migration is applied.
+  if (error) return [];
+  return (data as AccountRunRow[]).map(toRun);
+}
+
+export async function upsertRun(run: BskyRun): Promise<void> {
+  const { error } = await client().from('bsky_account_runs').upsert({
+    account_id: run.accountId,
+    identifier: run.identifier ?? null,
+    owner: run.owner ?? null,
+    state: run.state,
+    text: run.text,
+    done: run.done,
+    total: run.total,
+    success: run.success,
+    skipped: run.skipped,
+    failed: run.failed,
+    live: run.live,
+    active: run.active,
+    updated_at: run.updatedAt,
+  });
   if (error) throw new Error(error.message);
 }

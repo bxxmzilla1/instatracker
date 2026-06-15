@@ -38,4 +38,6 @@ export const {
   getFollowEvents,
   addFollowEvent,
   addFollowEvents,
+  getRuns,
+  upsertRun,
 } = impl;

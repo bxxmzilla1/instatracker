@@ -5,6 +5,7 @@ import type {
   BskyAccount,
   BskyFollowEvent,
   BskyPost,
+  BskyRun,
   BskySavedAccount,
   BskyTarget,
   Cta,
@@ -28,13 +29,14 @@ interface BskyDB extends DBSchema {
   savedAccounts: { key: string; value: BskySavedAccount };
   targets: { key: string; value: BskyTarget };
   followEvents: { key: string; value: BskyFollowEvent };
+  runs: { key: string; value: BskyRun };
 }
 
 let dbPromise: Promise<IDBPDatabase<BskyDB>> | null = null;
 
 function getDb() {
   if (!dbPromise) {
-    dbPromise = openDB<BskyDB>('drbossing-bsky-v1', 4, {
+    dbPromise = openDB<BskyDB>('drbossing-bsky-v1', 5, {
       upgrade(db) {
         for (const store of [
           'employees',
@@ -48,10 +50,11 @@ function getDb() {
           'savedAccounts',
           'targets',
           'followEvents',
+          'runs',
         ] as const) {
           if (!db.objectStoreNames.contains(store)) {
             db.createObjectStore(store, {
-              keyPath: store === 'employees' ? 'username' : 'id',
+              keyPath: store === 'employees' ? 'username' : store === 'runs' ? 'accountId' : 'id',
             });
           }
         }
@@ -280,4 +283,14 @@ export async function addFollowEvents(events: BskyFollowEvent[]): Promise<void> 
   const tx = db.transaction('followEvents', 'readwrite');
   await Promise.all(events.map((e) => tx.store.put(e)));
   await tx.done;
+}
+
+export async function getRuns(): Promise<BskyRun[]> {
+  const db = await getDb();
+  return db.getAll('runs');
+}
+
+export async function upsertRun(run: BskyRun): Promise<void> {
+  const db = await getDb();
+  await db.put('runs', run);
 }

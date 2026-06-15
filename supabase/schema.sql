@@ -310,6 +310,23 @@ create table if not exists bsky_follow_events (
   captured_at bigint
 );
 
+-- Live run status per follow account, shared across sessions/devices.
+create table if not exists bsky_account_runs (
+  account_id text primary key,
+  identifier text,
+  owner text,
+  state text,
+  text text,
+  done bigint,
+  total bigint,
+  success bigint,
+  skipped bigint,
+  failed bigint,
+  live text,
+  active boolean,
+  updated_at bigint
+);
+
 alter table bsky_employees enable row level security;
 alter table bsky_proxies enable row level security;
 alter table bsky_bios enable row level security;
@@ -321,6 +338,7 @@ alter table bsky_accounts enable row level security;
 alter table bsky_saved_accounts enable row level security;
 alter table bsky_targets enable row level security;
 alter table bsky_follow_events enable row level security;
+alter table bsky_account_runs enable row level security;
 
 drop policy if exists "allow anon all" on bsky_employees;
 drop policy if exists "allow anon all" on bsky_proxies;
@@ -333,6 +351,7 @@ drop policy if exists "allow anon all" on bsky_accounts;
 drop policy if exists "allow anon all" on bsky_saved_accounts;
 drop policy if exists "allow anon all" on bsky_targets;
 drop policy if exists "allow anon all" on bsky_follow_events;
+drop policy if exists "allow anon all" on bsky_account_runs;
 
 create policy "allow anon all" on bsky_employees
   for all to anon using (true) with check (true);
@@ -355,6 +374,8 @@ create policy "allow anon all" on bsky_saved_accounts
 create policy "allow anon all" on bsky_targets
   for all to anon using (true) with check (true);
 create policy "allow anon all" on bsky_follow_events
+  for all to anon using (true) with check (true);
+create policy "allow anon all" on bsky_account_runs
   for all to anon using (true) with check (true);
 
 -- Storage bucket for cached profile pictures, reel thumbnails, and story images.
