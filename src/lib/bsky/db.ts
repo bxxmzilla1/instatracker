@@ -37,4 +37,5 @@ export const {
   deleteTarget,
   getFollowEvents,
   addFollowEvent,
+  addFollowEvents,
 } = impl;

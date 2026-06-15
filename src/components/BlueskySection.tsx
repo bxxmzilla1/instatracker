@@ -18,7 +18,7 @@ import {
   addBskyAccount,
   addCta,
   addEmployee,
-  addFollowEvent,
+  addFollowEvents,
   addPost,
   addProfilePic,
   addProxy,
@@ -284,6 +284,9 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   }, [isAdmin, employees]);
 
   // Drain buffered follows into persisted events (one row per account per tick).
+  // The follows only count toward the totals/graph once they're written to the
+  // database; if the write fails we re-queue them so nothing is lost or left
+  // living only in the browser.
   const flushFollowBuffer = useCallback(async () => {
     const buf = followBufferRef.current;
     if (buf.length === 0) return;
@@ -295,13 +298,12 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     for (const [accountId, count] of counts) {
       events.push({ id: crypto.randomUUID(), accountId, count, capturedAt: now });
     }
-    setFollowEvents((prev) => [...prev, ...events]);
-    for (const ev of events) {
-      try {
-        await addFollowEvent(ev);
-      } catch {
-        // keep the in-memory tally even if the write fails
-      }
+    try {
+      await addFollowEvents(events);
+      setFollowEvents((prev) => [...prev, ...events]);
+    } catch {
+      // Re-queue so the follows are retried on the next tick rather than lost.
+      followBufferRef.current.unshift(...buf);
     }
   }, []);
 

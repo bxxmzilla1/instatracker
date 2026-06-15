@@ -273,3 +273,11 @@ export async function addFollowEvent(event: BskyFollowEvent): Promise<void> {
   const db = await getDb();
   await db.put('followEvents', event);
 }
+
+export async function addFollowEvents(events: BskyFollowEvent[]): Promise<void> {
+  if (events.length === 0) return;
+  const db = await getDb();
+  const tx = db.transaction('followEvents', 'readwrite');
+  await Promise.all(events.map((e) => tx.store.put(e)));
+  await tx.done;
+}

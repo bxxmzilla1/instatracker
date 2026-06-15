@@ -497,3 +497,18 @@ export async function addFollowEvent(event: BskyFollowEvent): Promise<void> {
   });
   if (error) throw new Error(error.message);
 }
+
+export async function addFollowEvents(events: BskyFollowEvent[]): Promise<void> {
+  if (events.length === 0) return;
+  const { error } = await client()
+    .from('bsky_follow_events')
+    .upsert(
+      events.map((e) => ({
+        id: e.id,
+        account_id: e.accountId,
+        count: e.count,
+        captured_at: e.capturedAt,
+      })),
+    );
+  if (error) throw new Error(error.message);
+}
