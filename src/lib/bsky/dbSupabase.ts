@@ -482,13 +482,23 @@ function toFollowEvent(row: FollowEventRow): BskyFollowEvent {
 }
 
 export async function getFollowEvents(): Promise<BskyFollowEvent[]> {
-  const { data, error } = await client()
-    .from('bsky_follow_events')
-    .select('*')
-    .order('captured_at', { ascending: true });
-  // Fail soft so the dashboard still loads before the schema migration is applied.
-  if (error) return [];
-  return (data as FollowEventRow[]).map(toFollowEvent);
+  // Page through all rows — a plain select() is capped at 1000 rows, which
+  // would silently stop the dashboard totals from growing past that point.
+  const pageSize = 1000;
+  const out: BskyFollowEvent[] = [];
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await client()
+      .from('bsky_follow_events')
+      .select('*')
+      .order('captured_at', { ascending: true })
+      .range(from, from + pageSize - 1);
+    // Fail soft so the dashboard still loads before the schema migration is applied.
+    if (error) return out;
+    const rows = (data as FollowEventRow[]).map(toFollowEvent);
+    out.push(...rows);
+    if (rows.length < pageSize) break;
+  }
+  return out;
 }
 
 export async function addFollowEvent(event: BskyFollowEvent): Promise<void> {

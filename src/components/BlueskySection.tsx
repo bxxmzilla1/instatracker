@@ -92,6 +92,10 @@ interface RunState {
 // A shared run is considered live only if its heartbeat is newer than this.
 const RUN_STALE_MS = 15000;
 
+// Local day key (YYYY-M-D) used to keep one cumulative follow-event row per
+// account per day, so the events table stays small instead of growing forever.
+const dayKey = (d = new Date()) => `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+
 // Default follow settings used when an account doesn't specify its own.
 const DEFAULT_MAX_FOLLOWERS = 1000;
 const DEFAULT_DELAY_MS = 1500;
@@ -192,6 +196,11 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   // Buffers successful follows so they can be flushed to storage once per second
   // (keeps the dashboard "Follows" count + graph live without a write per follow).
   const followBufferRef = useRef<{ accountId: string }[]>([]);
+  // Running cumulative follow count per `${accountId}:${dayKey}` so each tick
+  // updates a single row instead of inserting a new one.
+  const dayCountRef = useRef<Record<string, number>>({});
+  // Mirror of followEvents for seeding dayCountRef without extra DB reads.
+  const followEventsRef = useRef<BskyFollowEvent[]>([]);
 
   const ownerFilter = useMemo(() => {
     if (session.role === 'employee') return session.username;
@@ -293,29 +302,51 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     })();
   }, [isAdmin, employees]);
 
-  // Drain buffered follows into persisted events (one row per account per tick).
-  // The follows only count toward the totals/graph once they're written to the
-  // database; if the write fails we re-queue them so nothing is lost or left
-  // living only in the browser.
+  // Drain buffered follows into persisted events. Each account keeps ONE
+  // cumulative row per day, so a busy run updates a single row instead of
+  // flooding the table. Follows only count once written to the database; on a
+  // failed write we roll back and re-queue so nothing is lost or left local.
   const flushFollowBuffer = useCallback(async () => {
     const buf = followBufferRef.current;
     if (buf.length === 0) return;
     followBufferRef.current = [];
-    const counts = new Map<string, number>();
-    for (const b of buf) counts.set(b.accountId, (counts.get(b.accountId) ?? 0) + 1);
     const now = Date.now();
+    const key = dayKey(new Date(now));
+    const deltas = new Map<string, number>();
+    for (const b of buf) deltas.set(b.accountId, (deltas.get(b.accountId) ?? 0) + 1);
     const events: BskyFollowEvent[] = [];
-    for (const [accountId, count] of counts) {
-      events.push({ id: crypto.randomUUID(), accountId, count, capturedAt: now });
+    for (const [accountId, delta] of deltas) {
+      const id = `${accountId}:${key}`;
+      // Seed from the latest known value so we never overwrite with a lower count.
+      if (dayCountRef.current[id] == null) {
+        const known = followEventsRef.current.find((e) => e.id === id);
+        dayCountRef.current[id] = known ? Number(known.count) : 0;
+      }
+      const next = dayCountRef.current[id] + delta;
+      dayCountRef.current[id] = next;
+      events.push({ id, accountId, count: next, capturedAt: now });
     }
     try {
       await addFollowEvents(events);
-      setFollowEvents((prev) => [...prev, ...events]);
+      setFollowEvents((prev) => {
+        const byId = new Map(prev.map((e) => [e.id, e]));
+        for (const e of events) byId.set(e.id, e);
+        return [...byId.values()];
+      });
     } catch {
-      // Re-queue so the follows are retried on the next tick rather than lost.
+      // Roll back the in-memory cumulative and re-queue for the next tick.
+      for (const [accountId, delta] of deltas) {
+        const id = `${accountId}:${key}`;
+        dayCountRef.current[id] = (dayCountRef.current[id] ?? delta) - delta;
+      }
       followBufferRef.current.unshift(...buf);
     }
   }, []);
+
+  // Keep a ref mirror of followEvents so the flush can seed cumulative counts.
+  useEffect(() => {
+    followEventsRef.current = followEvents;
+  }, [followEvents]);
 
   // While any job is in flight, persist follows every second so totals + graph
   // stay live — regardless of which sidebar section is currently shown.
@@ -341,9 +372,13 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
         if (!active) return;
         setFollowEvents((prev) => {
           const byId = new Map<string, BskyFollowEvent>();
-          for (const e of fe) byId.set(e.id, e);
-          // Keep locally-buffered events that the DB fetch hasn't returned yet.
-          for (const e of prev) if (!byId.has(e.id)) byId.set(e.id, e);
+          for (const e of prev) byId.set(e.id, e);
+          // Cumulative day counts only ever grow, so keep the higher value to
+          // avoid a momentary dip if the fetch lags a local write.
+          for (const e of fe) {
+            const cur = byId.get(e.id);
+            if (!cur || Number(e.count) >= Number(cur.count)) byId.set(e.id, e);
+          }
           return [...byId.values()].sort((a, b) => a.capturedAt - b.capturedAt);
         });
         setAccounts(ac);
