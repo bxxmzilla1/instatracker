@@ -1159,6 +1159,8 @@ button:disabled {
   min-height: 0;
   overflow-y: auto;
   padding-right: 4px;
+  /* Show ~20 accounts before scrolling through the rest. */
+  max-height: calc(20 * (4.5rem + 0.6rem) - 0.6rem);
 }
 
 .account-list::-webkit-scrollbar {
