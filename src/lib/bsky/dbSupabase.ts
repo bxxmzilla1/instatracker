@@ -473,8 +473,10 @@ function toFollowEvent(row: FollowEventRow): BskyFollowEvent {
   return {
     id: row.id,
     accountId: row.account_id ?? '',
-    count: row.count ?? 0,
-    capturedAt: row.captured_at ?? 0,
+    // Postgres bigint columns come back as strings — coerce so arithmetic on
+    // these values adds instead of concatenating.
+    count: Number(row.count ?? 0),
+    capturedAt: Number(row.captured_at ?? 0),
   };
 }
 

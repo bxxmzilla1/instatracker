@@ -356,6 +356,15 @@ code {
   color: var(--accent);
 }
 
+.row-edit--stop {
+  color: #ff6b6b;
+}
+
+.row-edit--stop:hover {
+  background: rgba(255, 107, 107, 0.12);
+  color: #ff6b6b;
+}
+
 /* Proxy */
 .proxy-preview {
   display: flex;

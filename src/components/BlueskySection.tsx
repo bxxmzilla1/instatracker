@@ -653,6 +653,13 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     for (const a of accounts) cancelRef.current[a.id] = true;
   }
 
+  function stopOne(id: string) {
+    cancelRef.current[id] = true;
+    setRunState((p) =>
+      p[id] ? { ...p, [id]: { ...p[id], state: 'auth', text: 'Stopping…' } } : p,
+    );
+  }
+
   async function handleDeleteAccount(id: string) {
     await deleteBskyAccount(id);
     await loadAll();
@@ -1070,7 +1077,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     [followEvents, visibleAccountIds],
   );
   const totalFollows = useMemo(
-    () => visibleFollowEvents.reduce((sum, e) => sum + e.count, 0),
+    () => visibleFollowEvents.reduce((sum, e) => sum + Number(e.count || 0), 0),
     [visibleFollowEvents],
   );
 
@@ -1088,7 +1095,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
     const newAcctIds = new Set(
-      accounts.filter((a) => a.createdAt >= todayStart.getTime()).map((a) => a.id),
+      accounts.filter((a) => Number(a.createdAt) >= todayStart.getTime()).map((a) => a.id),
     );
     const now = new Date();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
@@ -1103,9 +1110,10 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
       let oldValue = 0;
       if (day <= lastDay) {
         for (const ev of visibleFollowEvents) {
-          if (ev.capturedAt >= start && ev.capturedAt <= end) {
-            if (newAcctIds.has(ev.accountId)) newValue += ev.count;
-            else oldValue += ev.count;
+          const at = Number(ev.capturedAt);
+          if (at >= start && at <= end) {
+            if (newAcctIds.has(ev.accountId)) newValue += Number(ev.count || 0);
+            else oldValue += Number(ev.count || 0);
           }
         }
       }
@@ -1964,6 +1972,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                         const pct = rs && rs.total ? Math.round((rs.done / rs.total) * 100) : 0;
                         const canManage = isAdmin || acct.employees.includes(session.username);
                         const isEditing = editingAccountId === acct.id && editDraft;
+                        const isActive = Boolean(rs) && rs.state !== 'done' && rs.state !== 'error';
                         return (
                           <div key={acct.id} className={`follow-card follow-card--${rs?.state ?? 'idle'}`}>
                             {isEditing ? (
@@ -2131,20 +2140,26 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                                   </div>
                                   <div className="row-actions">
                                     {isAdmin && <div className="bio-row__assign">{renderAssignTags(acct)}</div>}
-                                    {!running && canManage && (
-                                      <button type="button" className="row-edit" title="Edit this account" onClick={() => startEditAccount(acct)}>
-                                        ✎
+                                    {isActive ? (
+                                      <button type="button" className="row-edit row-edit--stop" title="Stop this account" onClick={() => stopOne(acct.id)}>
+                                        ■
                                       </button>
-                                    )}
-                                    {!running && (
-                                      <button type="button" className="row-edit" title="Run this account" onClick={() => runOne(acct)}>
-                                        ▶
-                                      </button>
-                                    )}
-                                    {canManage && (
-                                      <button type="button" className="license-row__delete" onClick={() => handleDeleteAccount(acct.id)} title="Delete">
-                                        ✕
-                                      </button>
+                                    ) : (
+                                      <>
+                                        {canManage && (
+                                          <button type="button" className="row-edit" title="Edit this account" onClick={() => startEditAccount(acct)}>
+                                            ✎
+                                          </button>
+                                        )}
+                                        <button type="button" className="row-edit" title="Run this account" onClick={() => runOne(acct)}>
+                                          ▶
+                                        </button>
+                                        {canManage && (
+                                          <button type="button" className="license-row__delete" onClick={() => handleDeleteAccount(acct.id)} title="Delete">
+                                            ✕
+                                          </button>
+                                        )}
+                                      </>
                                     )}
                                   </div>
                                 </div>
