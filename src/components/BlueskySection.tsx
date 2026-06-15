@@ -115,6 +115,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   const [targets, setTargets] = useState<BskyTarget[]>([]);
   const [followEvents, setFollowEvents] = useState<BskyFollowEvent[]>([]);
   const [chartMonthOffset, setChartMonthOffset] = useState(0);
+  const [selectedFollowDay, setSelectedFollowDay] = useState<number | null>(null);
 
   const [newTargetHandle, setNewTargetHandle] = useState('');
   const [newTargetNotes, setNewTargetNotes] = useState('');
@@ -316,6 +317,40 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
       void flushFollowBuffer();
     };
   }, [activeJobs, flushFollowBuffer]);
+
+  // While the dashboard is open, poll shared follow data every second so the
+  // totals + graph reflect follows run by other employees in real time.
+  useEffect(() => {
+    if (view !== 'dashboard') return;
+    let active = true;
+    const refresh = async () => {
+      try {
+        const [fe, ac] = await Promise.all([getFollowEvents(), getBskyAccounts(ownerFilter)]);
+        if (!active) return;
+        setFollowEvents((prev) => {
+          const byId = new Map<string, BskyFollowEvent>();
+          for (const e of fe) byId.set(e.id, e);
+          // Keep locally-buffered events that the DB fetch hasn't returned yet.
+          for (const e of prev) if (!byId.has(e.id)) byId.set(e.id, e);
+          return [...byId.values()].sort((a, b) => a.capturedAt - b.capturedAt);
+        });
+        setAccounts(ac);
+      } catch {
+        // ignore transient fetch errors
+      }
+    };
+    void refresh();
+    const id = window.setInterval(() => void refresh(), 1000);
+    return () => {
+      active = false;
+      window.clearInterval(id);
+    };
+  }, [view, ownerFilter]);
+
+  // Reset the selected day whenever the visible month changes.
+  useEffect(() => {
+    setSelectedFollowDay(null);
+  }, [chartMonthOffset]);
 
   async function handleAddEmployee(event: FormEvent) {
     event.preventDefault();
@@ -1088,6 +1123,9 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     undefined,
     { month: 'long', year: 'numeric' },
   );
+  const selectedFollowBar =
+    selectedFollowDay != null ? followBars.find((b) => b.day === selectedFollowDay) ?? null : null;
+  const followMonthName = followMonthLabel.split(' ')[0];
 
   const dashboardCards = [
     { label: 'Employees', value: employees.length, show: isAdmin },
@@ -1280,16 +1318,36 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                   </div>
 
                   <div className="trend-chart__summary">
-                    <strong>{formatCount(monthFollowTotal)}</strong>
-                    <span className="delta">new follows this month{running ? ' · live' : ''}</span>
+                    {selectedFollowBar ? (
+                      <>
+                        <strong>{formatCount(selectedFollowBar.newValue + selectedFollowBar.oldValue)}</strong>
+                        <span className="delta">
+                          follows on {followMonthName} {selectedFollowBar.day} · new accounts{' '}
+                          {formatCount(selectedFollowBar.newValue)} · old accounts{' '}
+                          {formatCount(selectedFollowBar.oldValue)}
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <strong>{formatCount(monthFollowTotal)}</strong>
+                        <span className="delta">new follows this month{activeJobs > 0 ? ' · live' : ''}</span>
+                      </>
+                    )}
                   </div>
 
-                  <BskyFollowChart bars={followBars} />
+                  <BskyFollowChart
+                    bars={followBars}
+                    selectedDay={selectedFollowDay}
+                    onSelectDay={(day) =>
+                      setSelectedFollowDay((cur) => (cur === day ? null : day))
+                    }
+                  />
                 </div>
 
                 <p className="empty-note">
-                  Live follow totals update every second while jobs run. Bars split each day's new
-                  follows by accounts added today (new) versus earlier (old).
+                  Live follow totals update every second (including follows run by other employees).
+                  Click a day to see its breakdown — bars split each day's follows by accounts added
+                  today (new) versus earlier (old).
                 </p>
               </section>
             )}

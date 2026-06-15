@@ -10,15 +10,18 @@ export interface FollowBar {
 
 interface Props {
   bars: FollowBar[];
+  selectedDay?: number | null;
+  onSelectDay?: (day: number) => void;
 }
 
 const LADDER = [10, 25, 50, 100, 250, 500, 1_000, 2_500, 5_000, 10_000, 50_000, 100_000];
 
-export function BskyFollowChart({ bars }: Props) {
+export function BskyFollowChart({ bars, selectedDay, onSelectDay }: Props) {
   const dataMax = Math.max(...bars.map((b) => b.newValue + b.oldValue), 0);
   const axisMax = LADDER.find((v) => v >= dataMax) ?? Math.max(dataMax, 10);
   const ticks = LADDER.filter((v) => v <= axisMax);
   if (!ticks.includes(axisMax)) ticks.push(axisMax);
+  const clickable = Boolean(onSelectDay);
 
   return (
     <div className="bar-chart">
@@ -40,14 +43,21 @@ export function BskyFollowChart({ bars }: Props) {
             const total = bar.newValue + bar.oldValue;
             const newH = bar.newValue > 0 ? Math.max(2, (bar.newValue / axisMax) * 100) : 0;
             const oldH = bar.oldValue > 0 ? Math.max(2, (bar.oldValue / axisMax) * 100) : 0;
-            const className = ['bar-chart__col', bar.isToday ? 'bar-chart__col--today' : '']
+            const className = [
+              'bar-chart__col',
+              bar.isToday ? 'bar-chart__col--today' : '',
+              selectedDay === bar.day ? 'bar-chart__col--selected' : '',
+              clickable ? 'bar-chart__col--clickable' : '',
+            ]
               .filter(Boolean)
               .join(' ');
 
             return (
-              <div
+              <button
                 key={bar.day}
+                type="button"
                 className={className}
+                onClick={clickable ? () => onSelectDay?.(bar.day) : undefined}
                 title={`Day ${bar.day}: ${formatCount(total)} follows · new accounts ${formatCount(
                   bar.newValue,
                 )}, old accounts ${formatCount(bar.oldValue)}${bar.isFuture ? ' (upcoming)' : ''}`}
@@ -62,7 +72,7 @@ export function BskyFollowChart({ bars }: Props) {
                   )}
                 </div>
                 <span className="bar-chart__label">{bar.day}</span>
-              </div>
+              </button>
             );
           })}
         </div>
