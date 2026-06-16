@@ -2469,13 +2469,15 @@ export default function App() {
                   >
                     {selectedAccount.banned ? 'Banned ✓' : 'Banned'}
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => refreshAccount(selectedAccount.username)}
-                    disabled={refreshing === selectedAccount.username}
-                  >
-                    {refreshing === selectedAccount.username ? 'Refreshing…' : 'Refresh now'}
-                  </button>
+                  {!(selectedAccount.igUserId && selectedAccount.igAccessToken) && (
+                    <button
+                      type="button"
+                      onClick={() => refreshAccount(selectedAccount.username)}
+                      disabled={refreshing === selectedAccount.username}
+                    >
+                      {refreshing === selectedAccount.username ? 'Refreshing…' : 'Refresh now'}
+                    </button>
+                  )}
                 </div>
               </div>
 
