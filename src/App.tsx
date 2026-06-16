@@ -191,6 +191,8 @@ export default function App() {
   const [scheduleReel, setScheduleReel] = useState<ContentReel | null>(null);
   const [scheduleMode, setScheduleMode] = useState<'post' | 'schedule'>('schedule');
   const [savingSchedule, setSavingSchedule] = useState(false);
+  const [assignReel, setAssignReel] = useState<ContentReel | null>(null);
+  const [savingAssign, setSavingAssign] = useState(false);
   const [contentEmployeeFilter, setContentEmployeeFilter] = useState('');
   const [openAddForms, setOpenAddForms] = useState<Set<string>>(() => new Set());
 
@@ -827,8 +829,6 @@ export default function App() {
     setScheduleReel(reel);
     setScheduleMode(mode);
     setNewContentCaption(reel.caption ?? '');
-    setNewContentEmployees(new Set(reel.employees ?? []));
-    setNewContentAll(Boolean(reel.allEmployees));
     setNewContentTarget(reel.targetAccount ?? '');
     setNewContentScheduledAt(reel.scheduledAt ? toDatetimeLocal(reel.scheduledAt) : '');
   }
@@ -836,8 +836,6 @@ export default function App() {
   function closeScheduleModal() {
     setScheduleReel(null);
     setNewContentCaption('');
-    setNewContentEmployees(new Set());
-    setNewContentAll(false);
     setNewContentTarget('');
     setNewContentScheduledAt('');
   }
@@ -849,8 +847,6 @@ export default function App() {
       await updateContent({
         ...scheduleReel,
         caption: newContentCaption,
-        employees: newContentAll ? [] : [...newContentEmployees],
-        allEmployees: newContentAll,
         targetAccount: newContentTarget || undefined,
         scheduledAt:
           scheduleMode === 'schedule' && newContentScheduledAt
@@ -863,6 +859,36 @@ export default function App() {
       setError(err instanceof Error ? err.message : 'Could not update content.');
     } finally {
       setSavingSchedule(false);
+    }
+  }
+
+  function openAssignModal(reel: ContentReel) {
+    setAssignReel(reel);
+    setNewContentEmployees(new Set(reel.employees ?? []));
+    setNewContentAll(Boolean(reel.allEmployees));
+  }
+
+  function closeAssignModal() {
+    setAssignReel(null);
+    setNewContentEmployees(new Set());
+    setNewContentAll(false);
+  }
+
+  async function saveAssign() {
+    if (!assignReel) return;
+    setSavingAssign(true);
+    try {
+      await updateContent({
+        ...assignReel,
+        employees: newContentAll ? [] : [...newContentEmployees],
+        allEmployees: newContentAll,
+      });
+      await loadContent();
+      closeAssignModal();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not assign content.');
+    } finally {
+      setSavingAssign(false);
     }
   }
 
@@ -1174,12 +1200,6 @@ export default function App() {
                       : 'Accounts';
 
   const showAddForm = view === 'accounts';
-
-  const contentTargetAccounts = accounts.filter((a) =>
-    newContentAll
-      ? true
-      : Boolean(a.owner) && newContentEmployees.has(a.owner as string),
-  );
 
   const displayedContent = (() => {
     let list = content.filter((reel) => (reel.mediaType ?? 'reel') === contentTab);
@@ -2128,6 +2148,21 @@ export default function App() {
                         {isAdmin && (
                           <button
                             type="button"
+                            className={`reel-cell__btn reel-cell__btn--wide ${
+                              reel.allEmployees || reel.employees.length > 0
+                                ? 'reel-cell__btn--active'
+                                : ''
+                            }`}
+                            onClick={() => openAssignModal(reel)}
+                            title="Assign to employees"
+                            aria-label="Assign to employees"
+                          >
+                            Assign
+                          </button>
+                        )}
+                        {isAdmin && (
+                          <button
+                            type="button"
                             className="reel-cell__btn reel-cell__btn--danger"
                             onClick={() => handleDeleteContent(reel.id)}
                             title={reel.mediaType === 'image' ? 'Delete image' : 'Delete reel'}
@@ -2141,14 +2176,18 @@ export default function App() {
                         <div className="reel-cell__footer">
                           <button
                             type="button"
-                            className="reel-cell__action"
+                            className="reel-cell__action reel-cell__action--primary"
                             onClick={() => openScheduleModal(reel, 'post')}
                           >
                             Post
                           </button>
                           <button
                             type="button"
-                            className={`reel-cell__action ${reel.scheduledAt ? 'reel-cell__action--active' : ''}`}
+                            className={`reel-cell__action ${
+                              reel.scheduledAt
+                                ? 'reel-cell__action--active'
+                                : 'reel-cell__action--secondary'
+                            }`}
                             onClick={() => openScheduleModal(reel, 'schedule')}
                           >
                             Schedule
@@ -2751,34 +2790,31 @@ export default function App() {
                   </label>
                 )}
 
-                <AssignmentPicker
-                  employees={employees}
-                  selected={newContentEmployees}
-                  all={newContentAll}
-                  onToggle={toggleContentEmployee}
-                  onAllChange={setNewContentAll}
-                />
-
-                {(newContentAll || newContentEmployees.size > 0) && (
-                  <label className="cred-field">
-                    <span className="cred-field__label">
-                      Instagram account to post on (optional)
-                    </span>
-                    <select
-                      className="cred-form__input"
-                      value={newContentTarget}
-                      onChange={(e) => setNewContentTarget(e.target.value)}
-                    >
-                      <option value="">No specific account</option>
-                      {contentTargetAccounts.map((a) => (
+                <label className="cred-field">
+                  <span className="cred-field__label">
+                    Instagram account to post on (optional)
+                  </span>
+                  <select
+                    className="cred-form__input"
+                    value={newContentTarget}
+                    onChange={(e) => setNewContentTarget(e.target.value)}
+                  >
+                    <option value="">No specific account</option>
+                    {accounts
+                      .filter(
+                        (a) =>
+                          scheduleReel.allEmployees ||
+                          scheduleReel.employees.length === 0 ||
+                          (a.owner && scheduleReel.employees.includes(a.owner)),
+                      )
+                      .map((a) => (
                         <option key={a.username} value={a.username}>
                           @{a.username}
                           {a.owner ? ` · ${a.owner}` : ''}
                         </option>
                       ))}
-                    </select>
-                  </label>
-                )}
+                  </select>
+                </label>
               </div>
 
               <div className="schedule-modal__actions">
@@ -2791,6 +2827,58 @@ export default function App() {
                     : scheduleMode === 'post'
                       ? 'Post'
                       : 'Schedule'}
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
+
+        {assignReel && (
+          <div className="modal" onClick={closeAssignModal}>
+            <form
+              className="modal__card"
+              onClick={(e) => e.stopPropagation()}
+              onSubmit={(e) => {
+                e.preventDefault();
+                saveAssign();
+              }}
+            >
+              <div className="modal__head">
+                <h3>Assign {assignReel.mediaType === 'image' ? 'image' : 'reel'}</h3>
+                <button
+                  type="button"
+                  className="modal__close"
+                  onClick={closeAssignModal}
+                  aria-label="Close"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <p className="cred-note">
+                Select which employees will see this {assignReel.mediaType === 'image' ? 'image' : 'reel'} in
+                their accounts.
+              </p>
+
+              <div className="schedule-modal__body">
+                <AssignmentPicker
+                  employees={employees}
+                  selected={newContentEmployees}
+                  all={newContentAll}
+                  onToggle={toggleContentEmployee}
+                  onAllChange={setNewContentAll}
+                />
+              </div>
+
+              <div className="schedule-modal__actions">
+                <button type="button" className="btn btn--ghost" onClick={closeAssignModal}>
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingAssign || (!newContentAll && newContentEmployees.size === 0)}
+                >
+                  {savingAssign ? 'Saving…' : 'Assign'}
                 </button>
               </div>
             </form>

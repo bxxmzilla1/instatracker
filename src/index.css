@@ -2585,6 +2585,18 @@ button:disabled {
   background: #dc2626;
 }
 
+.reel-cell__btn--wide {
+  width: auto;
+  padding: 0 0.6rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.reel-cell__btn--active {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
 .reel-cell__footer {
   position: absolute;
   left: 0;
@@ -2592,11 +2604,11 @@ button:disabled {
   bottom: 0;
   display: flex;
   gap: 8px;
-  padding: 10px;
-  background: linear-gradient(to top, rgba(0, 0, 0, 0.7), transparent);
+  padding: 12px;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.78), rgba(0, 0, 0, 0));
   opacity: 0;
-  transform: translateY(6px);
-  transition: opacity 0.15s ease, transform 0.15s ease;
+  transform: translateY(8px);
+  transition: opacity 0.18s ease, transform 0.18s ease;
 }
 
 .reel-cell:hover .reel-cell__footer {
@@ -2604,22 +2616,41 @@ button:disabled {
   transform: translateY(0);
 }
 
+/* Modern, on-theme action buttons */
 .reel-cell__action {
   flex: 1;
-  padding: 0.5rem 0;
+  padding: 0.6rem 0;
   border: none;
-  border-radius: 9px;
-  background: #8b5cf6;
-  color: #fff;
+  border-radius: 12px;
   font-size: 0.85rem;
   font-weight: 600;
+  letter-spacing: 0.01em;
   cursor: pointer;
-  box-shadow: 0 4px 14px rgba(139, 92, 246, 0.4);
-  transition: background 0.15s ease, transform 0.1s ease;
+  transition: transform 0.12s ease, box-shadow 0.18s ease, filter 0.18s ease;
 }
 
-.reel-cell__action:hover {
-  background: #7c3aed;
+/* Primary: solid accent (Post) */
+.reel-cell__action--primary {
+  background: var(--accent);
+  color: var(--on-accent);
+  box-shadow: 0 6px 18px -4px var(--accent);
+}
+
+.reel-cell__action--primary:hover {
+  filter: brightness(1.08);
+  box-shadow: 0 8px 22px -4px var(--accent);
+}
+
+/* Secondary: glassy translucent with accent text (Schedule) */
+.reel-cell__action--secondary {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  backdrop-filter: blur(8px);
+}
+
+.reel-cell__action--secondary:hover {
+  background: rgba(255, 255, 255, 0.2);
 }
 
 .reel-cell__action:active {
@@ -2627,8 +2658,10 @@ button:disabled {
 }
 
 .reel-cell__action--active {
-  background: #6d28d9;
-  box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.5) inset;
+  background: var(--accent);
+  color: var(--on-accent);
+  border-color: transparent;
+  box-shadow: 0 6px 18px -4px var(--accent);
 }
 
 .content-upload__note {
