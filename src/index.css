@@ -264,6 +264,11 @@ code {
   color: var(--red);
 }
 
+.owner-tag--account {
+  background: rgba(74, 163, 255, 0.14);
+  color: #4aa3ff;
+}
+
 .banned-tag {
   background: rgba(248, 113, 113, 0.16);
   color: var(--red);

@@ -620,16 +620,24 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     setAcctPw('');
   }
 
+  function proxyLinkedAccounts(p: Proxy): string[] {
+    return accounts
+      .filter((a) => a.proxyId === p.id)
+      .map((a) => a.identifier.replace(/^@/, ''));
+  }
+
   function proxyOptionLabel(p: Proxy) {
     const owners = p.allEmployees
       ? 'All employees'
       : assignedEmployees(p).join(', ');
+    const linked = proxyLinkedAccounts(p);
+    const acctNames = linked.length > 0 ? linked.map((h) => `@${h}`).join(', ') : undefined;
     const tag = p.label?.trim();
     const host =
       p.host && p.port
         ? `${p.type || 'http'} · ${p.host}:${p.port}`
         : p.raw || p.rotatingLink || p.id;
-    const parts = [owners || undefined, tag || undefined, host].filter(Boolean);
+    const parts = [owners || undefined, acctNames, tag || undefined, host].filter(Boolean);
     return parts.join(' · ');
   }
 
@@ -1881,6 +1889,11 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                                     </span>
                                   ))
                                 ))}
+                              {proxyLinkedAccounts(proxy).map((handle) => (
+                                <span key={handle} className="owner-tag owner-tag--account">
+                                  @{handle}
+                                </span>
+                              ))}
                             </div>
                             <CopyField className="proxy-row__link" label="Link" value={proxy.raw} />
                             <div className="proxy-row__fields">
