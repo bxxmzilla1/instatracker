@@ -1507,6 +1507,14 @@ export default function App() {
     [allFollowerSnapshots, visibleUsernames],
   );
 
+  const availableProxies = useMemo(() => {
+    if (!session) return [];
+    if (isAdmin) return proxies;
+    return proxies.filter(
+      (p) => p.allEmployees || p.employees.includes(session.username),
+    );
+  }, [proxies, isAdmin, session]);
+
   if (!session) {
     return (
       <Login
@@ -1565,14 +1573,6 @@ export default function App() {
   const showAddForm = view === 'accounts';
 
   const postableAccounts = accounts.filter((a) => a.igUserId && a.igAccessToken);
-
-  const availableProxies = useMemo(() => {
-    if (!session) return [];
-    if (isAdmin) return proxies;
-    return proxies.filter(
-      (p) => p.allEmployees || p.employees.includes(session.username),
-    );
-  }, [proxies, isAdmin, session]);
 
   const displayedContent = (() => {
     let list = content.filter((reel) => (reel.mediaType ?? 'reel') === contentTab);
