@@ -202,6 +202,9 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   const dayCountRef = useRef<Record<string, number>>({});
   // Mirror of followEvents for seeding dayCountRef without extra DB reads.
   const followEventsRef = useRef<BskyFollowEvent[]>([]);
+  // Mirror of savedAccounts so long-running follow jobs can auto-ban the right
+  // account even after the closure that started the job has gone stale.
+  const savedAccountsRef = useRef<BskySavedAccount[]>([]);
 
   const ownerFilter = useMemo(() => {
     if (session.role === 'employee') return session.username;
@@ -349,6 +352,12 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     followEventsRef.current = followEvents;
   }, [followEvents]);
 
+  // Keep a ref mirror of savedAccounts so auto-ban can resolve the right
+  // account from inside long-running follow jobs.
+  useEffect(() => {
+    savedAccountsRef.current = savedAccounts;
+  }, [savedAccounts]);
+
   // While any job is in flight, persist follows every second so totals + graph
   // stay live — regardless of which sidebar section is currently shown.
   useEffect(() => {
@@ -369,7 +378,11 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     let active = true;
     const refresh = async () => {
       try {
-        const [fe, ac] = await Promise.all([getFollowEvents(), getBskyAccounts(ownerFilter)]);
+        const [fe, ac, sa] = await Promise.all([
+          getFollowEvents(),
+          getBskyAccounts(ownerFilter),
+          getSavedAccounts(ownerFilter),
+        ]);
         if (!active) return;
         setFollowEvents((prev) => {
           const byId = new Map<string, BskyFollowEvent>();
@@ -383,6 +396,9 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
           return [...byId.values()].sort((a, b) => a.capturedAt - b.capturedAt);
         });
         setAccounts(ac);
+        // Keep banned status (and the dashboard's banned count) live across
+        // sessions, so an auto-ban on another PC shows up here too.
+        setSavedAccounts(sa);
       } catch {
         // ignore transient fetch errors
       }
@@ -768,6 +784,9 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
         },
       }));
       writeRun(false, true);
+      if (!res.ok && /taken\s*down|takedown/i.test(res.error ?? '')) {
+        void autoBanByIdentifier(account.identifier);
+      }
     } finally {
       setActiveJobs((n) => Math.max(0, n - 1));
     }
@@ -870,6 +889,29 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   async function toggleSavedAccountBanned(acct: BskySavedAccount) {
     await addSavedAccount({ ...acct, banned: !acct.banned });
     await loadAll();
+  }
+
+  // Auto-flag a saved account as banned when its follow job reports the account
+  // was taken down. Matches by handle or email so the dashboard updates live.
+  async function autoBanByIdentifier(identifier: string) {
+    const norm = identifier.trim().replace(/^@/, '').toLowerCase();
+    if (!norm) return;
+    const match = savedAccountsRef.current.find((a) => {
+      const handle = (a.handle ?? '').trim().replace(/^@/, '').toLowerCase();
+      const email = (a.email ?? '').trim().toLowerCase();
+      return (handle && handle === norm) || (email && email === norm);
+    });
+    if (!match || match.banned) return;
+    try {
+      const banned = { ...match, banned: true };
+      await addSavedAccount(banned);
+      // Reflect immediately so the dashboard's banned count updates in real
+      // time, then reconcile with storage.
+      setSavedAccounts((prev) => prev.map((a) => (a.id === banned.id ? banned : a)));
+      await loadAll();
+    } catch {
+      // Non-fatal: leave the account as-is if the write fails.
+    }
   }
 
   async function submitTarget(e: FormEvent) {
