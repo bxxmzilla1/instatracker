@@ -1615,6 +1615,11 @@ export default function App() {
     );
   }, [proxies, isAdmin, session]);
 
+  const myAccountUsernames = useMemo(
+    () => new Set(accounts.map((a) => a.username)),
+    [accounts],
+  );
+
   if (!session) {
     return (
       <Login
@@ -1676,11 +1681,6 @@ export default function App() {
   const showAddForm = view === 'accounts';
 
   const postableAccounts = accounts.filter((a) => a.igUserId && a.igAccessToken);
-
-  const myAccountUsernames = useMemo(
-    () => new Set(accounts.map((a) => a.username)),
-    [accounts],
-  );
 
   const displayedContent = (() => {
     let list = content.filter((reel) => (reel.mediaType ?? 'reel') === contentTab);
