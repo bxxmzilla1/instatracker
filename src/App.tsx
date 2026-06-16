@@ -235,8 +235,6 @@ export default function App() {
   const [historyReel, setHistoryReel] = useState<ContentReel | null>(null);
   const [scheduleViewDate, setScheduleViewDate] = useState<string>(() => toDateKey(Date.now()));
   const contentRef = useRef<ContentReel[]>([]);
-  const accountsRef = useRef<TrackedAccount[]>([]);
-  const schedulerBusyRef = useRef(false);
   const [contentEmployeeFilter, setContentEmployeeFilter] = useState('');
   const [openAddForms, setOpenAddForms] = useState<Set<string>>(() => new Set());
 
@@ -399,77 +397,28 @@ export default function App() {
     }
   }, [selectedUsername, loadAccountDetails]);
 
-  // Keep refs fresh so the scheduler interval always reads the latest data
-  // without being torn down and recreated on every state change.
+  // Keep content ref fresh for polling logic.
   useEffect(() => {
     contentRef.current = content;
   }, [content]);
+
+  // Poll content while on Schedule (or while a background publish is in progress)
+  // so the UI can show live publish progress from the server cron.
   useEffect(() => {
-    accountsRef.current = accounts;
-  }, [accounts]);
+    if (!session) return;
 
-  // Auto-publish scheduled content whose time has arrived (admin only).
-  useEffect(() => {
-    if (session?.role !== 'admin') return;
+    const shouldPoll = () =>
+      view === 'schedule' ||
+      contentRef.current.some((c) => c.publishingAt && !c.postedAt);
 
-    async function runDueScheduledPosts() {
-      if (schedulerBusyRef.current) return;
-      const now = Date.now();
-      const due = contentRef.current.filter(
-        (c) =>
-          c.scheduledAt &&
-          c.scheduledAt <= now &&
-          c.targetAccount &&
-          !c.postedAt &&
-          !c.postError,
-      );
-      if (due.length === 0) return;
+    const tick = () => {
+      if (shouldPoll()) void loadContent();
+    };
 
-      schedulerBusyRef.current = true;
-      let changed = false;
-      try {
-        for (const item of due) {
-          const account = accountsRef.current.find((a) => a.username === item.targetAccount);
-          if (!account?.igUserId || !account?.igAccessToken || !item.videoUrl) continue;
-          try {
-            const result = await publishContent(account.igUserId, account.igAccessToken, {
-              mediaType: item.mediaType ?? 'reel',
-              mediaUrls: [item.videoUrl],
-              caption: item.caption,
-            });
-            const postedAt = Date.now();
-            await updateContent({
-              ...item,
-              postedAt,
-              permalink: result.permalink,
-              postError: undefined,
-              postHistory: [
-                ...(item.postHistory ?? []),
-                {
-                  account: item.targetAccount as string,
-                  postedAt,
-                  permalink: result.permalink,
-                },
-              ],
-            });
-          } catch (err) {
-            await updateContent({
-              ...item,
-              postError: err instanceof Error ? err.message : 'Publish failed',
-            });
-          }
-          changed = true;
-        }
-      } finally {
-        schedulerBusyRef.current = false;
-        if (changed) await loadContent();
-      }
-    }
-
-    runDueScheduledPosts();
-    const id = setInterval(runDueScheduledPosts, 60_000);
+    tick();
+    const id = setInterval(tick, 3000);
     return () => clearInterval(id);
-  }, [session, loadContent]);
+  }, [session, view, loadContent]);
 
   function markRefreshFailed(username: string) {
     setFailedRefresh((prev) => {
@@ -2499,7 +2448,25 @@ export default function App() {
                             {reel.targetAccount && (
                               <p className="schedule-card__target">📲 Post on @{reel.targetAccount}</p>
                             )}
-                            {reel.postedAt ? (
+                            {reel.publishingAt && !reel.postedAt ? (
+                              <div className="schedule-card__progress">
+                                <div className="publish-progress__track">
+                                  <div
+                                    className="publish-progress__fill"
+                                    style={{
+                                      width: `${publishProgressPercent({
+                                        stage: reel.publishStage ?? 'creating',
+                                      })}%`,
+                                    }}
+                                  />
+                                </div>
+                                <span className="publish-progress__label">
+                                  {publishProgressLabel({
+                                    stage: reel.publishStage ?? 'creating',
+                                  })}
+                                </span>
+                              </div>
+                            ) : reel.postedAt ? (
                               <p className="schedule-card__status schedule-card__status--posted">
                                 ✓ Posted{' '}
                                 {reel.permalink && (

@@ -176,6 +176,10 @@ export interface ContentReel {
   postError?: string;
   /** Log of every account this item was posted to, with timestamps. */
   postHistory?: PostHistoryEntry[];
+  /** When a background publish job started (ms epoch). */
+  publishingAt?: number;
+  /** Current stage while publishing (for progress UI). */
+  publishStage?: 'creating' | 'processing' | 'publishing';
 }
 
 export interface PostHistoryEntry {

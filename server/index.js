@@ -12,6 +12,7 @@ import {
 import { fetchImage } from './image.js';
 import { relayThroughProxy } from './bskyProxy.js';
 import { relayGraphRequest } from './graph.js';
+import { runScheduledPublisher } from './scheduledPublisher.js';
 
 dotenv.config();
 
@@ -103,6 +104,30 @@ app.get('/api/image', async (req, res) => {
     res.status(err.statusCode || 502).json({ error: err.message });
   }
 });
+
+app.get('/api/cron/publish-scheduled', async (req, res) => {
+  const secret = process.env.CRON_SECRET;
+  if (secret) {
+    const auth = req.headers.authorization;
+    if (auth !== `Bearer ${secret}`) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+  }
+  try {
+    const result = await runScheduledPublisher();
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+  setInterval(() => {
+    runScheduledPublisher().catch((err) =>
+      console.error('Scheduled publish error:', err?.message || err),
+    );
+  }, 60_000);
+}
 
 const distPath = path.join(__dirname, '..', 'dist');
 if (process.env.NODE_ENV === 'production') {

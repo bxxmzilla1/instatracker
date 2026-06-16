@@ -23,5 +23,11 @@
       "source": "/((?!api/|assets/|icon\\.svg|manifest\\.webmanifest|sw\\.js|registerSW\\.js|workbox-).*)",
       "destination": "/index.html"
     }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron/publish-scheduled",
+      "schedule": "* * * * *"
+    }
   ]
 }

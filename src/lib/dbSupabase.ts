@@ -422,6 +422,8 @@ interface ContentRow {
   permalink: string | null;
   post_error: string | null;
   post_history: unknown;
+  publishing_at: number | null;
+  publish_stage: string | null;
 }
 
 function toContent(row: ContentRow): ContentReel {
@@ -441,6 +443,8 @@ function toContent(row: ContentRow): ContentReel {
     postHistory: Array.isArray(row.post_history)
       ? (row.post_history as ContentReel['postHistory'])
       : [],
+    publishingAt: row.publishing_at ?? undefined,
+    publishStage: (row.publish_stage as ContentReel['publishStage']) ?? undefined,
   };
 }
 
@@ -515,6 +519,8 @@ export async function updateContent(reel: ContentReel): Promise<void> {
       permalink: reel.permalink ?? null,
       post_error: reel.postError ?? null,
       post_history: reel.postHistory ?? [],
+      publishing_at: reel.publishingAt ?? null,
+      publish_stage: reel.publishStage ?? null,
     })
     .eq('id', reel.id);
   if (error) throw new Error(error.message);

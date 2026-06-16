@@ -2944,6 +2944,17 @@ button:disabled {
   color: #f87171;
 }
 
+.schedule-card__progress {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-top: 0.25rem;
+}
+
+.schedule-card__progress .publish-progress__track {
+  height: 6px;
+}
+
 .schedule-card__assign {
   display: flex;
   flex-wrap: wrap;

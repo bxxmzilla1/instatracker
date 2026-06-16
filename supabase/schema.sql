@@ -114,6 +114,8 @@ alter table content add column if not exists posted_at bigint;
 alter table content add column if not exists permalink text;
 alter table content add column if not exists post_error text;
 alter table content add column if not exists post_history jsonb default '[]'::jsonb;
+alter table content add column if not exists publishing_at bigint;
+alter table content add column if not exists publish_stage text;
 alter table content add column if not exists scheduled_at bigint;
 alter table content add column if not exists target_account text;
 

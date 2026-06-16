@@ -270,6 +270,8 @@ export async function getContent(employee?: string): Promise<ContentReel[]> {
       permalink: r.permalink,
       postError: r.postError,
       postHistory: r.postHistory ?? [],
+      publishingAt: r.publishingAt,
+      publishStage: r.publishStage,
     }));
 }
 
@@ -305,6 +307,8 @@ export async function updateContent(reel: ContentReel): Promise<void> {
     permalink: reel.permalink,
     postError: reel.postError,
     postHistory: reel.postHistory,
+    publishingAt: reel.publishingAt,
+    publishStage: reel.publishStage,
   });
 }
 
