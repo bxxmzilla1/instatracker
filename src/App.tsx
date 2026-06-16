@@ -2562,22 +2562,24 @@ export default function App() {
                 </div>
               )}
 
-              <div className="section-block">
-                <h3>Reels ({reelHistories.length})</h3>
-                {reelHistories.length === 0 ? (
-                  <p className="empty-note">No reels captured yet. Refresh to pull the latest reels and view counts.</p>
-                ) : (
-                  <div className="reel-grid">
-                    {reelHistories.map((history) => (
-                      <ReelCard
-                        key={history.reelId}
-                        history={history}
-                        addedAt={selectedAccount.addedAt}
-                      />
-                    ))}
-                  </div>
-                )}
-              </div>
+              {!(selectedAccount.igUserId && selectedAccount.igAccessToken) && (
+                <div className="section-block">
+                  <h3>Reels ({reelHistories.length})</h3>
+                  {reelHistories.length === 0 ? (
+                    <p className="empty-note">No reels captured yet. Refresh to pull the latest reels and view counts.</p>
+                  ) : (
+                    <div className="reel-grid">
+                      {reelHistories.map((history) => (
+                        <ReelCard
+                          key={history.reelId}
+                          history={history}
+                          addedAt={selectedAccount.addedAt}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </>
           ) : (
             <div className="empty-detail">

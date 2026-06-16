@@ -91,15 +91,6 @@ const DEMOGRAPHIC_TABS = [
   { id: 'gender', label: 'Gender' },
 ] as const;
 
-const TYPE_LABELS: Record<string, string> = {
-  FEED: 'Post',
-  REELS: 'Reel',
-  STORY: 'Story',
-  IMAGE: 'Image',
-  VIDEO: 'Video',
-  CAROUSEL: 'Carousel',
-};
-
 function metricLabel(name: string, labels: Record<string, string>): string {
   return labels[name] ?? BREAKDOWN_SECTION_LABELS[name] ?? name.replace(/_/g, ' ');
 }
@@ -269,90 +260,89 @@ function DemographicsPanel({ demographics }: { demographics: InsightMetric[] }) 
   );
 }
 
-function MediaInsightsRow({
-  item,
-  accessToken,
-  expanded,
-  onToggle,
-}: {
-  item: IgMediaItem;
-  accessToken: string;
-  expanded: boolean;
-  onToggle: () => void;
-}) {
-  const [loading, setLoading] = useState(false);
+function ReelPreviewCard({ item, accessToken }: { item: IgMediaItem; accessToken: string }) {
   const [metrics, setMetrics] = useState<InsightMetric[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [showStats, setShowStats] = useState(false);
+  const [thumbError, setThumbError] = useState(false);
 
+  // Pull this reel's insights up front so the card can show its view count,
+  // matching the Views/Likes/Comments layout of the Apify reel cards.
   useEffect(() => {
-    if (!expanded || metrics != null) return;
     let cancelled = false;
-    setLoading(true);
-    setError(null);
     getMediaInsights(item.id, accessToken, item)
       .then((data) => {
         if (!cancelled) setMetrics(data);
       })
-      .catch((err) => {
-        if (!cancelled) {
-          setError(err instanceof InstagramApiError ? err.graphError.message : 'Failed to load insights');
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
+      .catch(() => {
+        if (!cancelled) setMetrics([]);
       });
     return () => {
       cancelled = true;
     };
-  }, [expanded, item, accessToken, metrics]);
+  }, [item, accessToken]);
 
-  const typeLabel =
-    TYPE_LABELS[item.media_product_type ?? item.media_type ?? ''] ??
-    item.media_product_type ??
-    item.media_type ??
-    'Media';
+  const summary = summarizeInsights(metrics);
   const thumb = proxiedImage(item.thumbnail_url ?? item.media_url);
+  const showThumb = Boolean(thumb) && !thumbError;
+  const reelUrl = item.permalink ?? '#';
+  const views = summary.views;
 
   return (
-    <li className="insight-media">
-      <div className="insight-media__head">
-        {thumb ? (
-          <img className="insight-media__thumb" src={thumb} alt="" loading="lazy" />
-        ) : (
-          <div className="insight-media__thumb insight-media__thumb--empty">No preview</div>
-        )}
-        <div className="insight-media__info">
-          <div className="insight-media__meta">
-            <span className="insight-media__type">{typeLabel}</span>
-            {item.timestamp && <time>{formatMediaDate(item.timestamp)}</time>}
-          </div>
-          {item.caption && <p className="insight-media__caption">{item.caption}</p>}
-          <div className="insight-media__counts">
-            <span>♥ {formatCount(item.like_count ?? 0)}</span>
-            <span>💬 {formatCount(item.comments_count ?? 0)}</span>
-          </div>
-          <div className="insight-media__actions">
-            <button type="button" className="link-btn" onClick={onToggle}>
-              {expanded ? 'Hide insights' : 'View all stats'}
-            </button>
-            {item.permalink && (
-              <a href={item.permalink} target="_blank" rel="noopener noreferrer" className="link-btn">
-                Open on Instagram
-              </a>
+    <article className="reel-card">
+      {showThumb && (
+        <a href={reelUrl} target="_blank" rel="noreferrer" className="reel-card__thumb">
+          <img src={thumb} alt="Reel" loading="lazy" onError={() => setThumbError(true)} />
+        </a>
+      )}
+
+      {item.caption && <p className="reel-card__caption">{item.caption}</p>}
+      <div className="reel-card__metrics">
+        <div>
+          <span className="label">Views</span>
+          <strong>{views != null ? formatCount(views) : '—'}</strong>
+        </div>
+        <div>
+          <span className="label">Likes</span>
+          <strong>{formatCount(item.like_count ?? summary.likes ?? 0)}</strong>
+        </div>
+        <div>
+          <span className="label">Comments</span>
+          <strong>{formatCount(item.comments_count ?? summary.comments ?? 0)}</strong>
+        </div>
+      </div>
+      <button type="button" className="reel-card__stats" onClick={() => setShowStats(true)}>
+        View all stats
+      </button>
+      <a href={reelUrl} target="_blank" rel="noreferrer" className="reel-card__watch">
+        Watch Reel
+      </a>
+
+      {showStats && (
+        <div className="modal" onClick={() => setShowStats(false)}>
+          <div className="modal__card modal__card--wide" onClick={(e) => e.stopPropagation()}>
+            <div className="modal__head">
+              <h3>Reel insights</h3>
+              <button
+                type="button"
+                className="modal__close"
+                onClick={() => setShowStats(false)}
+                aria-label="Close"
+              >
+                ✕
+              </button>
+            </div>
+            {item.timestamp && (
+              <p className="cred-note">Posted {formatMediaDate(item.timestamp)}</p>
+            )}
+            {metrics == null ? (
+              <p className="empty-note">Loading reel insights…</p>
+            ) : (
+              <MetricGrid summary={summary} labels={MEDIA_METRIC_LABELS} />
             )}
           </div>
         </div>
-      </div>
-      {expanded && (
-        <div className="insight-media__body">
-          {loading && <p className="empty-note">Loading post insights…</p>}
-          {error && <p className="banner banner--warn">{error}</p>}
-          {metrics && !loading && (
-            <MetricGrid summary={summarizeInsights(metrics)} labels={MEDIA_METRIC_LABELS} />
-          )}
-        </div>
       )}
-    </li>
+    </article>
   );
 }
 
@@ -363,33 +353,51 @@ export function AccountInsights({ igUserId, accessToken }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [profile, setProfile] = useState<IgAccountProfile | null>(null);
   const [fullInsights, setFullInsights] = useState<FullAccountInsights | null>(null);
-  const [media, setMedia] = useState<IgMediaItem[]>([]);
-  const [mediaCursor, setMediaCursor] = useState<string | undefined>();
-  const [expandedMediaId, setExpandedMediaId] = useState<string | null>(null);
+  const [reels, setReels] = useState<IgMediaItem[]>([]);
+  const [loadingReels, setLoadingReels] = useState(false);
 
   const loadInsights = useCallback(async () => {
     setLoading(true);
     setLoadingDetails(true);
+    setLoadingReels(true);
     setError(null);
-    setExpandedMediaId(null);
-    setMediaCursor(undefined);
+    setReels([]);
     setFullInsights(null);
 
     const { since, until } = formatInsightPeriod(periodDays);
     const demographicTimeframe = demographicTimeframeForDays(periodDays);
 
     try {
-      const [profileData, activityData, mediaData] = await Promise.all([
+      const [profileData, activityData] = await Promise.all([
         getAccountProfile(igUserId, accessToken),
         getAccountInsights(igUserId, accessToken, since, until),
-        getAccountMedia(igUserId, accessToken, 12),
       ]);
 
       setProfile(profileData);
       setFullInsights({ activity: activityData, supplemental: [], demographics: [] });
-      setMedia(mediaData.data ?? []);
-      setMediaCursor(mediaData.paging?.cursors?.after);
       setLoading(false);
+
+      // Pull every media page and keep only reels (no "load more" button).
+      void (async () => {
+        const collected: IgMediaItem[] = [];
+        let after: string | undefined;
+        let pages = 0;
+        try {
+          do {
+            const page = await getAccountMedia(igUserId, accessToken, 50, after);
+            for (const item of page.data ?? []) {
+              if ((item.media_product_type ?? '').toUpperCase() === 'REELS') collected.push(item);
+            }
+            after = page.paging?.cursors?.after;
+            pages += 1;
+          } while (after && pages < 20);
+          setReels(collected);
+        } catch {
+          setReels(collected);
+        } finally {
+          setLoadingReels(false);
+        }
+      })();
 
       const details = await getFullAccountInsights(
         igUserId,
@@ -410,27 +418,13 @@ export function AccountInsights({ igUserId, accessToken }: Props) {
       setError(message);
       setProfile(null);
       setFullInsights(null);
-      setMedia([]);
-      setMediaCursor(undefined);
+      setReels([]);
+      setLoadingReels(false);
     } finally {
       setLoading(false);
       setLoadingDetails(false);
     }
   }, [igUserId, accessToken, periodDays]);
-
-  const loadMoreMedia = useCallback(async () => {
-    if (!mediaCursor || loading) return;
-    setLoading(true);
-    try {
-      const mediaData = await getAccountMedia(igUserId, accessToken, 12, mediaCursor);
-      setMedia((prev) => [...prev, ...(mediaData.data ?? [])]);
-      setMediaCursor(mediaData.paging?.cursors?.after);
-    } catch {
-      // keep existing media on pagination failure
-    } finally {
-      setLoading(false);
-    }
-  }, [igUserId, accessToken, mediaCursor, loading]);
 
   useEffect(() => {
     void loadInsights();
@@ -556,28 +550,17 @@ export function AccountInsights({ igUserId, accessToken }: Props) {
       )}
 
       <div className="insight-section">
-        <h4 className="insight-section__title">Recent posts</h4>
-        {loading && media.length === 0 ? (
-          <p className="empty-note">Loading posts…</p>
-        ) : media.length === 0 ? (
-          <p className="empty-note">No posts found.</p>
+        <h4 className="insight-section__title">Reels ({reels.length})</h4>
+        {loadingReels && reels.length === 0 ? (
+          <p className="empty-note">Loading reels…</p>
+        ) : reels.length === 0 ? (
+          <p className="empty-note">No reels found.</p>
         ) : (
-          <ul className="insight-media-list">
-            {media.map((item) => (
-              <MediaInsightsRow
-                key={item.id}
-                item={item}
-                accessToken={accessToken}
-                expanded={expandedMediaId === item.id}
-                onToggle={() => setExpandedMediaId((id) => (id === item.id ? null : item.id))}
-              />
+          <div className="reel-grid">
+            {reels.map((item) => (
+              <ReelPreviewCard key={item.id} item={item} accessToken={accessToken} />
             ))}
-          </ul>
-        )}
-        {mediaCursor && (
-          <button type="button" className="btn--ghost" disabled={loading} onClick={() => void loadMoreMedia()}>
-            Load more posts
-          </button>
+          </div>
         )}
       </div>
     </div>
