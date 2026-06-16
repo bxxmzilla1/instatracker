@@ -90,7 +90,6 @@ import type {
   FollowerSnapshot,
   License,
   ParsedReel,
-  META_SESSIONS_LINK_ID,
   Platform,
   Proxy,
   ReelHistory,
@@ -99,6 +98,7 @@ import type {
   StoryNote,
   TrackedAccount,
 } from './types';
+import { META_SESSIONS_LINK_ID } from './types';
 
 const META_SESSIONS_LINK_LABEL = 'Sessions Link - Meta Developer';
 
@@ -422,7 +422,11 @@ export default function App() {
   }, [session]);
 
   const loadMetaSessionsLink = useCallback(async () => {
-    setMetaSessionsLink(await getApiLink(META_SESSIONS_LINK_ID));
+    try {
+      setMetaSessionsLink(await getApiLink(META_SESSIONS_LINK_ID));
+    } catch {
+      setMetaSessionsLink(null);
+    }
   }, []);
 
   const loadDashboardData = useCallback(async () => {
@@ -462,7 +466,7 @@ export default function App() {
         await loadCtas();
         await loadStories();
         await loadContent();
-        await loadMetaSessionsLink();
+        void loadMetaSessionsLink();
         if (session?.role === 'admin') {
           const [emps, allAccts] = await Promise.all([getEmployees(), getAccounts()]);
           setEmployees(emps);
@@ -1617,10 +1621,11 @@ export default function App() {
         onSuccess={(next) => {
           localStorage.setItem('drbossing_session', JSON.stringify(next));
           localStorage.removeItem('drbossing_auth');
-          setLoading(true);
+          const nextPlatform = next.platform ?? 'instagram';
           setView('dashboard');
           setSelectedEmployee(null);
-          setPlatform(next.platform ?? 'instagram');
+          setPlatform(nextPlatform);
+          setLoading(nextPlatform === 'instagram');
           setSession(next);
         }}
       />

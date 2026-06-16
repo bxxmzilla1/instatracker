@@ -404,7 +404,11 @@ export async function getApiLink(id: string): Promise<ApiLink | null> {
     .select('*')
     .eq('id', id)
     .maybeSingle();
-  if (error) throw new Error(error.message);
+  if (error) {
+    // Table may not exist yet if schema migration was not applied.
+    if (/api_links|schema cache|does not exist/i.test(error.message)) return null;
+    throw new Error(error.message);
+  }
   return data ? toApiLink(data as ApiLinkRow) : null;
 }
 
