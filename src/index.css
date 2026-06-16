@@ -2820,6 +2820,11 @@ button:disabled {
   font-weight: 600;
 }
 
+.schedule-head__tz {
+  color: var(--muted);
+  font-weight: 500;
+}
+
 .schedule-controls {
   display: flex;
   align-items: center;

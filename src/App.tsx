@@ -48,6 +48,15 @@ import {
 import { parseProxyString } from './lib/proxy';
 import { publishContent } from './lib/igGraph';
 import type { PublishProgress } from './lib/igGraph';
+import {
+  formatDatePH,
+  formatDateTimePH,
+  formatTimePH,
+  parseDatetimeLocalPH,
+  shiftDateKeyPH,
+  toDateKeyPH,
+  toDatetimeLocalPH,
+} from './lib/timezone';
 import { assignedEmployees } from './lib/assignment';
 import { latestByReel, withMonotonicReelViews } from './lib/dashboard';
 import { cacheImage, imgKey } from './lib/media';
@@ -68,19 +77,6 @@ import type {
   StoryNote,
   TrackedAccount,
 } from './types';
-
-function toDateKey(ms: number): string {
-  const d = new Date(ms);
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${d.getFullYear()}-${m}-${day}`;
-}
-
-function shiftDateKey(key: string, days: number): string {
-  const d = new Date(`${key}T00:00`);
-  d.setDate(d.getDate() + days);
-  return toDateKey(d.getTime());
-}
 
 function publishProgressPercent(p: PublishProgress): number {
   switch (p.stage) {
@@ -110,14 +106,6 @@ function publishProgressLabel(p: PublishProgress): string {
     default:
       return 'Working…';
   }
-}
-
-function toDatetimeLocal(ms: number): string {
-  const d = new Date(ms);
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(
-    d.getHours(),
-  )}:${pad(d.getMinutes())}`;
 }
 
 function loadSession(): Session | null {
@@ -233,7 +221,7 @@ export default function App() {
   const [savingAssign, setSavingAssign] = useState(false);
   const [publishProgress, setPublishProgress] = useState<PublishProgress | null>(null);
   const [historyReel, setHistoryReel] = useState<ContentReel | null>(null);
-  const [scheduleViewDate, setScheduleViewDate] = useState<string>(() => toDateKey(Date.now()));
+  const [scheduleViewDate, setScheduleViewDate] = useState<string>(() => toDateKeyPH(Date.now()));
   const contentRef = useRef<ContentReel[]>([]);
   const [contentEmployeeFilter, setContentEmployeeFilter] = useState('');
   const [openAddForms, setOpenAddForms] = useState<Set<string>>(() => new Set());
@@ -895,7 +883,7 @@ export default function App() {
     setScheduleMode(mode);
     setNewContentCaption('');
     setNewContentTarget(reel.targetAccount ?? '');
-    setNewContentScheduledAt(reel.scheduledAt ? toDatetimeLocal(reel.scheduledAt) : '');
+    setNewContentScheduledAt(reel.scheduledAt ? toDatetimeLocalPH(reel.scheduledAt) : '');
   }
 
   function closeScheduleModal() {
@@ -980,7 +968,7 @@ export default function App() {
         caption: newContentCaption,
         targetAccount: newContentTarget || undefined,
         scheduledAt: newContentScheduledAt
-          ? new Date(newContentScheduledAt).getTime()
+          ? parseDatetimeLocalPH(newContentScheduledAt)
           : undefined,
         postError: undefined,
       });
@@ -1346,7 +1334,7 @@ export default function App() {
 
   const scheduledForDate = (() => {
     let scheduled = content.filter(
-      (c) => c.scheduledAt && toDateKey(c.scheduledAt) === scheduleViewDate,
+      (c) => c.scheduledAt && toDateKeyPH(c.scheduledAt) === scheduleViewDate,
     );
     if (isAdmin && contentEmployeeFilter) {
       scheduled = scheduled.filter(
@@ -1356,14 +1344,9 @@ export default function App() {
     return scheduled.sort((a, b) => (a.scheduledAt ?? 0) - (b.scheduledAt ?? 0));
   })();
 
-  const scheduleViewLabel = new Date(`${scheduleViewDate}T00:00`).toLocaleDateString([], {
-    weekday: 'long',
-    month: 'long',
-    day: 'numeric',
-    year: 'numeric',
-  });
+  const scheduleViewLabel = formatDatePH(parseDatetimeLocalPH(`${scheduleViewDate}T12:00`));
 
-  const isScheduleViewToday = scheduleViewDate === toDateKey(Date.now());
+  const isScheduleViewToday = scheduleViewDate === toDateKeyPH(Date.now());
 
   const searchWords = accountSearch.trim().toLowerCase().split(/\s+/).filter(Boolean);
   const filteredAccounts =
@@ -2338,6 +2321,7 @@ export default function App() {
               <h2>
                 {scheduleViewLabel}
                 {isScheduleViewToday && <span className="schedule-head__today"> · Today</span>}
+                <span className="content-filter__active schedule-head__tz"> · PHT</span>
                 <span className="content-filter__active">
                   {' '}
                   · {scheduledForDate.length} item{scheduledForDate.length === 1 ? '' : 's'}
@@ -2363,7 +2347,7 @@ export default function App() {
                   <button
                     type="button"
                     className="content-filter__nav"
-                    onClick={() => setScheduleViewDate((d) => shiftDateKey(d, -1))}
+                    onClick={() => setScheduleViewDate((d) => shiftDateKeyPH(d, -1))}
                     title="Previous day"
                     aria-label="Previous day"
                   >
@@ -2374,14 +2358,14 @@ export default function App() {
                     className="content-filter__date"
                     value={scheduleViewDate}
                     onChange={(e) =>
-                      setScheduleViewDate(e.target.value || toDateKey(Date.now()))
+                      setScheduleViewDate(e.target.value || toDateKeyPH(Date.now()))
                     }
                     title="Pick a date"
                   />
                   <button
                     type="button"
                     className="content-filter__nav"
-                    onClick={() => setScheduleViewDate((d) => shiftDateKey(d, 1))}
+                    onClick={() => setScheduleViewDate((d) => shiftDateKeyPH(d, 1))}
                     title="Next day"
                     aria-label="Next day"
                   >
@@ -2391,7 +2375,7 @@ export default function App() {
                     <button
                       type="button"
                       className="content-filter__clear"
-                      onClick={() => setScheduleViewDate(toDateKey(Date.now()))}
+                      onClick={() => setScheduleViewDate(toDateKeyPH(Date.now()))}
                     >
                       Today
                     </button>
@@ -2428,11 +2412,7 @@ export default function App() {
                           <div className="schedule-card__body">
                             <div className="schedule-card__top">
                               <span className="schedule-card__time">
-                                🗓{' '}
-                                {new Date(reel.scheduledAt as number).toLocaleTimeString([], {
-                                  hour: '2-digit',
-                                  minute: '2-digit',
-                                })}
+                                🗓 {formatTimePH(reel.scheduledAt as number)}
                               </span>
                               <span className="schedule-card__type">
                                 {reel.mediaType === 'image' ? 'Image' : 'Reel'}
@@ -2977,7 +2957,7 @@ export default function App() {
 
                 {scheduleMode === 'schedule' && (
                   <label className="cred-field">
-                    <span className="cred-field__label">Schedule date &amp; time</span>
+                    <span className="cred-field__label">Schedule date &amp; time (Philippines / PHT)</span>
                     <input
                       type="datetime-local"
                       className="cred-form__input"
@@ -3132,13 +3112,7 @@ export default function App() {
                         <div className="post-history__main">
                           <span className="post-history__account">@{entry.account}</span>
                           <span className="post-history__date">
-                            {new Date(entry.postedAt).toLocaleString([], {
-                              month: 'short',
-                              day: 'numeric',
-                              year: 'numeric',
-                              hour: '2-digit',
-                              minute: '2-digit',
-                            })}
+                            {formatDateTimePH(entry.postedAt)}
                           </span>
                         </div>
                         {entry.permalink && (

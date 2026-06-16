@@ -103,7 +103,6 @@ export async function runScheduledPublisher({ limit = 3 } = {}) {
     .lte('scheduled_at', now)
     .is('posted_at', null)
     .is('publishing_at', null)
-    .is('post_error', null)
     .not('target_account', 'is', null)
     .not('video_url', 'is', null)
     .order('scheduled_at', { ascending: true })
