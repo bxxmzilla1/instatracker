@@ -621,11 +621,16 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   }
 
   function proxyOptionLabel(p: Proxy) {
+    const owners = p.allEmployees
+      ? 'All employees'
+      : assignedEmployees(p).join(', ');
     const tag = p.label?.trim();
-    const host = p.host && p.port ? `${p.host}:${p.port}` : p.raw || p.rotatingLink || p.id;
-    if (tag) return `${tag} · ${host}`;
-    if (p.host && p.port) return `${p.type || 'http'} · ${p.host}:${p.port}`;
-    return p.raw || p.rotatingLink || p.id;
+    const host =
+      p.host && p.port
+        ? `${p.type || 'http'} · ${p.host}:${p.port}`
+        : p.raw || p.rotatingLink || p.id;
+    const parts = [owners || undefined, tag || undefined, host].filter(Boolean);
+    return parts.join(' · ');
   }
 
   function proxyConfigFor(id?: string): ProxyConfig | undefined {
