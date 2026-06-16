@@ -45,6 +45,7 @@ import {
   saveReelSnapshots,
   updateAccount,
 } from './lib/db';
+import { assignedEmployees } from './lib/assignment';
 import { parseProxyString } from './lib/proxy';
 import { publishContent } from './lib/igGraph';
 import type { PublishProgress } from './lib/igGraph';
