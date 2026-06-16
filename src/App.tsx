@@ -108,6 +108,27 @@ function publishProgressLabel(p: PublishProgress): string {
   }
 }
 
+function PublishProgressBar({
+  stage,
+  className,
+}: {
+  stage: PublishProgress['stage'];
+  className?: string;
+}) {
+  const progress = { stage: stage ?? 'creating' };
+  return (
+    <div className={className ? `publish-progress ${className}` : 'publish-progress'}>
+      <div className="publish-progress__track">
+        <div
+          className="publish-progress__fill"
+          style={{ width: `${publishProgressPercent(progress)}%` }}
+        />
+      </div>
+      <span className="publish-progress__label">{publishProgressLabel(progress)}</span>
+    </div>
+  );
+}
+
 function loadSession(): Session | null {
   try {
     const raw = localStorage.getItem('drbossing_session');
@@ -222,7 +243,6 @@ export default function App() {
   const [publishProgress, setPublishProgress] = useState<PublishProgress | null>(null);
   const [historyReel, setHistoryReel] = useState<ContentReel | null>(null);
   const [scheduleViewDate, setScheduleViewDate] = useState<string>(() => toDateKeyPH(Date.now()));
-  const contentRef = useRef<ContentReel[]>([]);
   const [contentEmployeeFilter, setContentEmployeeFilter] = useState('');
   const [openAddForms, setOpenAddForms] = useState<Set<string>>(() => new Set());
 
@@ -385,28 +405,36 @@ export default function App() {
     }
   }, [selectedUsername, loadAccountDetails]);
 
-  // Keep content ref fresh for polling logic.
-  useEffect(() => {
-    contentRef.current = content;
-  }, [content]);
-
-  // Poll content while on Schedule (or while a background publish is in progress)
-  // so the UI can show live publish progress from the server cron.
+  // Always poll content so publish progress is visible from any browser/tab.
   useEffect(() => {
     if (!session) return;
 
-    const shouldPoll = () =>
-      view === 'schedule' ||
-      contentRef.current.some((c) => c.publishingAt && !c.postedAt);
-
-    const tick = () => {
-      if (shouldPoll()) void loadContent();
-    };
-
-    tick();
-    const id = setInterval(tick, 3000);
+    void loadContent();
+    const id = setInterval(() => void loadContent(), 2000);
     return () => clearInterval(id);
-  }, [session, view, loadContent]);
+  }, [session, loadContent]);
+
+  const publishingContent = content.filter((c) => c.publishingAt && !c.postedAt);
+
+  useEffect(() => {
+    if (!scheduleReel) return;
+    const fresh = content.find((c) => c.id === scheduleReel.id);
+    if (!fresh) return;
+    if (
+      fresh.publishingAt !== scheduleReel.publishingAt ||
+      fresh.publishStage !== scheduleReel.publishStage ||
+      fresh.postedAt !== scheduleReel.postedAt ||
+      fresh.postError !== scheduleReel.postError
+    ) {
+      setScheduleReel(fresh);
+    }
+  }, [content, scheduleReel]);
+
+  const modalPublishProgress: PublishProgress | null =
+    publishProgress ??
+    (scheduleReel?.publishingAt && !scheduleReel.postedAt
+      ? { stage: scheduleReel.publishStage ?? 'creating' }
+      : null);
 
   function markRefreshFailed(username: string) {
     setFailedRefresh((prev) => {
@@ -884,6 +912,11 @@ export default function App() {
     setNewContentCaption('');
     setNewContentTarget(reel.targetAccount ?? '');
     setNewContentScheduledAt(reel.scheduledAt ? toDatetimeLocalPH(reel.scheduledAt) : '');
+    setPublishProgress(
+      reel.publishingAt && !reel.postedAt
+        ? { stage: reel.publishStage ?? 'creating' }
+        : null,
+    );
   }
 
   function closeScheduleModal() {
@@ -919,6 +952,16 @@ export default function App() {
     );
   }
 
+  async function persistPublishProgress(reel: ContentReel, progress: PublishProgress) {
+    if (!progress.stage || progress.stage === 'done') return;
+    await updateContent({
+      ...reel,
+      publishingAt: reel.publishingAt ?? Date.now(),
+      publishStage: progress.stage,
+      postError: undefined,
+    });
+  }
+
   async function saveSchedule() {
     if (!scheduleReel) return;
 
@@ -929,22 +972,37 @@ export default function App() {
       }
       setSavingSchedule(true);
       setPublishProgress({ stage: 'creating' });
+      const publishingReel: ContentReel = {
+        ...scheduleReel,
+        publishingAt: Date.now(),
+        publishStage: 'creating',
+        postError: undefined,
+      };
       try {
+        await updateContent(publishingReel);
+        await loadContent();
+
         const result = await publishReelToAccount(
-          scheduleReel,
+          publishingReel,
           newContentCaption,
           newContentTarget,
-          setPublishProgress,
+          async (progress) => {
+            setPublishProgress(progress);
+            await persistPublishProgress(publishingReel, progress);
+            await loadContent();
+          },
         );
         const now = Date.now();
         await updateContent({
-          ...scheduleReel,
+          ...publishingReel,
           caption: newContentCaption,
           targetAccount: newContentTarget,
           scheduledAt: undefined,
           postedAt: now,
           permalink: result.permalink,
           postError: undefined,
+          publishingAt: undefined,
+          publishStage: undefined,
           postHistory: [
             ...(scheduleReel.postHistory ?? []),
             { account: newContentTarget, postedAt: now, permalink: result.permalink },
@@ -953,7 +1011,15 @@ export default function App() {
         await loadContent();
         closeScheduleModal();
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Could not publish to Instagram.');
+        const message = err instanceof Error ? err.message : 'Could not publish to Instagram.';
+        await updateContent({
+          ...publishingReel,
+          publishingAt: undefined,
+          publishStage: undefined,
+          postError: message,
+        });
+        await loadContent();
+        setError(message);
       } finally {
         setSavingSchedule(false);
         setPublishProgress(null);
@@ -1634,6 +1700,19 @@ export default function App() {
           </div>
         )}
 
+        {publishingContent.length > 0 && (
+          <div className="banner banner--publish">
+            <PublishProgressBar stage={publishingContent[0].publishStage ?? 'creating'} />
+            <span className="publish-banner__meta">
+              Posting {publishingContent.length} item{publishingContent.length === 1 ? '' : 's'}
+              {publishingContent[0].targetAccount
+                ? ` to @${publishingContent[0].targetAccount}`
+                : ''}
+              …
+            </span>
+          </div>
+        )}
+
         {refreshAllProgress && (
           <div className="refresh-progress">
             <div className="refresh-progress__track">
@@ -2290,6 +2369,7 @@ export default function App() {
                             type="button"
                             className="reel-cell__action reel-cell__action--primary"
                             onClick={() => openScheduleModal(reel, 'post')}
+                            disabled={Boolean(reel.publishingAt && !reel.postedAt)}
                           >
                             Post
                           </button>
@@ -2297,12 +2377,18 @@ export default function App() {
                             type="button"
                             className="reel-cell__action reel-cell__action--secondary"
                             onClick={() => openScheduleModal(reel, 'schedule')}
+                            disabled={Boolean(reel.publishingAt && !reel.postedAt)}
                           >
                             Schedule
                           </button>
                         </div>
                       )}
-                      {isAdmin && reel.postError && (
+                      {reel.publishingAt && !reel.postedAt && (
+                        <div className="reel-cell__progress">
+                          <PublishProgressBar stage={reel.publishStage ?? 'creating'} />
+                        </div>
+                      )}
+                      {isAdmin && reel.postError && !reel.publishingAt && (
                         <div className="reel-cell__error" title={reel.postError}>
                           ⚠ Post failed
                         </div>
@@ -2430,21 +2516,7 @@ export default function App() {
                             )}
                             {reel.publishingAt && !reel.postedAt ? (
                               <div className="schedule-card__progress">
-                                <div className="publish-progress__track">
-                                  <div
-                                    className="publish-progress__fill"
-                                    style={{
-                                      width: `${publishProgressPercent({
-                                        stage: reel.publishStage ?? 'creating',
-                                      })}%`,
-                                    }}
-                                  />
-                                </div>
-                                <span className="publish-progress__label">
-                                  {publishProgressLabel({
-                                    stage: reel.publishStage ?? 'creating',
-                                  })}
-                                </span>
+                                <PublishProgressBar stage={reel.publishStage ?? 'creating'} />
                               </div>
                             ) : reel.postedAt ? (
                               <p className="schedule-card__status schedule-card__status--posted">
@@ -2995,18 +3067,8 @@ export default function App() {
                 </label>
               </div>
 
-              {scheduleMode === 'post' && publishProgress && (
-                <div className="publish-progress">
-                  <div className="publish-progress__track">
-                    <div
-                      className="publish-progress__fill"
-                      style={{ width: `${publishProgressPercent(publishProgress)}%` }}
-                    />
-                  </div>
-                  <span className="publish-progress__label">
-                    {publishProgressLabel(publishProgress)}
-                  </span>
-                </div>
+              {scheduleMode === 'post' && modalPublishProgress && (
+                <PublishProgressBar stage={modalPublishProgress.stage} />
               )}
 
               <div className="schedule-modal__actions">
@@ -3018,8 +3080,13 @@ export default function App() {
                 >
                   Cancel
                 </button>
-                <button type="submit" disabled={savingSchedule}>
-                  {savingSchedule
+                <button
+                  type="submit"
+                  disabled={
+                    savingSchedule || Boolean(scheduleReel?.publishingAt && !scheduleReel.postedAt)
+                  }
+                >
+                  {savingSchedule || (scheduleReel?.publishingAt && !scheduleReel.postedAt)
                     ? scheduleMode === 'post'
                       ? 'Posting…'
                       : 'Saving…'

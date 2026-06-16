@@ -993,6 +993,24 @@ button:disabled {
   color: #fecaca;
 }
 
+.banner--publish {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  background: rgba(124, 58, 237, 0.12);
+  border-color: rgba(124, 58, 237, 0.35);
+  color: #e9d5ff;
+}
+
+.banner--publish .publish-progress__track {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.publish-banner__meta {
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
 .banner--dismissible {
   display: flex;
   align-items: center;
@@ -2683,6 +2701,25 @@ button:disabled {
   color: #fff;
   font-size: 0.72rem;
   font-weight: 600;
+}
+
+.reel-cell__progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 0.45rem 0.5rem 0.55rem;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.82), rgba(0, 0, 0, 0.45));
+  z-index: 3;
+}
+
+.reel-cell__progress .publish-progress__label {
+  color: #fff;
+  font-size: 0.68rem;
+}
+
+.reel-cell__progress .publish-progress__track {
+  background: rgba(255, 255, 255, 0.2);
 }
 
 .cred-field__hint {
