@@ -2716,18 +2716,19 @@ button:disabled {
   color: var(--accent);
 }
 
-/* Magenta reserved for positive growth signals only */
-.app-shell--instagram .delta--up {
-  color: var(--accent-secondary);
-}
-
 .app-shell--instagram .top-row__rank {
   background: var(--accent-soft);
   color: var(--accent);
 }
 
+/* Bar value labels in white, growth text in green */
 .app-shell--instagram .bar-chart__value {
-  color: var(--accent-secondary);
+  color: #ffffff;
+}
+
+.app-shell--instagram .delta--up,
+.app-shell--instagram .trend-chart__summary .delta {
+  color: var(--green);
 }
 
 .app-shell--instagram .bar-chart__col--today .bar-chart__label {
@@ -2754,21 +2755,105 @@ button:disabled {
    Bluesky blue theme (applied on the Bluesky section's app-shell)
 --------------------------------------------------------------------------- */
 .app-shell--bluesky {
-  --bg: #05070d;
-  --surface: #0b0f17;
-  --surface-2: #111824;
-  --surface-3: #172132;
-  --border: rgba(56, 139, 253, 0.16);
-  --border-strong: rgba(56, 139, 253, 0.42);
-  --text: #eef3fb;
+  --bg: #000000;
+  --surface: #07090d;
+  --surface-2: #0d1117;
+  --surface-3: #141a24;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(29, 155, 240, 0.42);
+  --text: #ffffff;
   --muted: #93a4bf;
   --faint: #6b7a93;
   --accent: #1d9bf0;
+  --accent-secondary: #38bdf8;
   --accent-hover: #4db5f5;
   --accent-soft: rgba(29, 155, 240, 0.16);
-  --on-accent: #02121f;
+  --on-accent: #ffffff;
+  --chart-views: #1d9bf0;
+  --chart-followers: #38bdf8;
   background: var(--bg);
   color: var(--text);
+}
+
+.app-shell--bluesky .sidebar {
+  background: #000000;
+  border-right-color: rgba(255, 255, 255, 0.08);
+}
+
+.app-shell--bluesky .sidebar__logo {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.app-shell--bluesky .nav-item--active {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.app-shell--bluesky .nav-item--active .nav-item__count {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.app-shell--bluesky .panel {
+  background: var(--surface);
+  border-color: var(--border);
+  border-radius: 16px;
+}
+
+.app-shell--bluesky .account-card,
+.app-shell--bluesky .stat-card,
+.app-shell--bluesky .highlight-card,
+.app-shell--bluesky .employee-card,
+.app-shell--bluesky .content-tile,
+.app-shell--bluesky .follow-card {
+  background: var(--surface-2);
+  border-color: var(--border);
+}
+
+.app-shell--bluesky .account-card--selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.app-shell--bluesky .owner-tag {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.app-shell--bluesky .top-row__rank {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+/* Bar value labels in white, growth text in green */
+.app-shell--bluesky .bar-chart__value {
+  color: #ffffff;
+}
+
+.app-shell--bluesky .delta--up,
+.app-shell--bluesky .trend-chart__summary .delta {
+  color: var(--green);
+}
+
+.app-shell--bluesky .bar-chart__col--today .bar-chart__label {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.app-shell--bluesky .toggle--active,
+.app-shell--bluesky .toggle--active:hover {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.app-shell--bluesky .platform-switch__btn--active {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.app-shell--bluesky .refresh-progress__fill {
+  background: var(--accent);
 }
 
 /* ---------------------------------------------------------------------------
