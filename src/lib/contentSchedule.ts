@@ -8,14 +8,20 @@ export type ScheduleListItem = {
 
 type ScheduleSource = Pick<
   ContentReel,
-  'id' | 'scheduledPosts' | 'scheduledAt' | 'targetAccount' | 'proxyId' | 'caption'
+  | 'id'
+  | 'scheduledPosts'
+  | 'scheduledAt'
+  | 'targetAccount'
+  | 'proxyId'
+  | 'caption'
+  | 'postedAt'
 >;
 
 /** Merge legacy single-schedule fields into a scheduled-post queue. */
 export function normalizeScheduledPosts(source: ScheduleSource): ScheduledPost[] {
   const stored = source.scheduledPosts ?? [];
   if (stored.length > 0) return stored;
-  if (source.scheduledAt && source.targetAccount) {
+  if (source.scheduledAt && source.targetAccount && !source.postedAt) {
     return [
       {
         id: `${source.id}-legacy`,

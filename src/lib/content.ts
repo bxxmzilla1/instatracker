@@ -15,6 +15,16 @@ export function getContentMediaUrls(reel: ContentReel): string[] {
   return [];
 }
 
+/** True while an immediate or scheduled publish is in flight for this item. */
+export function isContentPublishing(reel: ContentReel): boolean {
+  if (reel.publishingAt) return true;
+  return (reel.scheduledPosts ?? []).some((post) => post.publishingAt && !post.postedAt);
+}
+
+export function pendingScheduleCount(reel: ContentReel): number {
+  return (reel.scheduledPosts ?? []).filter((post) => !post.postedAt).length;
+}
+
 export function isStoryVideo(reel: ContentReel): boolean {
   return isVideoUrl(getContentMediaUrls(reel)[0] ?? '');
 }

@@ -68,6 +68,7 @@ import {
   contentTabSingular,
   extForContentFile,
   getContentMediaUrls,
+  isContentPublishing,
   isImageFile,
   isStoryVideo,
   isVideoFile,
@@ -520,7 +521,7 @@ export default function App() {
     return () => clearInterval(id);
   }, [session, loadContent]);
 
-  const publishingContent = content.filter((c) => c.publishingAt && !c.postedAt);
+  const publishingContent = content.filter((c) => isContentPublishing(c));
 
   useEffect(() => {
     if (!scheduleReel) return;
@@ -538,8 +539,13 @@ export default function App() {
 
   const modalPublishProgress: PublishProgress | null =
     publishProgress ??
-    (scheduleReel?.publishingAt && !scheduleReel.postedAt
-      ? { stage: scheduleReel.publishStage ?? 'creating' }
+    (scheduleReel && isContentPublishing(scheduleReel)
+      ? {
+          stage:
+            scheduleReel.publishStage ??
+            scheduleReel.scheduledPosts?.find((post) => post.publishingAt)?.publishStage ??
+            'creating',
+        }
       : null);
 
   function markRefreshFailed(username: string) {
@@ -1082,8 +1088,13 @@ export default function App() {
     setNewContentProxyId('');
     setNewContentScheduledAt(mode === 'schedule' ? nowDatetimeLocal() : '');
     setPublishProgress(
-      reel.publishingAt && !reel.postedAt
-        ? { stage: reel.publishStage ?? 'creating' }
+      isContentPublishing(reel)
+        ? {
+            stage:
+              reel.publishStage ??
+              reel.scheduledPosts?.find((post) => post.publishingAt)?.publishStage ??
+              'creating',
+          }
         : null,
     );
   }
@@ -1152,6 +1163,7 @@ export default function App() {
       setPublishProgress({ stage: 'creating' });
       const publishingReel: ContentReel = {
         ...scheduleReel,
+        mediaType: scheduleReel.mediaType ?? 'reel',
         publishingAt: Date.now(),
         publishStage: 'creating',
         postError: undefined,
@@ -1176,6 +1188,7 @@ export default function App() {
         const now = Date.now();
         await updateContent({
           ...publishingReel,
+          mediaType: scheduleReel.mediaType ?? 'reel',
           caption: newContentCaption,
           targetAccount: newContentTarget,
           proxyId: newContentProxyId || undefined,
@@ -1922,12 +1935,22 @@ export default function App() {
 
         {publishingContent.length > 0 && (
           <div className="banner banner--publish">
-            <PublishProgressBar stage={publishingContent[0].publishStage ?? 'creating'} />
+            <PublishProgressBar
+              stage={
+                publishingContent[0].publishStage ??
+                publishingContent[0].scheduledPosts?.find((post) => post.publishingAt)?.publishStage ??
+                'creating'
+              }
+            />
             <span className="publish-banner__meta">
               Posting {publishingContent.length} item{publishingContent.length === 1 ? '' : 's'}
-              {publishingContent[0].targetAccount
-                ? ` to @${publishingContent[0].targetAccount}`
-                : ''}
+              {(() => {
+                const item = publishingContent[0];
+                const account =
+                  item.targetAccount ??
+                  item.scheduledPosts?.find((post) => post.publishingAt)?.account;
+                return account ? ` to @${account}` : '';
+              })()}
               …
             </span>
           </div>
@@ -2468,7 +2491,7 @@ export default function App() {
                             type="button"
                             className="reel-cell__action reel-cell__action--primary"
                             onClick={() => openScheduleModal(reel, 'post')}
-                            disabled={Boolean(reel.publishingAt && !reel.postedAt)}
+                            disabled={isContentPublishing(reel)}
                           >
                             Post
                           </button>
@@ -2476,18 +2499,24 @@ export default function App() {
                             type="button"
                             className="reel-cell__action reel-cell__action--secondary"
                             onClick={() => openScheduleModal(reel, 'schedule')}
-                            disabled={Boolean(reel.publishingAt && !reel.postedAt)}
+                            disabled={isContentPublishing(reel)}
                           >
                             Schedule
                           </button>
                         </div>
                       )}
-                      {reel.publishingAt && !reel.postedAt && (
+                      {isContentPublishing(reel) && (
                         <div className="reel-cell__progress">
-                          <PublishProgressBar stage={reel.publishStage ?? 'creating'} />
+                          <PublishProgressBar
+                            stage={
+                              reel.publishStage ??
+                              reel.scheduledPosts?.find((post) => post.publishingAt)?.publishStage ??
+                              'creating'
+                            }
+                          />
                         </div>
                       )}
-                      {isAdmin && reel.postError && !reel.publishingAt && (
+                      {isAdmin && reel.postError && !isContentPublishing(reel) && (
                         <div className="reel-cell__error" title={reel.postError}>
                           ⚠ Post failed
                         </div>
@@ -2672,7 +2701,7 @@ export default function App() {
                               type="button"
                               className="content-tile__download"
                               onClick={() => downloadReel(reel)}
-                              title={reel.mediaType === 'image' ? 'Download image' : 'Download reel'}
+                              title={`Download ${contentTabSingular(reel.mediaType ?? 'reel')}`}
                             >
                               ↓ Download
                             </button>
@@ -3192,9 +3221,10 @@ export default function App() {
                   </select>
                   <span className="cred-field__hint">
                     Only Instagram accounts with a saved API token &amp; User ID can be posted to.
-                    {scheduleMode === 'schedule'
-                      ? ' You can schedule the same reel to multiple accounts.'
-                      : ''}
+                    {' '}
+                    You can post or schedule the same{' '}
+                    {scheduleReel ? contentTabSingular(scheduleReel.mediaType ?? 'reel') : 'item'} to
+                    multiple accounts, including ones it was already posted to.
                   </span>
                 </label>
 
@@ -3235,11 +3265,9 @@ export default function App() {
                 </button>
                 <button
                   type="submit"
-                  disabled={
-                    savingSchedule || Boolean(scheduleReel?.publishingAt && !scheduleReel.postedAt)
-                  }
+                  disabled={savingSchedule || Boolean(scheduleReel && isContentPublishing(scheduleReel))}
                 >
-                  {savingSchedule || (scheduleReel?.publishingAt && !scheduleReel.postedAt)
+                  {savingSchedule || (scheduleReel && isContentPublishing(scheduleReel))
                     ? scheduleMode === 'post'
                       ? 'Posting…'
                       : 'Saving…'
@@ -3314,7 +3342,7 @@ export default function App() {
               }}
             >
               <div className="modal__head">
-                <h3>Assign {assignReel.mediaType === 'image' ? 'image' : 'reel'}</h3>
+                <h3>Assign {contentTabSingular(assignReel.mediaType ?? 'reel')}</h3>
                 <button
                   type="button"
                   className="modal__close"
@@ -3326,7 +3354,8 @@ export default function App() {
               </div>
 
               <p className="cred-note">
-                Select which employees will see this {assignReel.mediaType === 'image' ? 'image' : 'reel'} in
+                Select which employees will see this{' '}
+                {contentTabSingular(assignReel.mediaType ?? 'reel')} in
                 their accounts.
               </p>
 
@@ -3372,7 +3401,7 @@ export default function App() {
 
               {(historyReel.postHistory?.length ?? 0) === 0 ? (
                 <p className="empty-note">
-                  This {historyReel.mediaType === 'image' ? 'image' : 'reel'} hasn’t been posted yet.
+                  This {contentTabSingular(historyReel.mediaType ?? 'reel')} hasn’t been posted yet.
                 </p>
               ) : (
                 <ul className="post-history">

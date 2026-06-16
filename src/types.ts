@@ -159,6 +159,7 @@ export interface StoryNote {
 
 export type ContentMediaType = 'reel' | 'image' | 'story' | 'carousel';
 
+/** Uploaded content (reels, images, stories, carousels) assigned to employees. */
 export interface ContentReel {
   id: string;
   caption: string;
