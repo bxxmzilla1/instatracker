@@ -106,6 +106,8 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   const [view, setView] = useState<View>('dashboard');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const hasLoadedOnceRef = useRef(false);
 
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [employeeCounts, setEmployeeCounts] = useState<Record<string, number>>({});
@@ -269,7 +271,8 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
 
   useEffect(() => {
     let active = true;
-    setLoading(true);
+    if (hasLoadedOnceRef.current) setRefreshing(true);
+    else setLoading(true);
     (async () => {
       try {
         if (isAdmin) {
@@ -278,10 +281,14 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
           setEmployees(emps);
         }
         await loadAll();
+        if (active) hasLoadedOnceRef.current = true;
       } catch (err) {
         if (active) setError(err instanceof Error ? err.message : 'Failed to load Bluesky data');
       } finally {
-        if (active) setLoading(false);
+        if (active) {
+          setLoading(false);
+          setRefreshing(false);
+        }
       }
     })();
     return () => {
@@ -1492,6 +1499,12 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
           </section>
         ) : (
           <>
+            {view === 'dashboard' && refreshing && (
+              <div className="refresh-progress refresh-progress--inline" role="status">
+                <span className="spinner spinner--sm" aria-hidden />
+                <span className="refresh-progress__label">Refreshing dashboard…</span>
+              </div>
+            )}
             {view === 'dashboard' && (
               <section className="panel dashboard">
                 <div className="dashboard__stats">

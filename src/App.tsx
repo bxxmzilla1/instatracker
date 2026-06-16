@@ -233,6 +233,10 @@ export default function App() {
   const [allReelSnapshots, setAllReelSnapshots] = useState<ReelSnapshot[]>([]);
   const [allFollowerSnapshots, setAllFollowerSnapshots] = useState<FollowerSnapshot[]>([]);
   const [accountsLoading, setAccountsLoading] = useState(false);
+  const [dashboardRefreshing, setDashboardRefreshing] = useState(false);
+  const [bskyEverMounted, setBskyEverMounted] = useState(
+    () => loadSession()?.platform === 'bluesky',
+  );
   const [refreshAllProgress, setRefreshAllProgress] = useState<{ done: number; total: number } | null>(
     null,
   );
@@ -294,9 +298,11 @@ export default function App() {
   } | null>(null);
   const [bios, setBios] = useState<Bio[]>([]);
   const [newBioText, setNewBioText] = useState('');
-  const [newBioEmployees, setNewBioEmployees] = useState<Set<string>>(() => new Set());
-  const [newBioAll, setNewBioAll] = useState(false);
   const [newBioAccounts, setNewBioAccounts] = useState<Set<string>>(() => new Set());
+  const [assignBio, setAssignBio] = useState<Bio | null>(null);
+  const [assignBioEmployees, setAssignBioEmployees] = useState<Set<string>>(() => new Set());
+  const [assignBioAll, setAssignBioAll] = useState(false);
+  const [savingBioAssign, setSavingBioAssign] = useState(false);
   const [pushingBioId, setPushingBioId] = useState<string | null>(null);
   const [ctas, setCtas] = useState<Cta[]>([]);
   const [newCtaText, setNewCtaText] = useState('');
@@ -343,9 +349,13 @@ export default function App() {
   );
 
   const selectedUsernameRef = useRef<string | null>(null);
+  const hasAccountsRef = useRef(false);
   useEffect(() => {
     selectedUsernameRef.current = selectedUsername;
   }, [selectedUsername]);
+  useEffect(() => {
+    hasAccountsRef.current = accounts.length > 0;
+  }, [accounts.length]);
 
   const viewsByUsername = useMemo(() => {
     const map = new Map<string, number>();
@@ -460,18 +470,32 @@ export default function App() {
   ]);
 
   useEffect(() => {
+    if (platform === 'bluesky') setBskyEverMounted(true);
+  }, [platform]);
+
+  useEffect(() => {
     if (!session) return;
     let active = true;
-    setAccountsLoading(true);
-    setSelectedUsername(null);
+    const hasCachedAccounts = hasAccountsRef.current;
+    if (hasCachedAccounts) setDashboardRefreshing(true);
+    else {
+      setAccountsLoading(true);
+      setSelectedUsername(null);
+    }
     (async () => {
-      const [rows] = await Promise.all([getAccounts(ownerFilter), loadDashboardData()]);
-      if (!active) return;
-      setAccounts(rows);
-      setSelectedUsername((current) =>
-        rows.some((r) => r.username === current) ? current : rows[0]?.username ?? null,
-      );
-      setAccountsLoading(false);
+      try {
+        const [rows] = await Promise.all([getAccounts(ownerFilter), loadDashboardData()]);
+        if (!active) return;
+        setAccounts(rows);
+        setSelectedUsername((current) =>
+          rows.some((r) => r.username === current) ? current : rows[0]?.username ?? null,
+        );
+      } finally {
+        if (active) {
+          setAccountsLoading(false);
+          setDashboardRefreshing(false);
+        }
+      }
     })();
     return () => {
       active = false;
@@ -838,36 +862,64 @@ export default function App() {
   async function submitBio() {
     const text = newBioText.trim();
     if (!text) return;
-    if (!newBioAll && newBioEmployees.size === 0) {
-      setError('Select at least one employee or choose all employees.');
-      return;
-    }
     try {
       await addBio({
         id: crypto.randomUUID(),
         text: newBioText,
-        employees: newBioAll ? [] : [...newBioEmployees],
-        allEmployees: newBioAll,
+        employees: [],
+        allEmployees: false,
         accounts: [...newBioAccounts],
         createdAt: Date.now(),
       });
       await loadBios();
       setNewBioText('');
-      setNewBioEmployees(new Set());
-      setNewBioAll(false);
       setNewBioAccounts(new Set());
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not add bio.');
     }
   }
 
-  function toggleBioEmployee(username: string) {
-    setNewBioEmployees((prev) => {
+  function openAssignBioModal(bio: Bio) {
+    setAssignBio(bio);
+    setAssignBioEmployees(new Set(bio.employees ?? []));
+    setAssignBioAll(bio.allEmployees);
+  }
+
+  function closeAssignBioModal() {
+    setAssignBio(null);
+    setAssignBioEmployees(new Set());
+    setAssignBioAll(false);
+  }
+
+  function toggleAssignBioEmployee(username: string) {
+    setAssignBioEmployees((prev) => {
       const next = new Set(prev);
       if (next.has(username)) next.delete(username);
       else next.add(username);
       return next;
     });
+  }
+
+  async function saveBioAssign() {
+    if (!assignBio) return;
+    if (!assignBioAll && assignBioEmployees.size === 0) {
+      setError('Select at least one employee or choose all employees.');
+      return;
+    }
+    setSavingBioAssign(true);
+    try {
+      await addBio({
+        ...assignBio,
+        employees: assignBioAll ? [] : [...assignBioEmployees],
+        allEmployees: assignBioAll,
+      });
+      await loadBios();
+      closeAssignBioModal();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not assign bio.');
+    } finally {
+      setSavingBioAssign(false);
+    }
   }
 
   function toggleNewBioAccount(username: string) {
@@ -1380,7 +1432,11 @@ export default function App() {
     if (!editItem) return;
     const text = editItem.text.trim();
     if (!text) return;
-    if (!editItem.allEmployees && editItem.employees.size === 0) {
+    if (
+      editItem.kind !== 'bio' &&
+      !editItem.allEmployees &&
+      editItem.employees.size === 0
+    ) {
       setError('Select at least one employee or choose all employees.');
       return;
     }
@@ -1547,18 +1603,6 @@ export default function App() {
     setFailedRefresh(new Set());
   }
 
-  if (platform === 'bluesky') {
-    return (
-      <BlueskySection
-        session={session}
-        isAdmin={isAdmin}
-        canSwitch={isAdmin}
-        onSwitchToInstagram={() => setPlatform('instagram')}
-        onLock={handleLock}
-      />
-    );
-  }
-
   const topbarTitle =
     view === 'dashboard'
       ? 'Dashboard'
@@ -1630,6 +1674,29 @@ export default function App() {
   );
 
   return (
+    <>
+      {bskyEverMounted && (
+        <div
+          className={
+            platform === 'bluesky' ? 'platform-panel' : 'platform-panel platform-panel--hidden'
+          }
+          aria-hidden={platform !== 'bluesky'}
+        >
+          <BlueskySection
+            session={session}
+            isAdmin={isAdmin}
+            canSwitch={isAdmin}
+            onSwitchToInstagram={() => setPlatform('instagram')}
+            onLock={handleLock}
+          />
+        </div>
+      )}
+      <div
+        className={
+          platform === 'instagram' ? 'platform-panel' : 'platform-panel platform-panel--hidden'
+        }
+        aria-hidden={platform !== 'instagram'}
+      >
     <div className="app-shell app-shell--instagram">
       <aside className="sidebar">
         <div className="sidebar__brand">
@@ -1916,8 +1983,15 @@ export default function App() {
           </div>
         )}
 
+        {view === 'dashboard' && dashboardRefreshing && accounts.length > 0 && (
+          <div className="refresh-progress refresh-progress--inline" role="status">
+            <span className="spinner spinner--sm" aria-hidden />
+            <span className="refresh-progress__label">Refreshing dashboard…</span>
+          </div>
+        )}
+
         {view === 'dashboard' &&
-          (accountsLoading ? (
+          (accountsLoading && accounts.length === 0 ? (
             <section className="panel">{loadingBlock}</section>
           ) : accounts.length > 0 ? (
             <Dashboard
@@ -2233,14 +2307,6 @@ export default function App() {
                     {newBioText.length}/{IG_BIO_MAX_LENGTH} characters (Instagram limit)
                   </p>
 
-                  <AssignmentPicker
-                    employees={employees}
-                    selected={newBioEmployees}
-                    all={newBioAll}
-                    onToggle={toggleBioEmployee}
-                    onAllChange={setNewBioAll}
-                  />
-
                   <AccountPicker
                     accounts={accounts}
                     selected={newBioAccounts}
@@ -2250,7 +2316,7 @@ export default function App() {
 
                   <button
                     type="submit"
-                    disabled={!newBioText.trim() || (!newBioAll && newBioEmployees.size === 0)}
+                    disabled={!newBioText.trim()}
                   >
                     Add bio
                   </button>
@@ -2294,6 +2360,16 @@ export default function App() {
                       </div>
                       <div className="row-actions">
                         <CopyButton value={bio.text} title="Copy bio" />
+                        {isAdmin && (
+                          <button
+                            type="button"
+                            className="row-edit bio-row__push"
+                            onClick={() => openAssignBioModal(bio)}
+                            title="Assign to employees"
+                          >
+                            Assign
+                          </button>
+                        )}
                         {isAdmin && bio.accounts.length > 0 && (
                           <button
                             type="button"
@@ -2823,7 +2899,7 @@ export default function App() {
 
         {(view === 'accounts' || view === 'employee') && (
           <>
-            {view === 'employee' && !accountsLoading && accounts.length > 0 && (
+            {view === 'employee' && accounts.length > 0 && (
               <Dashboard
                 accounts={accounts}
                 reelSnapshots={scopedReelSnapshots}
@@ -2844,7 +2920,7 @@ export default function App() {
             <h2>Tracked ({accounts.length})</h2>
           </div>
 
-          {!accountsLoading && accounts.length > 0 && (
+          {accounts.length > 0 && (
             <div className="account-search">
               <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2">
                 <circle cx="11" cy="11" r="7" />
@@ -2866,7 +2942,7 @@ export default function App() {
             </div>
           )}
 
-          {accountsLoading ? (
+          {accountsLoading && accounts.length === 0 ? (
             loadingBlock
           ) : accounts.length === 0 ? (
             <p className="empty-note">
@@ -2904,7 +2980,7 @@ export default function App() {
         </section>
 
         <section className="panel panel--detail">
-          {accountsLoading ? (
+          {accountsLoading && accounts.length === 0 ? (
             loadingBlock
           ) : selectedAccount ? (
             <>
@@ -3197,6 +3273,57 @@ export default function App() {
           </div>
         )}
 
+        {assignBio && (
+          <div className="modal" onClick={closeAssignBioModal}>
+            <form
+              className="modal__card"
+              onClick={(e) => e.stopPropagation()}
+              onSubmit={(e) => {
+                e.preventDefault();
+                void saveBioAssign();
+              }}
+            >
+              <div className="modal__head">
+                <h3>Assign bio</h3>
+                <button
+                  type="button"
+                  className="modal__close"
+                  onClick={closeAssignBioModal}
+                  aria-label="Close"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <p className="cred-note">
+                Select which employees will see this bio in their accounts.
+              </p>
+
+              <div className="schedule-modal__body">
+                <AssignmentPicker
+                  employees={employees}
+                  selected={assignBioEmployees}
+                  all={assignBioAll}
+                  onToggle={toggleAssignBioEmployee}
+                  onAllChange={setAssignBioAll}
+                />
+              </div>
+
+              <div className="schedule-modal__actions">
+                <button type="button" className="btn btn--ghost" onClick={closeAssignBioModal}>
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingBioAssign || (!assignBioAll && assignBioEmployees.size === 0)}
+                >
+                  {savingBioAssign ? 'Saving…' : 'Assign'}
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
+
         {assignReel && (
           <div className="modal" onClick={closeAssignModal}>
             <form
@@ -3413,13 +3540,15 @@ export default function App() {
                   </>
                 )}
 
-                <AssignmentPicker
-                  employees={employees}
-                  selected={editItem.employees}
-                  all={editItem.allEmployees}
-                  onToggle={toggleEditEmployee}
-                  onAllChange={(all) => setEditItem({ ...editItem, allEmployees: all })}
-                />
+                {editItem.kind !== 'bio' && (
+                  <AssignmentPicker
+                    employees={employees}
+                    selected={editItem.employees}
+                    all={editItem.allEmployees}
+                    onToggle={toggleEditEmployee}
+                    onAllChange={(all) => setEditItem({ ...editItem, allEmployees: all })}
+                  />
+                )}
 
                 {editItem.kind === 'bio' && (
                   <AccountPicker
@@ -3489,5 +3618,7 @@ export default function App() {
         )}
       </main>
     </div>
+      </div>
+    </>
   );
 }

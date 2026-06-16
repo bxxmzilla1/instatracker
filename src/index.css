@@ -1818,6 +1818,20 @@ button:disabled {
   animation: spin 0.7s linear infinite;
 }
 
+.spinner--sm {
+  width: 14px;
+  height: 14px;
+  border-width: 2px;
+}
+
+.refresh-progress--inline {
+  margin-bottom: 0.75rem;
+}
+
+.platform-panel--hidden {
+  display: none !important;
+}
+
 @keyframes spin {
   to {
     transform: rotate(360deg);

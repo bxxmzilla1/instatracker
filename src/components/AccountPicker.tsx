@@ -44,26 +44,26 @@ export function AccountPicker({
 
       {open && (
         <div className="assign-dropdown__menu">
-          {accounts.length === 0 ? (
-            <span className="assign-dropdown__empty">No tracked accounts yet.</span>
-          ) : (
-            accounts.map((account) => {
-              const hasApi = Boolean(account.igUserId && account.igAccessToken);
+          {(() => {
+            const eligible = accounts.filter((a) => a.igUserId && a.igAccessToken);
+            if (eligible.length === 0) {
               return (
-                <label key={account.username} className="assign-dropdown__item">
-                  <input
-                    type="checkbox"
-                    checked={selected.has(account.username)}
-                    onChange={() => onToggle(account.username)}
-                  />
-                  @{account.username}
-                  {!hasApi && (
-                    <span className="assign-dropdown__hint"> · no API creds</span>
-                  )}
-                </label>
+                <span className="assign-dropdown__empty">
+                  No accounts with API token and User ID saved.
+                </span>
               );
-            })
-          )}
+            }
+            return eligible.map((account) => (
+              <label key={account.username} className="assign-dropdown__item">
+                <input
+                  type="checkbox"
+                  checked={selected.has(account.username)}
+                  onChange={() => onToggle(account.username)}
+                />
+                @{account.username}
+              </label>
+            ));
+          })()}
         </div>
       )}
     </div>
