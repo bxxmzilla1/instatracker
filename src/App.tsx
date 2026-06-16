@@ -2445,7 +2445,9 @@ export default function App() {
             <>
               <div className="detail-header">
                 <div>
-                  <h2>@{selectedAccount.username}</h2>
+                  {!(selectedAccount.igUserId && selectedAccount.igAccessToken) && (
+                    <h2>@{selectedAccount.username}</h2>
+                  )}
                   {isAdmin && selectedAccount.owner && selectedAccount.owner !== 'admin' && (
                     <span className="owner-tag owner-tag--detail">
                       Added by {selectedAccount.owner}
@@ -2494,49 +2496,52 @@ export default function App() {
                 </div>
               )}
 
-              <div className="metric-grid">
-                <div className="metric-card">
-                  <span>Followers</span>
-                  <strong>{selectedAccount.lastFollowers !== undefined ? formatCount(selectedAccount.lastFollowers) : '—'}</strong>
-                </div>
-                <div className="metric-card">
-                  <span>Following</span>
-                  <strong>{selectedAccount.lastFollowing !== undefined ? formatCount(selectedAccount.lastFollowing) : '—'}</strong>
-                </div>
-                <div className="metric-card">
-                  <span>Posts</span>
-                  <strong>{selectedAccount.lastMediaCount !== undefined ? formatCount(selectedAccount.lastMediaCount) : '—'}</strong>
-                </div>
-                <div className="metric-card">
-                  <span>Reel Views</span>
-                  <strong>{formatCount(viewsByUsername.get(selectedAccount.username) ?? 0)}</strong>
-                </div>
-                <div className="metric-card">
-                  <span>Last check</span>
-                  <strong>{selectedAccount.lastCheckedAt ? formatDate(selectedAccount.lastCheckedAt) : 'Never'}</strong>
-                </div>
-                <div className="metric-card">
-                  <span>Submitted Date</span>
-                  <strong>{formatDate(selectedAccount.addedAt)}</strong>
-                </div>
-              </div>
-
-              {(selectedAccount.fullName || selectedAccount.bio) && (
-                <div className="profile-meta">
-                  {selectedAccount.fullName && (
-                    <div className="profile-meta__row">
-                      <span className="profile-meta__label">Name</span>
-                      <p className="profile-meta__value">{selectedAccount.fullName}</p>
-                    </div>
-                  )}
-                  {selectedAccount.bio && (
-                    <div className="profile-meta__row">
-                      <span className="profile-meta__label">Bio</span>
-                      <p className="profile-meta__value">{selectedAccount.bio}</p>
-                    </div>
-                  )}
+              {!(selectedAccount.igUserId && selectedAccount.igAccessToken) && (
+                <div className="metric-grid">
+                  <div className="metric-card">
+                    <span>Followers</span>
+                    <strong>{selectedAccount.lastFollowers !== undefined ? formatCount(selectedAccount.lastFollowers) : '—'}</strong>
+                  </div>
+                  <div className="metric-card">
+                    <span>Following</span>
+                    <strong>{selectedAccount.lastFollowing !== undefined ? formatCount(selectedAccount.lastFollowing) : '—'}</strong>
+                  </div>
+                  <div className="metric-card">
+                    <span>Posts</span>
+                    <strong>{selectedAccount.lastMediaCount !== undefined ? formatCount(selectedAccount.lastMediaCount) : '—'}</strong>
+                  </div>
+                  <div className="metric-card">
+                    <span>Reel Views</span>
+                    <strong>{formatCount(viewsByUsername.get(selectedAccount.username) ?? 0)}</strong>
+                  </div>
+                  <div className="metric-card">
+                    <span>Last check</span>
+                    <strong>{selectedAccount.lastCheckedAt ? formatDate(selectedAccount.lastCheckedAt) : 'Never'}</strong>
+                  </div>
+                  <div className="metric-card">
+                    <span>Submitted Date</span>
+                    <strong>{formatDate(selectedAccount.addedAt)}</strong>
+                  </div>
                 </div>
               )}
+
+              {!(selectedAccount.igUserId && selectedAccount.igAccessToken) &&
+                (selectedAccount.fullName || selectedAccount.bio) && (
+                  <div className="profile-meta">
+                    {selectedAccount.fullName && (
+                      <div className="profile-meta__row">
+                        <span className="profile-meta__label">Name</span>
+                        <p className="profile-meta__value">{selectedAccount.fullName}</p>
+                      </div>
+                    )}
+                    {selectedAccount.bio && (
+                      <div className="profile-meta__row">
+                        <span className="profile-meta__label">Bio</span>
+                        <p className="profile-meta__value">{selectedAccount.bio}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
 
               {selectedAccount.igUserId && selectedAccount.igAccessToken ? (
                 <AccountInsights
