@@ -2711,6 +2711,49 @@ button:disabled {
   margin-top: 1rem;
 }
 
+.publish-progress {
+  margin-top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.publish-progress__track {
+  width: 100%;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+.publish-progress__fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    var(--accent) 0%,
+    color-mix(in srgb, var(--accent) 55%, #fff) 50%,
+    var(--accent) 100%
+  );
+  background-size: 200% 100%;
+  animation: publish-progress-shimmer 1.2s linear infinite;
+  transition: width 0.4s ease;
+}
+
+@keyframes publish-progress-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.publish-progress__label {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
 @media (max-width: 640px) {
   .reels-grid {
     grid-template-columns: repeat(2, 1fr);

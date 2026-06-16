@@ -47,6 +47,7 @@ import {
 } from './lib/db';
 import { parseProxyString } from './lib/proxy';
 import { publishContent } from './lib/igGraph';
+import type { PublishProgress } from './lib/igGraph';
 import { assignedEmployees } from './lib/assignment';
 import { latestByReel, withMonotonicReelViews } from './lib/dashboard';
 import { cacheImage, imgKey } from './lib/media';
@@ -73,6 +74,36 @@ function toDateKey(ms: number): string {
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${d.getFullYear()}-${m}-${day}`;
+}
+
+function publishProgressPercent(p: PublishProgress): number {
+  switch (p.stage) {
+    case 'creating':
+      return 20;
+    case 'processing':
+      return 55;
+    case 'publishing':
+      return 85;
+    case 'done':
+      return 100;
+    default:
+      return 10;
+  }
+}
+
+function publishProgressLabel(p: PublishProgress): string {
+  switch (p.stage) {
+    case 'creating':
+      return 'Preparing media…';
+    case 'processing':
+      return 'Processing video on Instagram…';
+    case 'publishing':
+      return 'Publishing…';
+    case 'done':
+      return 'Published!';
+    default:
+      return 'Working…';
+  }
 }
 
 function toDatetimeLocal(ms: number): string {
@@ -194,6 +225,7 @@ export default function App() {
   const [savingSchedule, setSavingSchedule] = useState(false);
   const [assignReel, setAssignReel] = useState<ContentReel | null>(null);
   const [savingAssign, setSavingAssign] = useState(false);
+  const [publishProgress, setPublishProgress] = useState<PublishProgress | null>(null);
   const contentRef = useRef<ContentReel[]>([]);
   const accountsRef = useRef<TrackedAccount[]>([]);
   const schedulerBusyRef = useRef(false);
@@ -895,7 +927,7 @@ export default function App() {
   function openScheduleModal(reel: ContentReel, mode: 'post' | 'schedule') {
     setScheduleReel(reel);
     setScheduleMode(mode);
-    setNewContentCaption(reel.caption ?? '');
+    setNewContentCaption('');
     setNewContentTarget(reel.targetAccount ?? '');
     setNewContentScheduledAt(reel.scheduledAt ? toDatetimeLocal(reel.scheduledAt) : '');
   }
@@ -905,12 +937,14 @@ export default function App() {
     setNewContentCaption('');
     setNewContentTarget('');
     setNewContentScheduledAt('');
+    setPublishProgress(null);
   }
 
   async function publishReelToAccount(
     reel: ContentReel,
     caption: string,
     targetUsername: string,
+    onProgress?: (progress: PublishProgress) => void,
   ) {
     const account = accounts.find((a) => a.username === targetUsername);
     if (!account?.igUserId || !account?.igAccessToken) {
@@ -919,11 +953,16 @@ export default function App() {
     if (!reel.videoUrl) {
       throw new Error('This item has no uploaded media to publish.');
     }
-    return publishContent(account.igUserId, account.igAccessToken, {
-      mediaType: reel.mediaType ?? 'reel',
-      mediaUrls: [reel.videoUrl],
-      caption,
-    });
+    return publishContent(
+      account.igUserId,
+      account.igAccessToken,
+      {
+        mediaType: reel.mediaType ?? 'reel',
+        mediaUrls: [reel.videoUrl],
+        caption,
+      },
+      onProgress,
+    );
   }
 
   async function saveSchedule() {
@@ -935,8 +974,14 @@ export default function App() {
         return;
       }
       setSavingSchedule(true);
+      setPublishProgress({ stage: 'creating' });
       try {
-        const result = await publishReelToAccount(scheduleReel, newContentCaption, newContentTarget);
+        const result = await publishReelToAccount(
+          scheduleReel,
+          newContentCaption,
+          newContentTarget,
+          setPublishProgress,
+        );
         await updateContent({
           ...scheduleReel,
           caption: newContentCaption,
@@ -952,6 +997,7 @@ export default function App() {
         setError(err instanceof Error ? err.message : 'Could not publish to Instagram.');
       } finally {
         setSavingSchedule(false);
+        setPublishProgress(null);
       }
       return;
     }
@@ -2967,13 +3013,34 @@ export default function App() {
                 </label>
               </div>
 
+              {scheduleMode === 'post' && publishProgress && (
+                <div className="publish-progress">
+                  <div className="publish-progress__track">
+                    <div
+                      className="publish-progress__fill"
+                      style={{ width: `${publishProgressPercent(publishProgress)}%` }}
+                    />
+                  </div>
+                  <span className="publish-progress__label">
+                    {publishProgressLabel(publishProgress)}
+                  </span>
+                </div>
+              )}
+
               <div className="schedule-modal__actions">
-                <button type="button" className="btn btn--ghost" onClick={closeScheduleModal}>
+                <button
+                  type="button"
+                  className="btn btn--ghost"
+                  onClick={closeScheduleModal}
+                  disabled={savingSchedule}
+                >
                   Cancel
                 </button>
                 <button type="submit" disabled={savingSchedule}>
                   {savingSchedule
-                    ? 'Saving…'
+                    ? scheduleMode === 'post'
+                      ? 'Posting…'
+                      : 'Saving…'
                     : scheduleMode === 'post'
                       ? 'Post'
                       : 'Schedule'}
