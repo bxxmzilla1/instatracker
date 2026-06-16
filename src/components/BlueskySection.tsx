@@ -1361,6 +1361,14 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     { label: 'Banned Accounts', value: bannedCount, show: true },
   ].filter((c) => c.show);
 
+  const hasCachedData =
+    accounts.length > 0 ||
+    savedAccounts.length > 0 ||
+    followEvents.length > 0 ||
+    employees.length > 0 ||
+    banners.length > 0;
+  const showInitialLoading = loading && !hasCachedData;
+
   return (
     <div className="app-shell app-shell--bluesky">
       <aside className="sidebar">
@@ -1489,7 +1497,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
           </div>
         )}
 
-        {loading ? (
+        {showInitialLoading && view === 'dashboard' ? (
           <section className="panel">
             <div className="loading-block">
               <span className="spinner" aria-hidden />
@@ -1498,7 +1506,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
           </section>
         ) : (
           <>
-            {view === 'dashboard' && refreshing && (
+            {view === 'dashboard' && (refreshing || loading) && hasCachedData && (
               <div className="refresh-progress refresh-progress--inline" role="status">
                 <span className="spinner spinner--sm" aria-hidden />
                 <span className="refresh-progress__label">Refreshing dashboard…</span>

@@ -237,9 +237,6 @@ export default function App() {
   const [allFollowerSnapshots, setAllFollowerSnapshots] = useState<FollowerSnapshot[]>([]);
   const [accountsLoading, setAccountsLoading] = useState(false);
   const [dashboardRefreshing, setDashboardRefreshing] = useState(false);
-  const [bskyEverMounted, setBskyEverMounted] = useState(
-    () => loadSession()?.platform === 'bluesky',
-  );
   const [refreshAllProgress, setRefreshAllProgress] = useState<{ done: number; total: number } | null>(
     null,
   );
@@ -432,9 +429,11 @@ export default function App() {
   useEffect(() => {
     if (!session) return;
     async function init() {
+      const onBluesky = platform === 'bluesky';
       try {
         const health = await checkHealth();
         setApiReady(health.hasKey);
+        if (onBluesky) setLoading(false);
         await loadDashboardData();
         await loadLicenses();
         await loadProxies();
@@ -469,10 +468,6 @@ export default function App() {
     loadStories,
     loadContent,
   ]);
-
-  useEffect(() => {
-    if (platform === 'bluesky') setBskyEverMounted(true);
-  }, [platform]);
 
   useEffect(() => {
     if (!session) return;
@@ -1567,7 +1562,7 @@ export default function App() {
     );
   }
 
-  if (loading) {
+  if (loading && platform === 'instagram') {
     return <div className="app app--centered"><p>Loading Dr. Bossing…</p></div>;
   }
 
@@ -1657,7 +1652,7 @@ export default function App() {
 
   return (
     <>
-      {bskyEverMounted && (
+      {session && (
         <div
           className={
             platform === 'bluesky' ? 'platform-panel' : 'platform-panel platform-panel--hidden'
