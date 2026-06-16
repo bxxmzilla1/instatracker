@@ -76,8 +76,6 @@ create table if not exists bios (
   created_at bigint
 );
 
-alter table bios add column if not exists accounts jsonb default '[]'::jsonb;
-
 -- CTAs assigned to employees (or all).
 create table if not exists ctas (
   id text primary key,

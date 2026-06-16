@@ -482,7 +482,6 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
       id: crypto.randomUUID(),
       text: bioText,
       createdAt: Date.now(),
-      accounts: [],
       ...assignPayload('bio'),
     });
     setBioText('');
