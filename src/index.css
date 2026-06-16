@@ -2585,13 +2585,50 @@ button:disabled {
   background: #dc2626;
 }
 
-.reel-cell__btn--scheduled {
-  background: var(--accent);
-  color: var(--on-accent);
+.reel-cell__footer {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  gap: 8px;
+  padding: 10px;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.7), transparent);
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity 0.15s ease, transform 0.15s ease;
 }
 
-.reel-cell__btn--scheduled:hover {
-  background: var(--accent-hover, var(--accent));
+.reel-cell:hover .reel-cell__footer {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.reel-cell__action {
+  flex: 1;
+  padding: 0.5rem 0;
+  border: none;
+  border-radius: 9px;
+  background: #8b5cf6;
+  color: #fff;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(139, 92, 246, 0.4);
+  transition: background 0.15s ease, transform 0.1s ease;
+}
+
+.reel-cell__action:hover {
+  background: #7c3aed;
+}
+
+.reel-cell__action:active {
+  transform: scale(0.97);
+}
+
+.reel-cell__action--active {
+  background: #6d28d9;
+  box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.5) inset;
 }
 
 .content-upload__note {

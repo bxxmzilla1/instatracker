@@ -181,7 +181,6 @@ export default function App() {
   const [newStoryAll, setNewStoryAll] = useState(false);
   const [content, setContent] = useState<ContentReel[]>([]);
   const [contentTab, setContentTab] = useState<'reel' | 'image'>('reel');
-  const [newContentFile, setNewContentFile] = useState<File | null>(null);
   const [newContentCaption, setNewContentCaption] = useState('');
   const [newContentEmployees, setNewContentEmployees] = useState<Set<string>>(() => new Set());
   const [newContentAll, setNewContentAll] = useState(false);
@@ -190,6 +189,7 @@ export default function App() {
   const [uploadingContent, setUploadingContent] = useState(false);
   const contentFileRef = useRef<HTMLInputElement>(null);
   const [scheduleReel, setScheduleReel] = useState<ContentReel | null>(null);
+  const [scheduleMode, setScheduleMode] = useState<'post' | 'schedule'>('schedule');
   const [savingSchedule, setSavingSchedule] = useState(false);
   const [contentEmployeeFilter, setContentEmployeeFilter] = useState('');
   const [openAddForms, setOpenAddForms] = useState<Set<string>>(() => new Set());
@@ -784,11 +784,7 @@ export default function App() {
     await loadStories();
   }
 
-  async function submitContent() {
-    if (!newContentFile) {
-      setError('Select a reel video to upload.');
-      return;
-    }
+  async function uploadContentFile(file: File) {
     setUploadingContent(true);
     try {
       await addContent(
@@ -803,13 +799,11 @@ export default function App() {
           scheduledAt: undefined,
           createdAt: Date.now(),
         },
-        newContentFile,
+        file,
       );
       await loadContent();
-      setNewContentFile(null);
-      if (contentFileRef.current) contentFileRef.current.value = '';
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not upload reel.');
+      setError(err instanceof Error ? err.message : 'Could not upload content.');
     } finally {
       setUploadingContent(false);
     }
@@ -829,8 +823,9 @@ export default function App() {
     await loadContent();
   }
 
-  function openScheduleModal(reel: ContentReel) {
+  function openScheduleModal(reel: ContentReel, mode: 'post' | 'schedule') {
     setScheduleReel(reel);
+    setScheduleMode(mode);
     setNewContentCaption(reel.caption ?? '');
     setNewContentEmployees(new Set(reel.employees ?? []));
     setNewContentAll(Boolean(reel.allEmployees));
@@ -857,9 +852,10 @@ export default function App() {
         employees: newContentAll ? [] : [...newContentEmployees],
         allEmployees: newContentAll,
         targetAccount: newContentTarget || undefined,
-        scheduledAt: newContentScheduledAt
-          ? new Date(newContentScheduledAt).getTime()
-          : undefined,
+        scheduledAt:
+          scheduleMode === 'schedule' && newContentScheduledAt
+            ? new Date(newContentScheduledAt).getTime()
+            : undefined,
       });
       await loadContent();
       closeScheduleModal();
@@ -2039,7 +2035,6 @@ export default function App() {
                 className={`toggle ${contentTab === 'reel' ? 'toggle--active' : ''}`}
                 onClick={() => {
                   setContentTab('reel');
-                  setNewContentFile(null);
                   if (contentFileRef.current) contentFileRef.current.value = '';
                 }}
               >
@@ -2050,7 +2045,6 @@ export default function App() {
                 className={`toggle ${contentTab === 'image' ? 'toggle--active' : ''}`}
                 onClick={() => {
                   setContentTab('image');
-                  setNewContentFile(null);
                   if (contentFileRef.current) contentFileRef.current.value = '';
                 }}
               >
@@ -2059,58 +2053,17 @@ export default function App() {
             </div>
 
             {isAdmin && (
-              <section className="panel">
-                <div className="panel-head">
-                  <h2>{contentTab === 'image' ? 'Upload image' : 'Upload reel'}</h2>
-                  <button
-                    type="button"
-                    className={`panel-add-toggle ${openAddForms.has('content') ? 'panel-add-toggle--open' : ''}`}
-                    onClick={() => toggleAddForm('content')}
-                    title={openAddForms.has('content') ? 'Hide' : `Upload ${contentTab === 'image' ? 'image' : 'reel'}`}
-                    aria-label={openAddForms.has('content') ? 'Hide' : `Upload ${contentTab === 'image' ? 'image' : 'reel'}`}
-                  >
-                    {openAddForms.has('content') ? 'Hide' : 'Add'}
-                  </button>
-                </div>
-                {openAddForms.has('content') && (
-                <form
-                  className="bio-form"
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    submitContent();
-                  }}
-                >
-                  <label className="content-upload">
-                    <input
-                      ref={contentFileRef}
-                      type="file"
-                      accept={contentTab === 'image' ? 'image/*' : 'video/*'}
-                      onChange={(e) => setNewContentFile(e.target.files?.[0] ?? null)}
-                    />
-                    <span className="content-upload__hint">
-                      {newContentFile
-                        ? newContentFile.name
-                        : contentTab === 'image'
-                          ? 'Choose an image (JPG/PNG/WebP)'
-                          : 'Choose a reel video (MP4/WebM)'}
-                    </span>
-                  </label>
-
-                  <p className="content-upload__note">
-                    After uploading, use the 🕑 button on each {contentTab === 'image' ? 'image' : 'reel'} to
-                    set the caption, schedule and assign it.
-                  </p>
-
-                  <button type="submit" disabled={uploadingContent || !newContentFile}>
-                    {uploadingContent
-                      ? 'Uploading…'
-                      : contentTab === 'image'
-                        ? 'Upload image'
-                        : 'Upload reel'}
-                  </button>
-                </form>
-                )}
-              </section>
+              <input
+                ref={contentFileRef}
+                type="file"
+                accept={contentTab === 'image' ? 'image/*' : 'video/*'}
+                style={{ display: 'none' }}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) void uploadContentFile(file);
+                  e.target.value = '';
+                }}
+              />
             )}
 
             <section className="panel">
@@ -2122,6 +2075,18 @@ export default function App() {
                       ? 'Your images'
                       : 'Your reels'}
                 </h2>
+                {isAdmin && (
+                  <button
+                    type="button"
+                    className="btn"
+                    onClick={() => contentFileRef.current?.click()}
+                    disabled={uploadingContent}
+                  >
+                    {uploadingContent
+                      ? 'Uploading…'
+                      : `Add ${contentTab === 'image' ? 'image' : 'reel'}`}
+                  </button>
+                )}
               </div>
               {displayedContent.length === 0 ? (
                 <p className="empty-note">
@@ -2163,17 +2128,6 @@ export default function App() {
                         {isAdmin && (
                           <button
                             type="button"
-                            className={`reel-cell__btn ${reel.scheduledAt ? 'reel-cell__btn--scheduled' : ''}`}
-                            onClick={() => openScheduleModal(reel)}
-                            title="Schedule & assign"
-                            aria-label="Schedule and assign"
-                          >
-                            🕑
-                          </button>
-                        )}
-                        {isAdmin && (
-                          <button
-                            type="button"
                             className="reel-cell__btn reel-cell__btn--danger"
                             onClick={() => handleDeleteContent(reel.id)}
                             title={reel.mediaType === 'image' ? 'Delete image' : 'Delete reel'}
@@ -2183,6 +2137,24 @@ export default function App() {
                           </button>
                         )}
                       </div>
+                      {isAdmin && (
+                        <div className="reel-cell__footer">
+                          <button
+                            type="button"
+                            className="reel-cell__action"
+                            onClick={() => openScheduleModal(reel, 'post')}
+                          >
+                            Post
+                          </button>
+                          <button
+                            type="button"
+                            className={`reel-cell__action ${reel.scheduledAt ? 'reel-cell__action--active' : ''}`}
+                            onClick={() => openScheduleModal(reel, 'schedule')}
+                          >
+                            Schedule
+                          </button>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -2744,7 +2716,10 @@ export default function App() {
               }}
             >
               <div className="modal__head">
-                <h3>Schedule &amp; assign {scheduleReel.mediaType === 'image' ? 'image' : 'reel'}</h3>
+                <h3>
+                  {scheduleMode === 'post' ? 'Post' : 'Schedule'}{' '}
+                  {scheduleReel.mediaType === 'image' ? 'image' : 'reel'}
+                </h3>
                 <button
                   type="button"
                   className="modal__close"
@@ -2764,15 +2739,17 @@ export default function App() {
                   rows={3}
                 />
 
-                <label className="cred-field">
-                  <span className="cred-field__label">Schedule date &amp; time (optional)</span>
-                  <input
-                    type="datetime-local"
-                    className="cred-form__input"
-                    value={newContentScheduledAt}
-                    onChange={(e) => setNewContentScheduledAt(e.target.value)}
-                  />
-                </label>
+                {scheduleMode === 'schedule' && (
+                  <label className="cred-field">
+                    <span className="cred-field__label">Schedule date &amp; time</span>
+                    <input
+                      type="datetime-local"
+                      className="cred-form__input"
+                      value={newContentScheduledAt}
+                      onChange={(e) => setNewContentScheduledAt(e.target.value)}
+                    />
+                  </label>
+                )}
 
                 <AssignmentPicker
                   employees={employees}
@@ -2809,7 +2786,11 @@ export default function App() {
                   Cancel
                 </button>
                 <button type="submit" disabled={savingSchedule}>
-                  {savingSchedule ? 'Saving…' : 'Save'}
+                  {savingSchedule
+                    ? 'Saving…'
+                    : scheduleMode === 'post'
+                      ? 'Post'
+                      : 'Schedule'}
                 </button>
               </div>
             </form>
