@@ -103,9 +103,7 @@ import { META_SESSIONS_LINK_ID } from './types';
 const META_SESSIONS_LINK_LABEL = 'Sessions Link - Meta Developer';
 
 function externalHref(url: string): string {
-  const trimmed = url.trim();
-  if (!trimmed) return '';
-  return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+  return url.trim();
 }
 
 function publishProgressPercent(p: PublishProgress): number {
@@ -3004,8 +3002,8 @@ export default function App() {
                   <div className="api-bubble-card__form">
                     <input
                       className="cred-form__input"
-                      type="url"
-                      placeholder="https://developers.facebook.com/..."
+                      type="text"
+                      placeholder="sessions://open/..."
                       value={metaSessionsDraft}
                       onChange={(e) => setMetaSessionsDraft(e.target.value)}
                       autoComplete="off"
