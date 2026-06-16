@@ -29,10 +29,19 @@ async function createMediaContainer(igUserId, accessToken, params) {
 }
 
 async function publishContainer(igUserId, accessToken, creationId) {
-  const data = await graphCall('POST', `/${igUserId}/media_publish`, accessToken, {
-    creation_id: creationId,
-  });
-  return data.id;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    try {
+      const data = await graphCall('POST', `/${igUserId}/media_publish`, accessToken, {
+        creation_id: creationId,
+      });
+      return data.id;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (!/media id is not available/i.test(message) || attempt === 3) throw err;
+      await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
+    }
+  }
+  throw new Error('Failed to publish media container');
 }
 
 async function waitForContainerReady(containerId, accessToken, onProgress) {
@@ -65,6 +74,10 @@ export async function publishImage(igUserId, accessToken, imageUrl, caption, onP
     image_url: imageUrl,
     caption,
   });
+  onProgress?.({ stage: 'processing', status: 'IN_PROGRESS' });
+  await waitForContainerReady(containerId, accessToken, (status) =>
+    onProgress?.({ stage: 'processing', status }),
+  );
   onProgress?.({ stage: 'publishing' });
   const mediaId = await publishContainer(igUserId, accessToken, containerId);
   const permalink = await resolvePermalink(mediaId, accessToken);
@@ -94,7 +107,7 @@ export async function publishCarousel(igUserId, accessToken, mediaUrls, caption,
   onProgress?.({ stage: 'creating' });
   const childIds = [];
   for (const url of mediaUrls) {
-    const isVideo = /\.(mp4|mov|webm)(\?|$)/i.test(url);
+    const isVideo = /\.(mp4|mov|webm|m4v|mkv|avi)(\?|$)/i.test(url);
     const params = { is_carousel_item: 'true' };
     if (isVideo) {
       params.media_type = 'VIDEO';
@@ -105,17 +118,17 @@ export async function publishCarousel(igUserId, accessToken, mediaUrls, caption,
     childIds.push(await createMediaContainer(igUserId, accessToken, params));
   }
   for (const childId of childIds) {
-    try {
-      await waitForContainerReady(childId, accessToken);
-    } catch {
-      // image children have no status
-    }
+    await waitForContainerReady(childId, accessToken);
   }
   const containerId = await createMediaContainer(igUserId, accessToken, {
     media_type: 'CAROUSEL',
     children: childIds.join(','),
     caption,
   });
+  onProgress?.({ stage: 'processing', status: 'IN_PROGRESS' });
+  await waitForContainerReady(containerId, accessToken, (status) =>
+    onProgress?.({ stage: 'processing', status }),
+  );
   onProgress?.({ stage: 'publishing' });
   const mediaId = await publishContainer(igUserId, accessToken, containerId);
   const permalink = await resolvePermalink(mediaId, accessToken);
@@ -129,6 +142,10 @@ export async function publishStoryImage(igUserId, accessToken, imageUrl, onProgr
     media_type: 'STORIES',
     image_url: imageUrl,
   });
+  onProgress?.({ stage: 'processing', status: 'IN_PROGRESS' });
+  await waitForContainerReady(containerId, accessToken, (status) =>
+    onProgress?.({ stage: 'processing', status }),
+  );
   onProgress?.({ stage: 'publishing' });
   const mediaId = await publishContainer(igUserId, accessToken, containerId);
   const permalink = await resolvePermalink(mediaId, accessToken);
@@ -160,7 +177,7 @@ export async function publishContent(igUserId, accessToken, options, onProgress)
     return publishCarousel(igUserId, accessToken, mediaUrls, caption, onProgress);
   }
   if (mediaType === 'story') {
-    const isVideo = /\.(mp4|mov|webm)(\?|$)/i.test(mediaUrls[0]);
+    const isVideo = /\.(mp4|mov|webm|m4v|mkv|avi)(\?|$)/i.test(mediaUrls[0]);
     return isVideo
       ? publishStoryVideo(igUserId, accessToken, mediaUrls[0], onProgress)
       : publishStoryImage(igUserId, accessToken, mediaUrls[0], onProgress);

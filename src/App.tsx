@@ -59,11 +59,15 @@ import {
   toDateKey,
 } from './lib/timezone';
 import {
+  ALL_MEDIA_ACCEPT,
   contentMediaLabel,
   contentTabLabel,
   contentTabSingular,
+  extForContentFile,
   getContentMediaUrls,
+  isImageFile,
   isStoryVideo,
+  isVideoFile,
   MAX_CAROUSEL_ITEMS,
   MIN_CAROUSEL_ITEMS,
 } from './lib/content';
@@ -202,18 +206,6 @@ function ContentMediaPreview({
   );
 }
 
-function contentFileAccept(tab: ContentMediaType): string {
-  switch (tab) {
-    case 'image':
-    case 'carousel':
-      return 'image/*';
-    case 'story':
-      return 'image/*,video/*';
-    default:
-      return 'video/*';
-  }
-}
-
 function loadSession(): Session | null {
   try {
     const raw = localStorage.getItem('drbossing_session');
@@ -254,7 +246,6 @@ export default function App() {
     | 'proxy'
     | 'bio'
     | 'cta'
-    | 'story'
     | 'content'
     | 'schedule'
   >('dashboard');
@@ -958,13 +949,21 @@ export default function App() {
     if (files.length === 0) return;
     if (contentTab === 'carousel') {
       if (files.length < MIN_CAROUSEL_ITEMS) {
-        setError(`Carousels need at least ${MIN_CAROUSEL_ITEMS} images.`);
+        setError(`Carousels need at least ${MIN_CAROUSEL_ITEMS} items.`);
         return;
       }
       if (files.length > MAX_CAROUSEL_ITEMS) {
-        setError(`Carousels can have at most ${MAX_CAROUSEL_ITEMS} images.`);
+        setError(`Carousels can have at most ${MAX_CAROUSEL_ITEMS} items.`);
         return;
       }
+    }
+
+    const invalid = files.find(
+      (file) => !isImageFile(file, file.name) && !isVideoFile(file, file.name),
+    );
+    if (invalid) {
+      setError(`Unsupported file type: ${invalid.name || 'unknown'}`);
+      return;
     }
 
     setUploadingContent(true);
@@ -1498,9 +1497,7 @@ export default function App() {
               ? 'Account Bio'
               : view === 'cta'
                 ? 'CTA'
-                : view === 'story'
-                  ? 'Stories'
-                  : view === 'content'
+                : view === 'content'
                     ? 'Content'
                     : view === 'schedule'
                       ? 'Schedule'
@@ -1673,21 +1670,6 @@ export default function App() {
               <path d="M3 11l18-7-7 18-2.5-7.5z" />
             </svg>
             CTA
-          </button>
-
-          <button
-            type="button"
-            className={view === 'story' ? 'nav-item nav-item--active' : 'nav-item'}
-            onClick={() => {
-              setSelectedEmployee(null);
-              setView('story');
-            }}
-          >
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="12" cy="12" r="9" strokeDasharray="3 2.2" />
-              <circle cx="12" cy="12" r="3.5" />
-            </svg>
-            Stories
           </button>
 
           <button
@@ -2248,116 +2230,6 @@ export default function App() {
           </>
         )}
 
-        {view === 'story' && (
-          <>
-            {isAdmin && (
-              <section className="panel">
-                <div className="panel-head">
-                  <h2>Add story</h2>
-                  <button
-                    type="button"
-                    className={`panel-add-toggle ${openAddForms.has('story') ? 'panel-add-toggle--open' : ''}`}
-                    onClick={() => toggleAddForm('story')}
-                    title={openAddForms.has('story') ? 'Hide' : 'Add story'}
-                    aria-label={openAddForms.has('story') ? 'Hide' : 'Add story'}
-                  >
-                    {openAddForms.has('story') ? 'Hide' : 'Add'}
-                  </button>
-                </div>
-                {openAddForms.has('story') && (
-                <form
-                  className="bio-form"
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    submitStory();
-                  }}
-                >
-                  <textarea
-                    className="bio-form__textarea"
-                    placeholder="Write the story…"
-                    value={newStoryText}
-                    onChange={(e) => setNewStoryText(e.target.value)}
-                    rows={4}
-                  />
-
-                  <AssignmentPicker
-                    employees={employees}
-                    selected={newStoryEmployees}
-                    all={newStoryAll}
-                    onToggle={toggleStoryEmployee}
-                    onAllChange={setNewStoryAll}
-                  />
-
-                  <button
-                    type="submit"
-                    disabled={!newStoryText.trim() || (!newStoryAll && newStoryEmployees.size === 0)}
-                  >
-                    Add story
-                  </button>
-                </form>
-                )}
-              </section>
-            )}
-
-            <section className="panel">
-              <h2>{isAdmin ? `Stories (${stories.length})` : 'Your stories'}</h2>
-              {stories.length === 0 ? (
-                <p className="empty-note">
-                  {isAdmin
-                    ? 'No stories yet. Write one above and assign it to employees.'
-                    : 'No story assigned to you yet.'}
-                </p>
-              ) : (
-                <div className="bio-list">
-                  {stories.map((story) => (
-                    <div key={story.id} className="bio-row">
-                      <div className="bio-row__body">
-                        <p className="bio-row__text">{story.text}</p>
-                        {isAdmin && (
-                          <div className="bio-row__assign">
-                            {story.allEmployees ? (
-                              <span className="owner-tag">All employees</span>
-                            ) : (
-                              story.employees.map((u) => (
-                                <span key={u} className="owner-tag">
-                                  {u}
-                                </span>
-                              ))
-                            )}
-                          </div>
-                        )}
-                      </div>
-                      <div className="row-actions">
-                        <CopyButton value={story.text} title="Copy story" />
-                        {isAdmin && (
-                          <>
-                            <button
-                              type="button"
-                              className="row-edit"
-                              onClick={() => openEditStory(story)}
-                              title="Edit story"
-                            >
-                              ✎
-                            </button>
-                            <button
-                              type="button"
-                              className="license-row__delete"
-                              onClick={() => handleDeleteStory(story.id)}
-                              title="Delete story"
-                            >
-                              ✕
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </section>
-          </>
-        )}
-
         {view === 'content' && (
           <>
             <div className="toggle-group content-tabs">
@@ -2380,7 +2252,7 @@ export default function App() {
               <input
                 ref={contentFileRef}
                 type="file"
-                accept={contentFileAccept(contentTab)}
+                accept={ALL_MEDIA_ACCEPT}
                 multiple={contentTab === 'carousel'}
                 style={{ display: 'none' }}
                 onChange={(e) => {
@@ -2417,7 +2289,7 @@ export default function App() {
                 <p className="empty-note">
                   {isAdmin
                     ? contentTab === 'carousel'
-                      ? `No carousels yet. Upload ${MIN_CAROUSEL_ITEMS}–${MAX_CAROUSEL_ITEMS} images to create one.`
+                      ? `No carousels yet. Upload ${MIN_CAROUSEL_ITEMS}–${MAX_CAROUSEL_ITEMS} images or videos to create one.`
                       : `No ${contentTabSingular(contentTab)}s yet. Upload one above and assign it to employees.`
                     : `No ${contentTabSingular(contentTab)} assigned to you yet.`}
                 </p>

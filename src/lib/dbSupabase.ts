@@ -1,6 +1,7 @@
 import { supabase } from './supabase';
 import { groupReelHistories } from './dbLocal';
 import { matchesEmployee } from './assignment';
+import { extForContentFile, isImageFile } from './content';
 import type {
   Bio,
   ContentReel,
@@ -471,17 +472,8 @@ export async function getContent(employee?: string): Promise<ContentReel[]> {
   return rows;
 }
 
-function extForFile(file: Blob, isImage: boolean): string {
-  const map: Record<string, string> = {
-    'video/webm': 'webm',
-    'video/mp4': 'mp4',
-    'video/quicktime': 'mov',
-    'image/png': 'png',
-    'image/jpeg': 'jpg',
-    'image/webp': 'webp',
-    'image/gif': 'gif',
-  };
-  return map[file.type] ?? (isImage ? 'jpg' : 'mp4');
+function extForFile(file: Blob, fileName?: string): string {
+  return extForContentFile(file, fileName);
 }
 
 export async function addContent(reel: ContentReel, file?: Blob | Blob[]): Promise<void> {
@@ -494,11 +486,9 @@ export async function addContent(reel: ContentReel, file?: Blob | Blob[]): Promi
     const uploaded: string[] = [];
     for (let i = 0; i < files.length; i++) {
       const blob = files[i];
-      const isImage =
-        blob.type.startsWith('image/') ||
-        reel.mediaType === 'image' ||
-        reel.mediaType === 'carousel';
-      const ext = extForFile(blob, isImage);
+      const fileName = blob instanceof File ? blob.name : undefined;
+      const isImage = isImageFile(blob, fileName);
+      const ext = extForFile(blob, fileName);
       const path =
         files.length > 1 ? `content/${reel.id}/${i}.${ext}` : `content/${reel.id}.${ext}`;
       const { error: uploadError } = await db.storage.from('media').upload(path, blob, {
