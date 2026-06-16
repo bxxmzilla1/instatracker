@@ -168,6 +168,12 @@ export interface ContentReel {
   targetAccount?: string;
   scheduledAt?: number;
   createdAt: number;
+  /** When the item was successfully published to Instagram (ms epoch). */
+  postedAt?: number;
+  /** Permalink to the published Instagram media. */
+  permalink?: string;
+  /** Last publish error message, if any. */
+  postError?: string;
 }
 
 export interface TrackedAccount {

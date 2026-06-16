@@ -436,3 +436,217 @@ export function demographicTimeframeForDays(days: number): DemographicTimeframe 
   if (days <= 30) return 'last_30_days';
   return 'this_month';
 }
+
+// ---------------------------------------------------------------------------
+// Publishing (Reels / Images / Carousels)
+//
+// Ported from the IG Poster project. The Graph publishing flow is:
+//   1. POST /{ig-user-id}/media           → returns a creation/container id
+//   2. (videos) poll GET /{container-id}  → wait until status_code = FINISHED
+//   3. POST /{ig-user-id}/media_publish   → returns the published media id
+// All media URLs must be publicly reachable so Instagram can fetch them.
+// ---------------------------------------------------------------------------
+
+export interface PublishProgress {
+  stage: 'creating' | 'processing' | 'publishing' | 'done';
+  status?: string;
+  mediaId?: string;
+  permalink?: string;
+}
+
+export interface PublishResult {
+  mediaId: string;
+  permalink?: string;
+}
+
+interface MediaContainerResponse {
+  id: string;
+}
+
+interface ContainerStatusResponse {
+  status_code: string;
+}
+
+interface MediaDetailsResponse {
+  id: string;
+  permalink?: string;
+}
+
+const POLL_INTERVAL_MS = 3000;
+const MAX_POLL_ATTEMPTS = 60;
+
+async function createMediaContainer(
+  igUserId: string,
+  accessToken: string,
+  params: Record<string, string>,
+): Promise<string> {
+  const data = await graphRequest<MediaContainerResponse>(`/${igUserId}/media`, accessToken, params, {
+    method: 'POST',
+  });
+  return data.id;
+}
+
+async function publishContainer(
+  igUserId: string,
+  accessToken: string,
+  creationId: string,
+): Promise<string> {
+  const data = await graphRequest<MediaContainerResponse>(
+    `/${igUserId}/media_publish`,
+    accessToken,
+    { creation_id: creationId },
+    { method: 'POST' },
+  );
+  return data.id;
+}
+
+async function waitForContainerReady(
+  containerId: string,
+  accessToken: string,
+  onProgress?: (status: string) => void,
+): Promise<void> {
+  for (let i = 0; i < MAX_POLL_ATTEMPTS; i++) {
+    const { status_code } = await graphRequest<ContainerStatusResponse>(
+      `/${containerId}`,
+      accessToken,
+      { fields: 'status_code' },
+    );
+    onProgress?.(status_code);
+    if (status_code === 'FINISHED') return;
+    if (status_code === 'ERROR' || status_code === 'EXPIRED') {
+      throw new InstagramApiError({
+        message: `Media processing failed with status: ${status_code}`,
+        type: 'ContainerError',
+        code: 0,
+      });
+    }
+    await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+  }
+  throw new InstagramApiError({
+    message: 'Timed out waiting for media to finish processing',
+    type: 'TimeoutError',
+    code: 0,
+  });
+}
+
+async function resolvePermalink(
+  mediaId: string,
+  accessToken: string,
+): Promise<string | undefined> {
+  try {
+    const details = await graphRequest<MediaDetailsResponse>(`/${mediaId}`, accessToken, {
+      fields: 'id,permalink',
+    });
+    return details.permalink;
+  } catch {
+    return undefined;
+  }
+}
+
+export async function publishImage(
+  igUserId: string,
+  accessToken: string,
+  imageUrl: string,
+  caption: string,
+  onProgress?: (progress: PublishProgress) => void,
+): Promise<PublishResult> {
+  onProgress?.({ stage: 'creating' });
+  const containerId = await createMediaContainer(igUserId, accessToken, {
+    image_url: imageUrl,
+    caption,
+  });
+  onProgress?.({ stage: 'publishing' });
+  const mediaId = await publishContainer(igUserId, accessToken, containerId);
+  const permalink = await resolvePermalink(mediaId, accessToken);
+  onProgress?.({ stage: 'done', mediaId, permalink });
+  return { mediaId, permalink };
+}
+
+export async function publishReel(
+  igUserId: string,
+  accessToken: string,
+  videoUrl: string,
+  caption: string,
+  onProgress?: (progress: PublishProgress) => void,
+): Promise<PublishResult> {
+  onProgress?.({ stage: 'creating' });
+  const containerId = await createMediaContainer(igUserId, accessToken, {
+    media_type: 'REELS',
+    video_url: videoUrl,
+    caption,
+  });
+  onProgress?.({ stage: 'processing', status: 'IN_PROGRESS' });
+  await waitForContainerReady(containerId, accessToken, (status) =>
+    onProgress?.({ stage: 'processing', status }),
+  );
+  onProgress?.({ stage: 'publishing' });
+  const mediaId = await publishContainer(igUserId, accessToken, containerId);
+  const permalink = await resolvePermalink(mediaId, accessToken);
+  onProgress?.({ stage: 'done', mediaId, permalink });
+  return { mediaId, permalink };
+}
+
+export async function publishCarousel(
+  igUserId: string,
+  accessToken: string,
+  mediaUrls: string[],
+  caption: string,
+  onProgress?: (progress: PublishProgress) => void,
+): Promise<PublishResult> {
+  onProgress?.({ stage: 'creating' });
+  const childIds: string[] = [];
+  for (const url of mediaUrls) {
+    const isVideo = /\.(mp4|mov|webm)(\?|$)/i.test(url);
+    const params: Record<string, string> = { is_carousel_item: 'true' };
+    if (isVideo) {
+      params.media_type = 'VIDEO';
+      params.video_url = url;
+    } else {
+      params.image_url = url;
+    }
+    childIds.push(await createMediaContainer(igUserId, accessToken, params));
+  }
+
+  // Wait for any video children to finish processing before publishing.
+  for (const childId of childIds) {
+    try {
+      await waitForContainerReady(childId, accessToken);
+    } catch {
+      // image children report no status; ignore
+    }
+  }
+
+  const containerId = await createMediaContainer(igUserId, accessToken, {
+    media_type: 'CAROUSEL',
+    children: childIds.join(','),
+    caption,
+  });
+  onProgress?.({ stage: 'publishing' });
+  const mediaId = await publishContainer(igUserId, accessToken, containerId);
+  const permalink = await resolvePermalink(mediaId, accessToken);
+  onProgress?.({ stage: 'done', mediaId, permalink });
+  return { mediaId, permalink };
+}
+
+/**
+ * Publishes a single content item (reel or image) or a carousel when more than
+ * one media URL is provided.
+ */
+export async function publishContent(
+  igUserId: string,
+  accessToken: string,
+  options: { mediaType: 'reel' | 'image'; mediaUrls: string[]; caption: string },
+  onProgress?: (progress: PublishProgress) => void,
+): Promise<PublishResult> {
+  const { mediaType, mediaUrls, caption } = options;
+  if (mediaUrls.length === 0) {
+    throw new InstagramApiError({ message: 'No media to publish', type: 'BadRequest', code: 400 });
+  }
+  if (mediaUrls.length > 1) {
+    return publishCarousel(igUserId, accessToken, mediaUrls, caption, onProgress);
+  }
+  if (mediaType === 'reel') {
+    return publishReel(igUserId, accessToken, mediaUrls[0], caption, onProgress);
+  }
+  return publishImage(igUserId, accessToken, mediaUrls[0], caption, onProgress);
+}

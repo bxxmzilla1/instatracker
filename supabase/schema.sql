@@ -109,6 +109,10 @@ create table if not exists content (
 
 -- If the content table already exists, add the media type column:
 alter table content add column if not exists media_type text default 'reel';
+-- Posting status for the Instagram Graph publishing flow:
+alter table content add column if not exists posted_at bigint;
+alter table content add column if not exists permalink text;
+alter table content add column if not exists post_error text;
 alter table content add column if not exists scheduled_at bigint;
 alter table content add column if not exists target_account text;
 

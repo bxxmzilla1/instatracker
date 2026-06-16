@@ -266,6 +266,9 @@ export async function getContent(employee?: string): Promise<ContentReel[]> {
       targetAccount: r.targetAccount,
       scheduledAt: r.scheduledAt,
       createdAt: r.createdAt,
+      postedAt: r.postedAt,
+      permalink: r.permalink,
+      postError: r.postError,
     }));
 }
 
@@ -297,6 +300,9 @@ export async function updateContent(reel: ContentReel): Promise<void> {
     allEmployees: reel.allEmployees,
     targetAccount: reel.targetAccount,
     scheduledAt: reel.scheduledAt,
+    postedAt: reel.postedAt,
+    permalink: reel.permalink,
+    postError: reel.postError,
   });
 }
 

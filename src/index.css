@@ -2664,6 +2664,33 @@ button:disabled {
   box-shadow: 0 6px 18px -4px var(--accent);
 }
 
+.reel-cell__action--posted {
+  flex: 1;
+  text-align: center;
+  text-decoration: none;
+  background: rgba(34, 197, 94, 0.95);
+  color: #fff;
+  box-shadow: 0 6px 18px -4px rgba(34, 197, 94, 0.7);
+}
+
+.reel-cell__error {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  padding: 0.2rem 0.5rem;
+  border-radius: 7px;
+  background: rgba(220, 38, 38, 0.9);
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.cred-field__hint {
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin-top: 0.3rem;
+}
+
 .content-upload__note {
   margin: 0;
   font-size: 0.82rem;
@@ -2781,6 +2808,25 @@ button:disabled {
   margin: 0;
   font-size: 0.78rem;
   color: var(--muted);
+}
+
+.schedule-card__status {
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.schedule-card__status--posted {
+  color: #22c55e;
+}
+
+.schedule-card__status--posted a {
+  color: inherit;
+  text-decoration: underline;
+}
+
+.schedule-card__status--error {
+  color: #f87171;
 }
 
 .schedule-card__assign {

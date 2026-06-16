@@ -46,6 +46,7 @@ import {
   updateAccount,
 } from './lib/db';
 import { parseProxyString } from './lib/proxy';
+import { publishContent } from './lib/igGraph';
 import { assignedEmployees } from './lib/assignment';
 import { latestByReel, withMonotonicReelViews } from './lib/dashboard';
 import { cacheImage, imgKey } from './lib/media';
@@ -193,6 +194,9 @@ export default function App() {
   const [savingSchedule, setSavingSchedule] = useState(false);
   const [assignReel, setAssignReel] = useState<ContentReel | null>(null);
   const [savingAssign, setSavingAssign] = useState(false);
+  const contentRef = useRef<ContentReel[]>([]);
+  const accountsRef = useRef<TrackedAccount[]>([]);
+  const schedulerBusyRef = useRef(false);
   const [contentEmployeeFilter, setContentEmployeeFilter] = useState('');
   const [openAddForms, setOpenAddForms] = useState<Set<string>>(() => new Set());
 
@@ -354,6 +358,69 @@ export default function App() {
       setReelHistories([]);
     }
   }, [selectedUsername, loadAccountDetails]);
+
+  // Keep refs fresh so the scheduler interval always reads the latest data
+  // without being torn down and recreated on every state change.
+  useEffect(() => {
+    contentRef.current = content;
+  }, [content]);
+  useEffect(() => {
+    accountsRef.current = accounts;
+  }, [accounts]);
+
+  // Auto-publish scheduled content whose time has arrived (admin only).
+  useEffect(() => {
+    if (session?.role !== 'admin') return;
+
+    async function runDueScheduledPosts() {
+      if (schedulerBusyRef.current) return;
+      const now = Date.now();
+      const due = contentRef.current.filter(
+        (c) =>
+          c.scheduledAt &&
+          c.scheduledAt <= now &&
+          c.targetAccount &&
+          !c.postedAt &&
+          !c.postError,
+      );
+      if (due.length === 0) return;
+
+      schedulerBusyRef.current = true;
+      let changed = false;
+      try {
+        for (const item of due) {
+          const account = accountsRef.current.find((a) => a.username === item.targetAccount);
+          if (!account?.igUserId || !account?.igAccessToken || !item.videoUrl) continue;
+          try {
+            const result = await publishContent(account.igUserId, account.igAccessToken, {
+              mediaType: item.mediaType ?? 'reel',
+              mediaUrls: [item.videoUrl],
+              caption: item.caption,
+            });
+            await updateContent({
+              ...item,
+              postedAt: Date.now(),
+              permalink: result.permalink,
+              postError: undefined,
+            });
+          } catch (err) {
+            await updateContent({
+              ...item,
+              postError: err instanceof Error ? err.message : 'Publish failed',
+            });
+          }
+          changed = true;
+        }
+      } finally {
+        schedulerBusyRef.current = false;
+        if (changed) await loadContent();
+      }
+    }
+
+    runDueScheduledPosts();
+    const id = setInterval(runDueScheduledPosts, 60_000);
+    return () => clearInterval(id);
+  }, [session, loadContent]);
 
   function markRefreshFailed(username: string) {
     setFailedRefresh((prev) => {
@@ -840,18 +907,65 @@ export default function App() {
     setNewContentScheduledAt('');
   }
 
+  async function publishReelToAccount(
+    reel: ContentReel,
+    caption: string,
+    targetUsername: string,
+  ) {
+    const account = accounts.find((a) => a.username === targetUsername);
+    if (!account?.igUserId || !account?.igAccessToken) {
+      throw new Error('The selected Instagram account has no saved API token / User ID.');
+    }
+    if (!reel.videoUrl) {
+      throw new Error('This item has no uploaded media to publish.');
+    }
+    return publishContent(account.igUserId, account.igAccessToken, {
+      mediaType: reel.mediaType ?? 'reel',
+      mediaUrls: [reel.videoUrl],
+      caption,
+    });
+  }
+
   async function saveSchedule() {
     if (!scheduleReel) return;
+
+    if (scheduleMode === 'post') {
+      if (!newContentTarget) {
+        setError('Select an Instagram account to post to.');
+        return;
+      }
+      setSavingSchedule(true);
+      try {
+        const result = await publishReelToAccount(scheduleReel, newContentCaption, newContentTarget);
+        await updateContent({
+          ...scheduleReel,
+          caption: newContentCaption,
+          targetAccount: newContentTarget,
+          scheduledAt: undefined,
+          postedAt: Date.now(),
+          permalink: result.permalink,
+          postError: undefined,
+        });
+        await loadContent();
+        closeScheduleModal();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Could not publish to Instagram.');
+      } finally {
+        setSavingSchedule(false);
+      }
+      return;
+    }
+
     setSavingSchedule(true);
     try {
       await updateContent({
         ...scheduleReel,
         caption: newContentCaption,
         targetAccount: newContentTarget || undefined,
-        scheduledAt:
-          scheduleMode === 'schedule' && newContentScheduledAt
-            ? new Date(newContentScheduledAt).getTime()
-            : undefined,
+        scheduledAt: newContentScheduledAt
+          ? new Date(newContentScheduledAt).getTime()
+          : undefined,
+        postError: undefined,
       });
       await loadContent();
       closeScheduleModal();
@@ -1200,6 +1314,8 @@ export default function App() {
                       : 'Accounts';
 
   const showAddForm = view === 'accounts';
+
+  const postableAccounts = accounts.filter((a) => a.igUserId && a.igAccessToken);
 
   const displayedContent = (() => {
     let list = content.filter((reel) => (reel.mediaType ?? 'reel') === contentTab);
@@ -2138,21 +2254,16 @@ export default function App() {
                       <div className="reel-cell__overlay">
                         <button
                           type="button"
-                          className="reel-cell__btn"
+                          className="reel-cell__btn reel-cell__btn--wide"
                           onClick={() => downloadReel(reel)}
                           title={reel.mediaType === 'image' ? 'Download image' : 'Download reel'}
-                          aria-label="Download"
                         >
-                          ↓
+                          Download
                         </button>
                         {isAdmin && (
                           <button
                             type="button"
-                            className={`reel-cell__btn reel-cell__btn--wide ${
-                              reel.allEmployees || reel.employees.length > 0
-                                ? 'reel-cell__btn--active'
-                                : ''
-                            }`}
+                            className="reel-cell__btn reel-cell__btn--wide"
                             onClick={() => openAssignModal(reel)}
                             title="Assign to employees"
                             aria-label="Assign to employees"
@@ -2174,24 +2285,48 @@ export default function App() {
                       </div>
                       {isAdmin && (
                         <div className="reel-cell__footer">
-                          <button
-                            type="button"
-                            className="reel-cell__action reel-cell__action--primary"
-                            onClick={() => openScheduleModal(reel, 'post')}
-                          >
-                            Post
-                          </button>
-                          <button
-                            type="button"
-                            className={`reel-cell__action ${
-                              reel.scheduledAt
-                                ? 'reel-cell__action--active'
-                                : 'reel-cell__action--secondary'
-                            }`}
-                            onClick={() => openScheduleModal(reel, 'schedule')}
-                          >
-                            Schedule
-                          </button>
+                          {reel.postedAt ? (
+                            reel.permalink ? (
+                              <a
+                                className="reel-cell__action reel-cell__action--posted"
+                                href={reel.permalink}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                              >
+                                Posted ✓
+                              </a>
+                            ) : (
+                              <span className="reel-cell__action reel-cell__action--posted">
+                                Posted ✓
+                              </span>
+                            )
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                className="reel-cell__action reel-cell__action--primary"
+                                onClick={() => openScheduleModal(reel, 'post')}
+                              >
+                                Post
+                              </button>
+                              <button
+                                type="button"
+                                className={`reel-cell__action ${
+                                  reel.scheduledAt
+                                    ? 'reel-cell__action--active'
+                                    : 'reel-cell__action--secondary'
+                                }`}
+                                onClick={() => openScheduleModal(reel, 'schedule')}
+                              >
+                                Schedule
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      )}
+                      {isAdmin && reel.postError && (
+                        <div className="reel-cell__error" title={reel.postError}>
+                          ⚠ Post failed
                         </div>
                       )}
                     </div>
@@ -2282,6 +2417,20 @@ export default function App() {
                             {reel.targetAccount && (
                               <p className="schedule-card__target">📲 Post on @{reel.targetAccount}</p>
                             )}
+                            {reel.postedAt ? (
+                              <p className="schedule-card__status schedule-card__status--posted">
+                                ✓ Posted{' '}
+                                {reel.permalink && (
+                                  <a href={reel.permalink} target="_blank" rel="noopener noreferrer">
+                                    View
+                                  </a>
+                                )}
+                              </p>
+                            ) : reel.postError ? (
+                              <p className="schedule-card__status schedule-card__status--error">
+                                ⚠ {reel.postError}
+                              </p>
+                            ) : null}
                             <div className="schedule-card__assign">
                               {reel.allEmployees ? (
                                 <span className="owner-tag">All employees</span>
@@ -2792,28 +2941,29 @@ export default function App() {
 
                 <label className="cred-field">
                   <span className="cred-field__label">
-                    Instagram account to post on (optional)
+                    Instagram account to post on
+                    {scheduleMode === 'schedule' ? ' (optional)' : ''}
                   </span>
                   <select
                     className="cred-form__input"
                     value={newContentTarget}
                     onChange={(e) => setNewContentTarget(e.target.value)}
                   >
-                    <option value="">No specific account</option>
-                    {accounts
-                      .filter(
-                        (a) =>
-                          scheduleReel.allEmployees ||
-                          scheduleReel.employees.length === 0 ||
-                          (a.owner && scheduleReel.employees.includes(a.owner)),
-                      )
-                      .map((a) => (
-                        <option key={a.username} value={a.username}>
-                          @{a.username}
-                          {a.owner ? ` · ${a.owner}` : ''}
-                        </option>
-                      ))}
+                    <option value="">
+                      {postableAccounts.length === 0
+                        ? 'No accounts with saved API credentials'
+                        : 'Select an account…'}
+                    </option>
+                    {postableAccounts.map((a) => (
+                      <option key={a.username} value={a.username}>
+                        @{a.username}
+                        {a.owner ? ` · ${a.owner}` : ''}
+                      </option>
+                    ))}
                   </select>
+                  <span className="cred-field__hint">
+                    Only Instagram accounts with a saved API token &amp; User ID can be posted to.
+                  </span>
                 </label>
               </div>
 

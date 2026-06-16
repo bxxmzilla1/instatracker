@@ -418,6 +418,9 @@ interface ContentRow {
   target_account: string | null;
   scheduled_at: number | null;
   created_at: number | null;
+  posted_at: number | null;
+  permalink: string | null;
+  post_error: string | null;
 }
 
 function toContent(row: ContentRow): ContentReel {
@@ -431,6 +434,9 @@ function toContent(row: ContentRow): ContentReel {
     targetAccount: row.target_account ?? undefined,
     scheduledAt: row.scheduled_at ?? undefined,
     createdAt: row.created_at ?? 0,
+    postedAt: row.posted_at ?? undefined,
+    permalink: row.permalink ?? undefined,
+    postError: row.post_error ?? undefined,
   };
 }
 
@@ -501,6 +507,9 @@ export async function updateContent(reel: ContentReel): Promise<void> {
       all_employees: reel.allEmployees,
       target_account: reel.targetAccount ?? null,
       scheduled_at: reel.scheduledAt ?? null,
+      posted_at: reel.postedAt ?? null,
+      permalink: reel.permalink ?? null,
+      post_error: reel.postError ?? null,
     })
     .eq('id', reel.id);
   if (error) throw new Error(error.message);
