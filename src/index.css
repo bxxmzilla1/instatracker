@@ -1381,11 +1381,14 @@ button:disabled {
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.65);
-  display: grid;
-  place-items: center;
-  padding: 1.5rem;
+  display: flex;
+  align-items: safe center;
+  justify-content: center;
+  padding: max(1rem, env(safe-area-inset-top, 0px)) max(1rem, env(safe-area-inset-right, 0px))
+    max(1rem, env(safe-area-inset-bottom, 0px)) max(1rem, env(safe-area-inset-left, 0px));
   z-index: 50;
   backdrop-filter: blur(2px);
+  overflow-y: auto;
 }
 
 .modal__card {
@@ -1394,6 +1397,27 @@ button:disabled {
   border: 1px solid var(--border-strong);
   border-radius: 18px;
   padding: 1.5rem;
+  margin: auto;
+}
+
+.modal__card--fit {
+  max-height: min(calc(100dvh - 2rem), calc(100svh - 2rem));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.modal__card--fit .modal__scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 0.15rem;
+}
+
+.modal__card--fit .modal__head,
+.modal__card--fit .cred-note {
+  flex-shrink: 0;
 }
 
 .modal__card--wide {

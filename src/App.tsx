@@ -3123,7 +3123,7 @@ export default function App() {
 
         {showCredentials && selectedAccount && (
           <div className="modal" onClick={() => setShowCredentials(false)}>
-            <div className="modal__card" onClick={(e) => e.stopPropagation()}>
+            <div className="modal__card modal__card--fit" onClick={(e) => e.stopPropagation()}>
               <div className="modal__head">
                 <h3>Account credentials</h3>
                 <button
@@ -3138,7 +3138,9 @@ export default function App() {
               <p className="cred-note">
                 Stored privately for @{selectedAccount.username} in your database.
               </p>
-              <AccountCredentials account={selectedAccount} onSave={handleSaveCredentials} />
+              <div className="modal__scroll">
+                <AccountCredentials account={selectedAccount} onSave={handleSaveCredentials} />
+              </div>
             </div>
           </div>
         )}
