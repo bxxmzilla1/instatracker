@@ -2,6 +2,7 @@ import { supabase } from './supabase';
 import { groupReelHistories } from './dbLocal';
 import { matchesEmployee } from './assignment';
 import { extForContentFile, isImageFile } from './content';
+import { normalizeScheduledPosts } from './contentSchedule';
 import type {
   Bio,
   ContentReel,
@@ -427,6 +428,7 @@ interface ContentRow {
   post_history: unknown;
   publishing_at: number | null;
   publish_stage: string | null;
+  scheduled_posts: unknown;
 }
 
 function parseMediaType(value: string | null | undefined): ContentReel['mediaType'] {
@@ -456,6 +458,16 @@ function toContent(row: ContentRow): ContentReel {
     postHistory: Array.isArray(row.post_history)
       ? (row.post_history as ContentReel['postHistory'])
       : [],
+    scheduledPosts: normalizeScheduledPosts({
+      id: row.id,
+      scheduledPosts: Array.isArray(row.scheduled_posts)
+        ? (row.scheduled_posts as ContentReel['scheduledPosts'])
+        : [],
+      scheduledAt: row.scheduled_at ?? undefined,
+      targetAccount: row.target_account ?? undefined,
+      proxyId: row.proxy_id ?? undefined,
+      caption: row.caption ?? '',
+    }),
     publishingAt: row.publishing_at ?? undefined,
     publishStage: (row.publish_stage as ContentReel['publishStage']) ?? undefined,
   };
@@ -540,6 +552,7 @@ export async function updateContent(reel: ContentReel): Promise<void> {
       permalink: reel.permalink ?? null,
       post_error: reel.postError ?? null,
       post_history: reel.postHistory ?? [],
+      scheduled_posts: reel.scheduledPosts ?? [],
       publishing_at: reel.publishingAt ?? null,
       publish_stage: reel.publishStage ?? null,
     })

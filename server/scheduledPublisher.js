@@ -2,6 +2,7 @@
 // Intended to run from a Vercel cron job (works even when no browser is open).
 
 import { createClient } from '@supabase/supabase-js';
+import { getDueScheduledPosts, normalizeScheduledPosts } from './contentSchedule.js';
 import { publishContent, proxyRowToRelay } from './publish.js';
 
 const STALE_PUBLISH_MS = 15 * 60 * 1000;
@@ -15,28 +16,73 @@ function getSupabaseAdmin() {
 
 async function clearStaleLocks(db) {
   const staleBefore = Date.now() - STALE_PUBLISH_MS;
+
   await db
     .from('content')
     .update({ publishing_at: null, publish_stage: null })
     .lt('publishing_at', staleBefore)
     .is('posted_at', null);
+
+  const { data: rows, error } = await db
+    .from('content')
+    .select('*')
+    .not('scheduled_posts', 'eq', '[]');
+  if (error) throw new Error(error.message);
+
+  for (const row of rows ?? []) {
+    const posts = normalizeScheduledPosts(row);
+    let changed = false;
+    const updated = posts.map((post) => {
+      if (post.publishingAt && post.publishingAt < staleBefore && !post.postedAt) {
+        changed = true;
+        return { ...post, publishingAt: undefined, publishStage: undefined };
+      }
+      return post;
+    });
+    if (changed) {
+      await db.from('content').update({ scheduled_posts: updated }).eq('id', row.id);
+    }
+  }
 }
 
-async function claimItem(db, id) {
+async function claimScheduledPost(db, row, postId) {
+  const posts = normalizeScheduledPosts(row);
+  const idx = posts.findIndex((post) => post.id === postId);
+  if (idx < 0) return null;
+
+  const current = posts[idx];
+  if (current.publishingAt || current.postedAt) return null;
+
+  const updated = posts.map((post, i) =>
+    i === idx
+      ? { ...post, publishingAt: Date.now(), publishStage: 'creating', postError: undefined }
+      : post,
+  );
+
   const { data, error } = await db
     .from('content')
-    .update({ publishing_at: Date.now(), publish_stage: 'creating', post_error: null })
-    .eq('id', id)
-    .is('publishing_at', null)
-    .is('posted_at', null)
+    .update({
+      scheduled_posts: updated,
+      scheduled_at: null,
+      target_account: null,
+      post_error: null,
+    })
+    .eq('id', row.id)
     .select('*')
     .maybeSingle();
   if (error) throw new Error(error.message);
-  return data;
+  if (!data) return null;
+
+  const claimed = normalizeScheduledPosts(data).find((post) => post.id === postId);
+  return claimed ? { row: data, post: claimed } : null;
 }
 
-async function setPublishStage(db, id, stage) {
-  await db.from('content').update({ publish_stage: stage }).eq('id', id);
+async function setScheduledPostStage(db, row, postId, stage) {
+  const posts = normalizeScheduledPosts(row);
+  const updated = posts.map((post) =>
+    post.id === postId ? { ...post, publishStage: stage } : post,
+  );
+  await db.from('content').update({ scheduled_posts: updated }).eq('id', row.id);
 }
 
 async function getAccountCredentials(db, username) {
@@ -52,22 +98,29 @@ async function getAccountCredentials(db, username) {
   return { igUserId: data.ig_user_id, igAccessToken: data.ig_access_token };
 }
 
-async function markPosted(db, row, result) {
+async function markScheduledPosted(db, row, postId, result) {
+  const posts = normalizeScheduledPosts(row);
+  const post = posts.find((entry) => entry.id === postId);
+  if (!post) return;
+
+  const remaining = posts.filter((entry) => entry.id !== postId);
   const postedAt = Date.now();
   const history = Array.isArray(row.post_history) ? row.post_history : [];
   const { error } = await db
     .from('content')
     .update({
+      scheduled_posts: remaining,
+      scheduled_at: null,
+      target_account: null,
       posted_at: postedAt,
       permalink: result.permalink ?? null,
-      scheduled_at: null,
       post_error: null,
       publishing_at: null,
       publish_stage: null,
       post_history: [
         ...history,
         {
-          account: row.target_account,
+          account: post.account,
           postedAt,
           permalink: result.permalink,
         },
@@ -77,15 +130,14 @@ async function markPosted(db, row, result) {
   if (error) throw new Error(error.message);
 }
 
-async function markFailed(db, id, message) {
-  await db
-    .from('content')
-    .update({
-      post_error: message,
-      publishing_at: null,
-      publish_stage: null,
-    })
-    .eq('id', id);
+async function markScheduledFailed(db, row, postId, message) {
+  const posts = normalizeScheduledPosts(row);
+  const updated = posts.map((post) =>
+    post.id === postId
+      ? { ...post, postError: message, publishingAt: undefined, publishStage: undefined }
+      : post,
+  );
+  await db.from('content').update({ scheduled_posts: updated, post_error: message }).eq('id', row.id);
 }
 
 async function getProxyRelay(db, proxyId) {
@@ -93,6 +145,21 @@ async function getProxyRelay(db, proxyId) {
   const { data, error } = await db.from('proxies').select('*').eq('id', proxyId).maybeSingle();
   if (error) throw new Error(error.message);
   return proxyRowToRelay(data);
+}
+
+async function loadRowsWithSchedules(db) {
+  const [legacyRes, queueRes] = await Promise.all([
+    db.from('content').select('*').not('scheduled_at', 'is', null),
+    db.from('content').select('*').not('scheduled_posts', 'eq', '[]'),
+  ]);
+  if (legacyRes.error) throw new Error(legacyRes.error.message);
+  if (queueRes.error) throw new Error(queueRes.error.message);
+
+  const byId = new Map();
+  for (const row of [...(legacyRes.data ?? []), ...(queueRes.data ?? [])]) {
+    byId.set(row.id, row);
+  }
+  return [...byId.values()];
 }
 
 export async function runScheduledPublisher({ limit = 3 } = {}) {
@@ -104,63 +171,63 @@ export async function runScheduledPublisher({ limit = 3 } = {}) {
   await clearStaleLocks(db);
 
   const now = Date.now();
-  const { data: due, error } = await db
-    .from('content')
-    .select('*')
-    .not('scheduled_at', 'is', null)
-    .lte('scheduled_at', now)
-    .is('posted_at', null)
-    .is('publishing_at', null)
-    .not('target_account', 'is', null)
-    .order('scheduled_at', { ascending: true })
-    .limit(limit);
-
-  if (error) {
-    return { ok: false, error: error.message, processed: 0 };
+  let rows;
+  try {
+    rows = await loadRowsWithSchedules(db);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not load scheduled content';
+    return { ok: false, error: message, processed: 0 };
   }
 
-  const dueWithMedia = (due ?? []).filter(
-    (row) =>
-      row.video_url ||
-      (Array.isArray(row.media_urls) && row.media_urls.length > 0),
-  );
+  const dueItems = [];
+  for (const row of rows) {
+    if (!row.video_url && !(Array.isArray(row.media_urls) && row.media_urls.length > 0)) continue;
+    for (const post of getDueScheduledPosts(row, now)) {
+      dueItems.push({ row, post });
+    }
+  }
+  dueItems.sort((a, b) => a.post.scheduledAt - b.post.scheduledAt);
 
   let processed = 0;
   const results = [];
 
-  for (const row of dueWithMedia) {
-    const claimed = await claimItem(db, row.id);
+  for (const { row, post } of dueItems.slice(0, limit)) {
+    const claimed = await claimScheduledPost(db, row, post.id);
     if (!claimed) continue;
 
+    const { row: claimedRow, post: claimedPost } = claimed;
+
     try {
-      const { igUserId, igAccessToken } = await getAccountCredentials(db, row.target_account);
+      const { igUserId, igAccessToken } = await getAccountCredentials(db, claimedPost.account);
       const mediaUrls =
-        Array.isArray(row.media_urls) && row.media_urls.length > 0
-          ? row.media_urls
-          : [row.video_url];
-      const proxy = await getProxyRelay(db, row.proxy_id);
+        Array.isArray(claimedRow.media_urls) && claimedRow.media_urls.length > 0
+          ? claimedRow.media_urls
+          : [claimedRow.video_url];
+      const proxy = await getProxyRelay(db, claimedPost.proxyId ?? claimedRow.proxy_id);
       const result = await publishContent(
         igUserId,
         igAccessToken,
         {
-          mediaType: row.media_type ?? 'reel',
+          mediaType: claimedRow.media_type ?? 'reel',
           mediaUrls,
-          caption: row.caption ?? '',
+          caption:
+            claimedPost.caption ??
+            (claimedRow.media_type === 'story' ? '' : (claimedRow.caption ?? '')),
           proxy,
         },
         async (progress) => {
           if (progress.stage && progress.stage !== 'done') {
-            await setPublishStage(db, row.id, progress.stage);
+            await setScheduledPostStage(db, claimedRow, claimedPost.id, progress.stage);
           }
         },
       );
-      await markPosted(db, row, result);
+      await markScheduledPosted(db, claimedRow, claimedPost.id, result);
       processed += 1;
-      results.push({ id: row.id, ok: true, permalink: result.permalink });
+      results.push({ id: claimedRow.id, scheduledPostId: claimedPost.id, ok: true, permalink: result.permalink });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Publish failed';
-      await markFailed(db, row.id, message);
-      results.push({ id: row.id, ok: false, error: message });
+      await markScheduledFailed(db, claimedRow, claimedPost.id, message);
+      results.push({ id: claimedRow.id, scheduledPostId: claimedPost.id, ok: false, error: message });
     }
   }
 

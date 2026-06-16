@@ -46,6 +46,7 @@ import {
   updateAccount,
 } from './lib/db';
 import { assignedEmployees } from './lib/assignment';
+import { getScheduledPostsForDate, normalizeScheduledPosts } from './lib/contentSchedule';
 import { parseProxyString } from './lib/proxy';
 import { proxyOptionLabel, proxyToRelayConfig } from './lib/proxyRelay';
 import { publishContent } from './lib/igGraph';
@@ -1059,12 +1060,13 @@ export default function App() {
     await loadContent();
   }
 
-  async function handleUnscheduleContent(reel: ContentReel) {
+  async function handleUnscheduleContent(reel: ContentReel, scheduledPostId: string) {
+    const next = normalizeScheduledPosts(reel).filter((post) => post.id !== scheduledPostId);
     await updateContent({
       ...reel,
-      caption: '',
-      targetAccount: undefined,
+      scheduledPosts: next,
       scheduledAt: undefined,
+      targetAccount: undefined,
       postError: undefined,
       publishingAt: undefined,
       publishStage: undefined,
@@ -1076,8 +1078,8 @@ export default function App() {
     setScheduleReel(reel);
     setScheduleMode(mode);
     setNewContentCaption(reel.caption ?? '');
-    setNewContentTarget(reel.targetAccount ?? '');
-    setNewContentProxyId(reel.proxyId ?? '');
+    setNewContentTarget('');
+    setNewContentProxyId('');
     setNewContentScheduledAt(mode === 'schedule' ? nowDatetimeLocal() : '');
     setPublishProgress(
       reel.publishingAt && !reel.postedAt
@@ -1211,18 +1213,31 @@ export default function App() {
 
     setSavingSchedule(true);
     try {
+      if (!newContentTarget) {
+        setError('Select an Instagram account to schedule.');
+        return;
+      }
+      if (!newContentScheduledAt) {
+        setError('Pick a date and time to schedule.');
+        return;
+      }
+
+      const existing = normalizeScheduledPosts(scheduleReel);
+      const newEntry = {
+        id: crypto.randomUUID(),
+        account: newContentTarget,
+        scheduledAt: parseDatetimeLocal(newContentScheduledAt),
+        caption: newContentCaption || undefined,
+        proxyId: newContentProxyId || undefined,
+      };
+
       await updateContent({
         ...scheduleReel,
         caption: newContentCaption,
-        targetAccount: newContentTarget || undefined,
-        proxyId: newContentProxyId || undefined,
-        scheduledAt: newContentScheduledAt
-          ? parseDatetimeLocal(newContentScheduledAt)
-          : undefined,
-        postedAt: undefined,
-        permalink: undefined,
-        publishingAt: undefined,
-        publishStage: undefined,
+        scheduledPosts: [...existing, newEntry],
+        scheduledAt: undefined,
+        targetAccount: undefined,
+        proxyId: undefined,
         postError: undefined,
       });
       await loadContent();
@@ -1593,18 +1608,18 @@ export default function App() {
   })();
 
   const scheduledForDate = (() => {
-    let scheduled = content.filter(
-      (c) => c.scheduledAt && toDateKey(c.scheduledAt) === scheduleViewDate,
-    );
+    let scheduled = getScheduledPostsForDate(content, scheduleViewDate);
     if (scheduleFilterTab !== 'all') {
-      scheduled = scheduled.filter((c) => (c.mediaType ?? 'reel') === scheduleFilterTab);
+      scheduled = scheduled.filter(
+        ({ reel }) => (reel.mediaType ?? 'reel') === scheduleFilterTab,
+      );
     }
     if (isAdmin && contentEmployeeFilter) {
       scheduled = scheduled.filter(
-        (c) => c.allEmployees || c.employees.includes(contentEmployeeFilter),
+        ({ reel }) => reel.allEmployees || reel.employees.includes(contentEmployeeFilter),
       );
     }
-    return scheduled.sort((a, b) => (a.scheduledAt ?? 0) - (b.scheduledAt ?? 0));
+    return scheduled;
   })();
 
   const scheduleViewLabel = formatDateLocal(parseDatetimeLocal(`${scheduleViewDate}T12:00`));
@@ -2582,58 +2597,62 @@ export default function App() {
               <div className="schedule-groups">
                 <div className="schedule-group">
                   <div className="schedule-list">
-                    {scheduledForDate.map((reel) => (
-                        <div key={reel.id} className="schedule-card">
+                    {scheduledForDate.map(({ reel, scheduledPost }) => (
+                        <div key={`${reel.id}-${scheduledPost.id}`} className="schedule-card">
                           <ContentMediaPreview reel={reel} compact />
                           <div className="schedule-card__body">
                             <div className="schedule-card__top">
                               <span className="schedule-card__time">
-                                🗓 {formatTimeLocal(reel.scheduledAt as number)}
+                                🗓 {formatTimeLocal(scheduledPost.scheduledAt)}
                               </span>
                               <span className="schedule-card__type">
                                 {contentMediaLabel(reel.mediaType)}
                               </span>
                             </div>
-                            {reel.caption ? (
-                              <p className="schedule-card__caption">{reel.caption}</p>
+                            {(scheduledPost.caption ?? reel.caption) ? (
+                              <p className="schedule-card__caption">
+                                {scheduledPost.caption ?? reel.caption}
+                              </p>
                             ) : (
                               <p className="schedule-card__caption schedule-card__caption--empty">
                                 No caption
                               </p>
                             )}
-                            {reel.targetAccount && (
-                              <p className="schedule-card__target">📲 Post on @{reel.targetAccount}</p>
-                            )}
-                            {reel.proxyId && (() => {
-                              const proxy = proxies.find((p) => p.id === reel.proxyId);
+                            <p className="schedule-card__target">📲 Post on @{scheduledPost.account}</p>
+                            {scheduledPost.proxyId && (() => {
+                              const proxy = proxies.find((p) => p.id === scheduledPost.proxyId);
                               return proxy ? (
                                 <p className="schedule-card__target">
                                   🌐 Proxy: {proxyOptionLabel(proxy)}
                                 </p>
                               ) : null;
                             })()}
-                            {reel.publishingAt && !reel.postedAt ? (
+                            {scheduledPost.publishingAt && !scheduledPost.postedAt ? (
                               <div className="schedule-card__progress">
-                                <PublishProgressBar stage={reel.publishStage ?? 'creating'} />
+                                <PublishProgressBar stage={scheduledPost.publishStage ?? 'creating'} />
                               </div>
-                            ) : reel.scheduledAt && !reel.postedAt ? (
-                              <p className="schedule-card__status">
-                                Scheduled for {formatDateTimeLocal(reel.scheduledAt)}
-                              </p>
-                            ) : reel.postedAt ? (
+                            ) : scheduledPost.postedAt ? (
                               <p className="schedule-card__status schedule-card__status--posted">
                                 ✓ Posted{' '}
-                                {reel.permalink && (
-                                  <a href={reel.permalink} target="_blank" rel="noopener noreferrer">
+                                {scheduledPost.permalink && (
+                                  <a
+                                    href={scheduledPost.permalink}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                  >
                                     View
                                   </a>
                                 )}
                               </p>
-                            ) : reel.postError ? (
+                            ) : scheduledPost.postError ? (
                               <p className="schedule-card__status schedule-card__status--error">
-                                ⚠ {reel.postError}
+                                ⚠ {scheduledPost.postError}
                               </p>
-                            ) : null}
+                            ) : (
+                              <p className="schedule-card__status">
+                                Scheduled for {formatDateTimeLocal(scheduledPost.scheduledAt)}
+                              </p>
+                            )}
                             <div className="schedule-card__assign">
                               {reel.allEmployees ? (
                                 <span className="owner-tag">All employees</span>
@@ -2661,7 +2680,7 @@ export default function App() {
                               <button
                                 type="button"
                                 className="license-row__delete"
-                                onClick={() => handleUnscheduleContent(reel)}
+                                onClick={() => handleUnscheduleContent(reel, scheduledPost.id)}
                                 title="Remove from schedule"
                                 aria-label="Remove from schedule"
                               >
@@ -3153,10 +3172,7 @@ export default function App() {
                 )}
 
                 <label className="cred-field">
-                  <span className="cred-field__label">
-                    Instagram account to post on
-                    {scheduleMode === 'schedule' ? ' (optional)' : ''}
-                  </span>
+                  <span className="cred-field__label">Instagram account to post on</span>
                   <select
                     className="cred-form__input"
                     value={newContentTarget}
@@ -3176,6 +3192,9 @@ export default function App() {
                   </select>
                   <span className="cred-field__hint">
                     Only Instagram accounts with a saved API token &amp; User ID can be posted to.
+                    {scheduleMode === 'schedule'
+                      ? ' You can schedule the same reel to multiple accounts.'
+                      : ''}
                   </span>
                 </label>
 

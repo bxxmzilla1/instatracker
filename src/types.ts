@@ -182,6 +182,8 @@ export interface ContentReel {
   postError?: string;
   /** Log of every account this item was posted to, with timestamps. */
   postHistory?: PostHistoryEntry[];
+  /** Pending posts to different accounts (each with its own time, caption, proxy). */
+  scheduledPosts?: ScheduledPost[];
   /** When a background publish job started (ms epoch). */
   publishingAt?: number;
   /** Current stage while publishing (for progress UI). */
@@ -195,6 +197,20 @@ export interface PostHistoryEntry {
   postedAt: number;
   /** Permalink to the published media, if available. */
   permalink?: string;
+}
+
+/** A single scheduled publish of content to one Instagram account. */
+export interface ScheduledPost {
+  id: string;
+  account: string;
+  scheduledAt: number;
+  caption?: string;
+  proxyId?: string;
+  publishingAt?: number;
+  publishStage?: 'creating' | 'processing' | 'publishing';
+  postedAt?: number;
+  permalink?: string;
+  postError?: string;
 }
 
 export interface TrackedAccount {
