@@ -119,6 +119,7 @@ alter table content add column if not exists publish_stage text;
 alter table content add column if not exists scheduled_at bigint;
 alter table content add column if not exists target_account text;
 alter table content add column if not exists media_urls jsonb default '[]'::jsonb;
+alter table content add column if not exists proxy_id text;
 
 create table if not exists follower_snapshots (
   id bigint generated always as identity primary key,

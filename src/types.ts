@@ -170,6 +170,8 @@ export interface ContentReel {
   employees: string[];
   allEmployees: boolean;
   targetAccount?: string;
+  /** Proxy to route Instagram Graph API publish requests through. */
+  proxyId?: string;
   scheduledAt?: number;
   createdAt: number;
   /** When the item was successfully published to Instagram (ms epoch). */

@@ -47,6 +47,7 @@ import {
 } from './lib/db';
 import { assignedEmployees } from './lib/assignment';
 import { parseProxyString } from './lib/proxy';
+import { proxyOptionLabel, proxyToRelayConfig } from './lib/proxyRelay';
 import { publishContent } from './lib/igGraph';
 import type { PublishProgress } from './lib/igGraph';
 import {
@@ -316,6 +317,7 @@ export default function App() {
   const [newContentEmployees, setNewContentEmployees] = useState<Set<string>>(() => new Set());
   const [newContentAll, setNewContentAll] = useState(false);
   const [newContentTarget, setNewContentTarget] = useState('');
+  const [newContentProxyId, setNewContentProxyId] = useState('');
   const [newContentScheduledAt, setNewContentScheduledAt] = useState('');
   const [uploadingContent, setUploadingContent] = useState(false);
   const contentFileRef = useRef<HTMLInputElement>(null);
@@ -1073,8 +1075,9 @@ export default function App() {
   function openScheduleModal(reel: ContentReel, mode: 'post' | 'schedule') {
     setScheduleReel(reel);
     setScheduleMode(mode);
-    setNewContentCaption('');
+    setNewContentCaption(reel.caption ?? '');
     setNewContentTarget(reel.targetAccount ?? '');
+    setNewContentProxyId(reel.proxyId ?? '');
     setNewContentScheduledAt(mode === 'schedule' ? nowDatetimeLocal() : '');
     setPublishProgress(
       reel.publishingAt && !reel.postedAt
@@ -1087,6 +1090,7 @@ export default function App() {
     setScheduleReel(null);
     setNewContentCaption('');
     setNewContentTarget('');
+    setNewContentProxyId('');
     setNewContentScheduledAt('');
     setPublishProgress(null);
   }
@@ -1095,6 +1099,7 @@ export default function App() {
     reel: ContentReel,
     caption: string,
     targetUsername: string,
+    proxyId: string | undefined,
     onProgress?: (progress: PublishProgress) => void,
   ) {
     const account = accounts.find((a) => a.username === targetUsername);
@@ -1105,6 +1110,11 @@ export default function App() {
     if (!mediaUrls.length) {
       throw new Error('This item has no uploaded media to publish.');
     }
+    const proxyRecord = proxyId ? proxies.find((p) => p.id === proxyId) : undefined;
+    const relayProxy = proxyRecord ? proxyToRelayConfig(proxyRecord) : undefined;
+    if (proxyId && !relayProxy) {
+      throw new Error('The selected proxy could not be parsed. Check host, port, and credentials.');
+    }
     return publishContent(
       account.igUserId,
       account.igAccessToken,
@@ -1112,6 +1122,7 @@ export default function App() {
         mediaType: reel.mediaType ?? 'reel',
         mediaUrls,
         caption: reel.mediaType === 'story' ? '' : caption,
+        proxy: relayProxy,
       },
       onProgress,
     );
@@ -1151,6 +1162,7 @@ export default function App() {
           publishingReel,
           newContentCaption,
           newContentTarget,
+          newContentProxyId || undefined,
           async (progress) => {
             setPublishProgress(progress);
             await persistPublishProgress(publishingReel, progress);
@@ -1162,6 +1174,7 @@ export default function App() {
           ...publishingReel,
           caption: newContentCaption,
           targetAccount: newContentTarget,
+          proxyId: newContentProxyId || undefined,
           scheduledAt: undefined,
           postedAt: now,
           permalink: result.permalink,
@@ -1198,6 +1211,7 @@ export default function App() {
         ...scheduleReel,
         caption: newContentCaption,
         targetAccount: newContentTarget || undefined,
+        proxyId: newContentProxyId || undefined,
         scheduledAt: newContentScheduledAt
           ? parseDatetimeLocal(newContentScheduledAt)
           : undefined,
@@ -1551,6 +1565,14 @@ export default function App() {
   const showAddForm = view === 'accounts';
 
   const postableAccounts = accounts.filter((a) => a.igUserId && a.igAccessToken);
+
+  const availableProxies = useMemo(() => {
+    if (!session) return [];
+    if (isAdmin) return proxies;
+    return proxies.filter(
+      (p) => p.allEmployees || p.employees.includes(session.username),
+    );
+  }, [proxies, isAdmin, session]);
 
   const displayedContent = (() => {
     let list = content.filter((reel) => (reel.mediaType ?? 'reel') === contentTab);
@@ -2574,6 +2596,14 @@ export default function App() {
                             {reel.targetAccount && (
                               <p className="schedule-card__target">📲 Post on @{reel.targetAccount}</p>
                             )}
+                            {reel.proxyId && (() => {
+                              const proxy = proxies.find((p) => p.id === reel.proxyId);
+                              return proxy ? (
+                                <p className="schedule-card__target">
+                                  🌐 Proxy: {proxyOptionLabel(proxy)}
+                                </p>
+                              ) : null;
+                            })()}
                             {reel.publishingAt && !reel.postedAt ? (
                               <div className="schedule-card__progress">
                                 <PublishProgressBar stage={reel.publishStage ?? 'creating'} />
@@ -3134,6 +3164,27 @@ export default function App() {
                   </select>
                   <span className="cred-field__hint">
                     Only Instagram accounts with a saved API token &amp; User ID can be posted to.
+                  </span>
+                </label>
+
+                <label className="cred-field">
+                  <span className="cred-field__label">Proxy (optional)</span>
+                  <select
+                    className="cred-form__input"
+                    value={newContentProxyId}
+                    onChange={(e) => setNewContentProxyId(e.target.value)}
+                  >
+                    <option value="">
+                      {availableProxies.length === 0 ? 'No proxies available' : 'No proxy'}
+                    </option>
+                    {availableProxies.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {proxyOptionLabel(p)}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="cred-field__hint">
+                    Route this publish through a proxy from your Proxy library.
                   </span>
                 </label>
               </div>

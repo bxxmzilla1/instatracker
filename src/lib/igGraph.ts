@@ -4,6 +4,8 @@
 // cannot call graph.instagram.com directly because of CORS). Ported from the
 // "IG Poster" project and adapted to the proxy transport.
 
+import type { GraphRelayProxy } from './proxyRelay';
+
 const GRAPH_API_VERSION = 'v23.0';
 
 export interface GraphApiError {
@@ -121,7 +123,7 @@ async function graphRequest<T>(
   path: string,
   accessToken: string,
   params: Record<string, string> = {},
-  options: { method?: 'GET' | 'POST'; host?: string } = {},
+  options: { method?: 'GET' | 'POST'; host?: string; proxy?: GraphRelayProxy } = {},
 ): Promise<T> {
   const response = await fetch('/api/graph', {
     method: 'POST',
@@ -133,6 +135,7 @@ async function graphRequest<T>(
       accessToken,
       host: options.host ?? GRAPH_HOST,
       version: GRAPH_API_VERSION,
+      proxy: options.proxy,
     }),
   });
 
@@ -480,9 +483,11 @@ async function createMediaContainer(
   igUserId: string,
   accessToken: string,
   params: Record<string, string>,
+  proxy?: GraphRelayProxy,
 ): Promise<string> {
   const data = await graphRequest<MediaContainerResponse>(`/${igUserId}/media`, accessToken, params, {
     method: 'POST',
+    proxy,
   });
   return data.id;
 }
@@ -491,6 +496,7 @@ async function publishContainer(
   igUserId: string,
   accessToken: string,
   creationId: string,
+  proxy?: GraphRelayProxy,
 ): Promise<string> {
   for (let attempt = 0; attempt < 4; attempt++) {
     try {
@@ -498,7 +504,7 @@ async function publishContainer(
         `/${igUserId}/media_publish`,
         accessToken,
         { creation_id: creationId },
-        { method: 'POST' },
+        { method: 'POST', proxy },
       );
       return data.id;
     } catch (err) {
@@ -519,12 +525,14 @@ async function waitForContainerReady(
   containerId: string,
   accessToken: string,
   onProgress?: (status: string) => void,
+  proxy?: GraphRelayProxy,
 ): Promise<void> {
   for (let i = 0; i < MAX_POLL_ATTEMPTS; i++) {
     const { status_code } = await graphRequest<ContainerStatusResponse>(
       `/${containerId}`,
       accessToken,
       { fields: 'status_code' },
+      { proxy },
     );
     onProgress?.(status_code);
     if (status_code === 'FINISHED') return;
@@ -547,11 +555,12 @@ async function waitForContainerReady(
 async function resolvePermalink(
   mediaId: string,
   accessToken: string,
+  proxy?: GraphRelayProxy,
 ): Promise<string | undefined> {
   try {
     const details = await graphRequest<MediaDetailsResponse>(`/${mediaId}`, accessToken, {
       fields: 'id,permalink',
-    });
+    }, { proxy });
     return details.permalink;
   } catch {
     return undefined;
@@ -564,19 +573,20 @@ export async function publishImage(
   imageUrl: string,
   caption: string,
   onProgress?: (progress: PublishProgress) => void,
+  proxy?: GraphRelayProxy,
 ): Promise<PublishResult> {
   onProgress?.({ stage: 'creating' });
   const containerId = await createMediaContainer(igUserId, accessToken, {
     image_url: imageUrl,
     caption,
-  });
+  }, proxy);
   onProgress?.({ stage: 'processing', status: 'IN_PROGRESS' });
   await waitForContainerReady(containerId, accessToken, (status) =>
     onProgress?.({ stage: 'processing', status }),
-  );
+  proxy);
   onProgress?.({ stage: 'publishing' });
-  const mediaId = await publishContainer(igUserId, accessToken, containerId);
-  const permalink = await resolvePermalink(mediaId, accessToken);
+  const mediaId = await publishContainer(igUserId, accessToken, containerId, proxy);
+  const permalink = await resolvePermalink(mediaId, accessToken, proxy);
   onProgress?.({ stage: 'done', mediaId, permalink });
   return { mediaId, permalink };
 }
@@ -587,20 +597,21 @@ export async function publishReel(
   videoUrl: string,
   caption: string,
   onProgress?: (progress: PublishProgress) => void,
+  proxy?: GraphRelayProxy,
 ): Promise<PublishResult> {
   onProgress?.({ stage: 'creating' });
   const containerId = await createMediaContainer(igUserId, accessToken, {
     media_type: 'REELS',
     video_url: videoUrl,
     caption,
-  });
+  }, proxy);
   onProgress?.({ stage: 'processing', status: 'IN_PROGRESS' });
   await waitForContainerReady(containerId, accessToken, (status) =>
     onProgress?.({ stage: 'processing', status }),
-  );
+  proxy);
   onProgress?.({ stage: 'publishing' });
-  const mediaId = await publishContainer(igUserId, accessToken, containerId);
-  const permalink = await resolvePermalink(mediaId, accessToken);
+  const mediaId = await publishContainer(igUserId, accessToken, containerId, proxy);
+  const permalink = await resolvePermalink(mediaId, accessToken, proxy);
   onProgress?.({ stage: 'done', mediaId, permalink });
   return { mediaId, permalink };
 }
@@ -611,6 +622,7 @@ export async function publishCarousel(
   mediaUrls: string[],
   caption: string,
   onProgress?: (progress: PublishProgress) => void,
+  proxy?: GraphRelayProxy,
 ): Promise<PublishResult> {
   onProgress?.({ stage: 'creating' });
   const childIds: string[] = [];
@@ -623,25 +635,25 @@ export async function publishCarousel(
     } else {
       params.image_url = url;
     }
-    childIds.push(await createMediaContainer(igUserId, accessToken, params));
+    childIds.push(await createMediaContainer(igUserId, accessToken, params, proxy));
   }
 
   for (const childId of childIds) {
-    await waitForContainerReady(childId, accessToken);
+    await waitForContainerReady(childId, accessToken, undefined, proxy);
   }
 
   const containerId = await createMediaContainer(igUserId, accessToken, {
     media_type: 'CAROUSEL',
     children: childIds.join(','),
     caption,
-  });
+  }, proxy);
   onProgress?.({ stage: 'processing', status: 'IN_PROGRESS' });
   await waitForContainerReady(containerId, accessToken, (status) =>
     onProgress?.({ stage: 'processing', status }),
-  );
+  proxy);
   onProgress?.({ stage: 'publishing' });
-  const mediaId = await publishContainer(igUserId, accessToken, containerId);
-  const permalink = await resolvePermalink(mediaId, accessToken);
+  const mediaId = await publishContainer(igUserId, accessToken, containerId, proxy);
+  const permalink = await resolvePermalink(mediaId, accessToken, proxy);
   onProgress?.({ stage: 'done', mediaId, permalink });
   return { mediaId, permalink };
 }
@@ -651,19 +663,20 @@ export async function publishStoryImage(
   accessToken: string,
   imageUrl: string,
   onProgress?: (progress: PublishProgress) => void,
+  proxy?: GraphRelayProxy,
 ): Promise<PublishResult> {
   onProgress?.({ stage: 'creating' });
   const containerId = await createMediaContainer(igUserId, accessToken, {
     media_type: 'STORIES',
     image_url: imageUrl,
-  });
+  }, proxy);
   onProgress?.({ stage: 'processing', status: 'IN_PROGRESS' });
   await waitForContainerReady(containerId, accessToken, (status) =>
     onProgress?.({ stage: 'processing', status }),
-  );
+  proxy);
   onProgress?.({ stage: 'publishing' });
-  const mediaId = await publishContainer(igUserId, accessToken, containerId);
-  const permalink = await resolvePermalink(mediaId, accessToken);
+  const mediaId = await publishContainer(igUserId, accessToken, containerId, proxy);
+  const permalink = await resolvePermalink(mediaId, accessToken, proxy);
   onProgress?.({ stage: 'done', mediaId, permalink });
   return { mediaId, permalink };
 }
@@ -673,19 +686,20 @@ export async function publishStoryVideo(
   accessToken: string,
   videoUrl: string,
   onProgress?: (progress: PublishProgress) => void,
+  proxy?: GraphRelayProxy,
 ): Promise<PublishResult> {
   onProgress?.({ stage: 'creating' });
   const containerId = await createMediaContainer(igUserId, accessToken, {
     media_type: 'STORIES',
     video_url: videoUrl,
-  });
+  }, proxy);
   onProgress?.({ stage: 'processing', status: 'IN_PROGRESS' });
   await waitForContainerReady(containerId, accessToken, (status) =>
     onProgress?.({ stage: 'processing', status }),
-  );
+  proxy);
   onProgress?.({ stage: 'publishing' });
-  const mediaId = await publishContainer(igUserId, accessToken, containerId);
-  const permalink = await resolvePermalink(mediaId, accessToken);
+  const mediaId = await publishContainer(igUserId, accessToken, containerId, proxy);
+  const permalink = await resolvePermalink(mediaId, accessToken, proxy);
   onProgress?.({ stage: 'done', mediaId, permalink });
   return { mediaId, permalink };
 }
@@ -700,24 +714,25 @@ export async function publishContent(
     mediaType: 'reel' | 'image' | 'story' | 'carousel';
     mediaUrls: string[];
     caption: string;
+    proxy?: GraphRelayProxy;
   },
   onProgress?: (progress: PublishProgress) => void,
 ): Promise<PublishResult> {
-  const { mediaType, mediaUrls, caption } = options;
+  const { mediaType, mediaUrls, caption, proxy } = options;
   if (mediaUrls.length === 0) {
     throw new InstagramApiError({ message: 'No media to publish', type: 'BadRequest', code: 400 });
   }
   if (mediaType === 'carousel' || mediaUrls.length > 1) {
-    return publishCarousel(igUserId, accessToken, mediaUrls, caption, onProgress);
+    return publishCarousel(igUserId, accessToken, mediaUrls, caption, onProgress, proxy);
   }
   if (mediaType === 'story') {
     const isVideo = /\.(mp4|mov|webm|m4v|mkv|avi)(\?|$)/i.test(mediaUrls[0]);
     return isVideo
-      ? publishStoryVideo(igUserId, accessToken, mediaUrls[0], onProgress)
-      : publishStoryImage(igUserId, accessToken, mediaUrls[0], onProgress);
+      ? publishStoryVideo(igUserId, accessToken, mediaUrls[0], onProgress, proxy)
+      : publishStoryImage(igUserId, accessToken, mediaUrls[0], onProgress, proxy);
   }
   if (mediaType === 'reel') {
-    return publishReel(igUserId, accessToken, mediaUrls[0], caption, onProgress);
+    return publishReel(igUserId, accessToken, mediaUrls[0], caption, onProgress, proxy);
   }
-  return publishImage(igUserId, accessToken, mediaUrls[0], caption, onProgress);
+  return publishImage(igUserId, accessToken, mediaUrls[0], caption, onProgress, proxy);
 }

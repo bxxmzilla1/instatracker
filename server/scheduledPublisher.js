@@ -2,7 +2,7 @@
 // Intended to run from a Vercel cron job (works even when no browser is open).
 
 import { createClient } from '@supabase/supabase-js';
-import { publishContent } from './publish.js';
+import { publishContent, proxyRowToRelay } from './publish.js';
 
 const STALE_PUBLISH_MS = 15 * 60 * 1000;
 
@@ -87,6 +87,13 @@ async function markFailed(db, id, message) {
     .eq('id', id);
 }
 
+async function getProxyRelay(db, proxyId) {
+  if (!proxyId) return undefined;
+  const { data, error } = await db.from('proxies').select('*').eq('id', proxyId).maybeSingle();
+  if (error) throw new Error(error.message);
+  return proxyRowToRelay(data);
+}
+
 export async function runScheduledPublisher({ limit = 3 } = {}) {
   const db = getSupabaseAdmin();
   if (!db) {
@@ -130,6 +137,7 @@ export async function runScheduledPublisher({ limit = 3 } = {}) {
         Array.isArray(row.media_urls) && row.media_urls.length > 0
           ? row.media_urls
           : [row.video_url];
+      const proxy = await getProxyRelay(db, row.proxy_id);
       const result = await publishContent(
         igUserId,
         igAccessToken,
@@ -137,6 +145,7 @@ export async function runScheduledPublisher({ limit = 3 } = {}) {
           mediaType: row.media_type ?? 'reel',
           mediaUrls,
           caption: row.caption ?? '',
+          proxy,
         },
         async (progress) => {
           if (progress.stage && progress.stage !== 'done') {

@@ -1,22 +1,10 @@
 import https from 'https';
-import { HttpsProxyAgent } from 'https-proxy-agent';
-import { SocksProxyAgent } from 'socks-proxy-agent';
+import { buildProxyAgent } from './proxyAgent.js';
 
 // Builds a node http(s) agent that tunnels requests through the given proxy.
 // Supports HTTP/HTTPS CONNECT proxies and SOCKS4/SOCKS5 proxies.
 function buildAgent(proxy) {
-  const type = String(proxy.type || 'http').toLowerCase();
-  const host = String(proxy.host || '').trim();
-  const port = String(proxy.port || '').trim();
-  if (!host || !port) throw new Error('Proxy host/port is missing.');
-  const user = proxy.user ? encodeURIComponent(proxy.user) : '';
-  const pass = proxy.pass ? encodeURIComponent(proxy.pass) : '';
-  const auth = user ? `${user}:${pass}@` : '';
-  if (type.startsWith('socks')) {
-    const scheme = type === 'socks4' ? 'socks4' : 'socks5';
-    return new SocksProxyAgent(`${scheme}://${auth}${host}:${port}`);
-  }
-  return new HttpsProxyAgent(`http://${auth}${host}:${port}`);
+  return buildProxyAgent(proxy);
 }
 
 const HOP_BY_HOP = new Set(['host', 'content-length', 'accept-encoding', 'connection', 'transfer-encoding']);

@@ -1,14 +1,49 @@
 // Server-side relay for the Instagram Graph API.
 //
 // Browsers cannot call graph.instagram.com directly (CORS), so the frontend
-// posts { method, path, params, body, accessToken } here and we forward it,
+// posts { method, path, params, body, accessToken, proxy? } here and we forward it,
 // attaching the bearer token, then return { status, data }.
+
+import https from 'https';
+import { buildProxyAgent } from './proxyAgent.js';
 
 const GRAPH_HOST = 'https://graph.instagram.com';
 const FACEBOOK_GRAPH_HOST = 'https://graph.facebook.com';
 const DEFAULT_VERSION = 'v23.0';
 
 const ALLOWED_HOSTS = new Set([GRAPH_HOST, FACEBOOK_GRAPH_HOST]);
+
+function requestViaProxy(url, init, proxy) {
+  const agent = buildProxyAgent(proxy);
+  const target = new URL(url);
+  const method = init.method || 'GET';
+  const headers = { ...(init.headers || {}) };
+
+  return new Promise((resolve, reject) => {
+    const req = https.request(
+      target,
+      { method, headers, agent, timeout: 90000 },
+      (resp) => {
+        const chunks = [];
+        resp.on('data', (chunk) => chunks.push(chunk));
+        resp.on('end', () => {
+          const text = Buffer.concat(chunks).toString('utf8');
+          let data = {};
+          try {
+            data = text ? JSON.parse(text) : {};
+          } catch {
+            data = { error: { message: text || 'Invalid JSON from Graph API', type: 'ParseError', code: 502 } };
+          }
+          resolve({ status: resp.statusCode || 502, data });
+        });
+      },
+    );
+    req.on('timeout', () => req.destroy(new Error('Graph proxy request timed out.')));
+    req.on('error', reject);
+    if (init.body) req.write(init.body);
+    req.end();
+  });
+}
 
 export async function relayGraphRequest(payload = {}) {
   const {
@@ -19,6 +54,7 @@ export async function relayGraphRequest(payload = {}) {
     accessToken,
     host = GRAPH_HOST,
     version = DEFAULT_VERSION,
+    proxy,
   } = payload;
 
   if (!accessToken) {
@@ -50,6 +86,9 @@ export async function relayGraphRequest(payload = {}) {
   }
 
   try {
+    if (proxy?.host && proxy?.port) {
+      return await requestViaProxy(url.toString(), init, proxy);
+    }
     const response = await fetch(url.toString(), init);
     const data = await response.json().catch(() => ({}));
     return { status: response.status, data };

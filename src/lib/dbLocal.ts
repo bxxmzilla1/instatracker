@@ -281,6 +281,7 @@ export async function getContent(employee?: string): Promise<ContentReel[]> {
         employees: r.employees,
         allEmployees: r.allEmployees,
         targetAccount: r.targetAccount,
+        proxyId: r.proxyId,
         scheduledAt: r.scheduledAt,
         createdAt: r.createdAt,
         postedAt: r.postedAt,
@@ -303,6 +304,7 @@ export async function addContent(reel: ContentReel, file?: Blob | Blob[]): Promi
     employees: reel.employees,
     allEmployees: reel.allEmployees,
     targetAccount: reel.targetAccount,
+    proxyId: reel.proxyId,
     scheduledAt: reel.scheduledAt,
     createdAt: reel.createdAt,
   };
@@ -328,6 +330,7 @@ export async function updateContent(reel: ContentReel): Promise<void> {
     employees: reel.employees,
     allEmployees: reel.allEmployees,
     targetAccount: reel.targetAccount,
+    proxyId: reel.proxyId,
     scheduledAt: reel.scheduledAt,
     postedAt: reel.postedAt,
     permalink: reel.permalink,
