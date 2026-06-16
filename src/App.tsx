@@ -226,6 +226,7 @@ export default function App() {
   const [assignReel, setAssignReel] = useState<ContentReel | null>(null);
   const [savingAssign, setSavingAssign] = useState(false);
   const [publishProgress, setPublishProgress] = useState<PublishProgress | null>(null);
+  const [historyReel, setHistoryReel] = useState<ContentReel | null>(null);
   const contentRef = useRef<ContentReel[]>([]);
   const accountsRef = useRef<TrackedAccount[]>([]);
   const schedulerBusyRef = useRef(false);
@@ -429,11 +430,20 @@ export default function App() {
               mediaUrls: [item.videoUrl],
               caption: item.caption,
             });
+            const postedAt = Date.now();
             await updateContent({
               ...item,
-              postedAt: Date.now(),
+              postedAt,
               permalink: result.permalink,
               postError: undefined,
+              postHistory: [
+                ...(item.postHistory ?? []),
+                {
+                  account: item.targetAccount as string,
+                  postedAt,
+                  permalink: result.permalink,
+                },
+              ],
             });
           } catch (err) {
             await updateContent({
@@ -982,14 +992,19 @@ export default function App() {
           newContentTarget,
           setPublishProgress,
         );
+        const now = Date.now();
         await updateContent({
           ...scheduleReel,
           caption: newContentCaption,
           targetAccount: newContentTarget,
           scheduledAt: undefined,
-          postedAt: Date.now(),
+          postedAt: now,
           permalink: result.permalink,
           postError: undefined,
+          postHistory: [
+            ...(scheduleReel.postHistory ?? []),
+            { account: newContentTarget, postedAt: now, permalink: result.permalink },
+          ],
         });
         await loadContent();
         closeScheduleModal();
@@ -2298,6 +2313,16 @@ export default function App() {
                         />
                       )}
                       <div className="reel-cell__overlay">
+                        {isAdmin && (
+                          <button
+                            type="button"
+                            className="reel-cell__btn reel-cell__btn--wide"
+                            onClick={() => setHistoryReel(reel)}
+                            title="Post history"
+                          >
+                            History
+                          </button>
+                        )}
                         <button
                           type="button"
                           className="reel-cell__btn reel-cell__btn--wide"
@@ -2331,43 +2356,24 @@ export default function App() {
                       </div>
                       {isAdmin && (
                         <div className="reel-cell__footer">
-                          {reel.postedAt ? (
-                            reel.permalink ? (
-                              <a
-                                className="reel-cell__action reel-cell__action--posted"
-                                href={reel.permalink}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                              >
-                                Posted ✓
-                              </a>
-                            ) : (
-                              <span className="reel-cell__action reel-cell__action--posted">
-                                Posted ✓
-                              </span>
-                            )
-                          ) : (
-                            <>
-                              <button
-                                type="button"
-                                className="reel-cell__action reel-cell__action--primary"
-                                onClick={() => openScheduleModal(reel, 'post')}
-                              >
-                                Post
-                              </button>
-                              <button
-                                type="button"
-                                className={`reel-cell__action ${
-                                  reel.scheduledAt
-                                    ? 'reel-cell__action--active'
-                                    : 'reel-cell__action--secondary'
-                                }`}
-                                onClick={() => openScheduleModal(reel, 'schedule')}
-                              >
-                                Schedule
-                              </button>
-                            </>
-                          )}
+                          <button
+                            type="button"
+                            className="reel-cell__action reel-cell__action--primary"
+                            onClick={() => openScheduleModal(reel, 'post')}
+                          >
+                            Post
+                          </button>
+                          <button
+                            type="button"
+                            className={`reel-cell__action ${
+                              reel.scheduledAt
+                                ? 'reel-cell__action--active'
+                                : 'reel-cell__action--secondary'
+                            }`}
+                            onClick={() => openScheduleModal(reel, 'schedule')}
+                          >
+                            Schedule
+                          </button>
                         </div>
                       )}
                       {isAdmin && reel.postError && (
@@ -3099,6 +3105,61 @@ export default function App() {
                 </button>
               </div>
             </form>
+          </div>
+        )}
+
+        {historyReel && (
+          <div className="modal" onClick={() => setHistoryReel(null)}>
+            <div className="modal__card" onClick={(e) => e.stopPropagation()}>
+              <div className="modal__head">
+                <h3>Post history</h3>
+                <button
+                  type="button"
+                  className="modal__close"
+                  onClick={() => setHistoryReel(null)}
+                  aria-label="Close"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {(historyReel.postHistory?.length ?? 0) === 0 ? (
+                <p className="empty-note">
+                  This {historyReel.mediaType === 'image' ? 'image' : 'reel'} hasn’t been posted yet.
+                </p>
+              ) : (
+                <ul className="post-history">
+                  {[...(historyReel.postHistory ?? [])]
+                    .sort((a, b) => b.postedAt - a.postedAt)
+                    .map((entry, i) => (
+                      <li key={`${entry.account}-${entry.postedAt}-${i}`} className="post-history__row">
+                        <div className="post-history__main">
+                          <span className="post-history__account">@{entry.account}</span>
+                          <span className="post-history__date">
+                            {new Date(entry.postedAt).toLocaleString([], {
+                              month: 'short',
+                              day: 'numeric',
+                              year: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}
+                          </span>
+                        </div>
+                        {entry.permalink && (
+                          <a
+                            className="post-history__link"
+                            href={entry.permalink}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            View
+                          </a>
+                        )}
+                      </li>
+                    ))}
+                </ul>
+              )}
+            </div>
           </div>
         )}
 

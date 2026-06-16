@@ -2754,6 +2754,55 @@ button:disabled {
   color: var(--muted);
 }
 
+.post-history {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.post-history__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.65rem 0.8rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.post-history__main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.post-history__account {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--text);
+}
+
+.post-history__date {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.post-history__link {
+  flex: 0 0 auto;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--accent);
+  text-decoration: none;
+  padding: 0.3rem 0.7rem;
+  border-radius: 8px;
+  background: var(--accent-soft);
+}
+
 @media (max-width: 640px) {
   .reels-grid {
     grid-template-columns: repeat(2, 1fr);

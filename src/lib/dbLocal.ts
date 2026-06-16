@@ -269,6 +269,7 @@ export async function getContent(employee?: string): Promise<ContentReel[]> {
       postedAt: r.postedAt,
       permalink: r.permalink,
       postError: r.postError,
+      postHistory: r.postHistory ?? [],
     }));
 }
 
@@ -303,6 +304,7 @@ export async function updateContent(reel: ContentReel): Promise<void> {
     postedAt: reel.postedAt,
     permalink: reel.permalink,
     postError: reel.postError,
+    postHistory: reel.postHistory,
   });
 }
 

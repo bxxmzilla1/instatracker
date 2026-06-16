@@ -174,6 +174,17 @@ export interface ContentReel {
   permalink?: string;
   /** Last publish error message, if any. */
   postError?: string;
+  /** Log of every account this item was posted to, with timestamps. */
+  postHistory?: PostHistoryEntry[];
+}
+
+export interface PostHistoryEntry {
+  /** Instagram account username it was posted to. */
+  account: string;
+  /** When it was posted (ms epoch). */
+  postedAt: number;
+  /** Permalink to the published media, if available. */
+  permalink?: string;
 }
 
 export interface TrackedAccount {
