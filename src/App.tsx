@@ -38,6 +38,7 @@ import {
   deleteStory,
   getContent,
   addContent,
+  updateContent,
   deleteContent,
   removeAccount,
   saveFollowerSnapshot,
@@ -73,10 +74,12 @@ function toDateKey(ms: number): string {
   return `${d.getFullYear()}-${m}-${day}`;
 }
 
-function shiftDateKey(key: string, days: number): string {
-  const d = new Date(`${key}T00:00`);
-  d.setDate(d.getDate() + days);
-  return toDateKey(d.getTime());
+function toDatetimeLocal(ms: number): string {
+  const d = new Date(ms);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(
+    d.getHours(),
+  )}:${pad(d.getMinutes())}`;
 }
 
 function loadSession(): Session | null {
@@ -186,10 +189,8 @@ export default function App() {
   const [newContentScheduledAt, setNewContentScheduledAt] = useState('');
   const [uploadingContent, setUploadingContent] = useState(false);
   const contentFileRef = useRef<HTMLInputElement>(null);
-  const [scheduleFilter, setScheduleFilter] = useState<string | null>(() => {
-    const s = loadSession();
-    return s?.role === 'employee' ? toDateKey(Date.now()) : null;
-  });
+  const [scheduleReel, setScheduleReel] = useState<ContentReel | null>(null);
+  const [savingSchedule, setSavingSchedule] = useState(false);
   const [contentEmployeeFilter, setContentEmployeeFilter] = useState('');
   const [openAddForms, setOpenAddForms] = useState<Set<string>>(() => new Set());
 
@@ -788,33 +789,24 @@ export default function App() {
       setError('Select a reel video to upload.');
       return;
     }
-    if (!newContentAll && newContentEmployees.size === 0) {
-      setError('Select at least one employee or choose all employees.');
-      return;
-    }
     setUploadingContent(true);
     try {
       await addContent(
         {
           id: crypto.randomUUID(),
-          caption: newContentCaption,
+          caption: '',
           videoUrl: '',
           mediaType: contentTab,
-          employees: newContentAll ? [] : [...newContentEmployees],
-          allEmployees: newContentAll,
-          targetAccount: newContentTarget || undefined,
-          scheduledAt: newContentScheduledAt ? new Date(newContentScheduledAt).getTime() : undefined,
+          employees: [],
+          allEmployees: false,
+          targetAccount: undefined,
+          scheduledAt: undefined,
           createdAt: Date.now(),
         },
         newContentFile,
       );
       await loadContent();
       setNewContentFile(null);
-      setNewContentCaption('');
-      setNewContentEmployees(new Set());
-      setNewContentAll(false);
-      setNewContentTarget('');
-      setNewContentScheduledAt('');
       if (contentFileRef.current) contentFileRef.current.value = '';
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not upload reel.');
@@ -835,6 +827,47 @@ export default function App() {
   async function handleDeleteContent(id: string) {
     await deleteContent(id);
     await loadContent();
+  }
+
+  function openScheduleModal(reel: ContentReel) {
+    setScheduleReel(reel);
+    setNewContentCaption(reel.caption ?? '');
+    setNewContentEmployees(new Set(reel.employees ?? []));
+    setNewContentAll(Boolean(reel.allEmployees));
+    setNewContentTarget(reel.targetAccount ?? '');
+    setNewContentScheduledAt(reel.scheduledAt ? toDatetimeLocal(reel.scheduledAt) : '');
+  }
+
+  function closeScheduleModal() {
+    setScheduleReel(null);
+    setNewContentCaption('');
+    setNewContentEmployees(new Set());
+    setNewContentAll(false);
+    setNewContentTarget('');
+    setNewContentScheduledAt('');
+  }
+
+  async function saveSchedule() {
+    if (!scheduleReel) return;
+    setSavingSchedule(true);
+    try {
+      await updateContent({
+        ...scheduleReel,
+        caption: newContentCaption,
+        employees: newContentAll ? [] : [...newContentEmployees],
+        allEmployees: newContentAll,
+        targetAccount: newContentTarget || undefined,
+        scheduledAt: newContentScheduledAt
+          ? new Date(newContentScheduledAt).getTime()
+          : undefined,
+      });
+      await loadContent();
+      closeScheduleModal();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not update content.');
+    } finally {
+      setSavingSchedule(false);
+    }
   }
 
   async function downloadReel(reel: ContentReel) {
@@ -1158,11 +1191,6 @@ export default function App() {
       list = list.filter(
         (reel) => reel.allEmployees || reel.employees.includes(contentEmployeeFilter),
       );
-    }
-    if (scheduleFilter) {
-      list = list
-        .filter((reel) => reel.scheduledAt && toDateKey(reel.scheduledAt) === scheduleFilter)
-        .sort((a, b) => (a.scheduledAt ?? 0) - (b.scheduledAt ?? 0));
     }
     return list;
   })();
@@ -2068,61 +2096,12 @@ export default function App() {
                     </span>
                   </label>
 
-                  <textarea
-                    className="bio-form__textarea"
-                    placeholder="Write a caption…"
-                    value={newContentCaption}
-                    onChange={(e) => setNewContentCaption(e.target.value)}
-                    rows={3}
-                  />
+                  <p className="content-upload__note">
+                    After uploading, use the 🕑 button on each {contentTab === 'image' ? 'image' : 'reel'} to
+                    set the caption, schedule and assign it.
+                  </p>
 
-                  <label className="cred-field">
-                    <span className="cred-field__label">Schedule date &amp; time (optional)</span>
-                    <input
-                      type="datetime-local"
-                      className="cred-form__input"
-                      value={newContentScheduledAt}
-                      onChange={(e) => setNewContentScheduledAt(e.target.value)}
-                    />
-                  </label>
-
-                  <AssignmentPicker
-                    employees={employees}
-                    selected={newContentEmployees}
-                    all={newContentAll}
-                    onToggle={toggleContentEmployee}
-                    onAllChange={setNewContentAll}
-                  />
-
-                  {(newContentAll || newContentEmployees.size > 0) && (
-                    <label className="cred-field">
-                      <span className="cred-field__label">
-                        Instagram account to post on (optional)
-                      </span>
-                      <select
-                        className="cred-form__input"
-                        value={newContentTarget}
-                        onChange={(e) => setNewContentTarget(e.target.value)}
-                      >
-                        <option value="">No specific account</option>
-                        {contentTargetAccounts.map((a) => (
-                          <option key={a.username} value={a.username}>
-                            @{a.username}
-                            {a.owner ? ` · ${a.owner}` : ''}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  )}
-
-                  <button
-                    type="submit"
-                    disabled={
-                      uploadingContent ||
-                      !newContentFile ||
-                      (!newContentAll && newContentEmployees.size === 0)
-                    }
-                  >
+                  <button type="submit" disabled={uploadingContent || !newContentFile}>
                     {uploadingContent
                       ? 'Uploading…'
                       : contentTab === 'image'
@@ -2181,6 +2160,17 @@ export default function App() {
                         >
                           ↓
                         </button>
+                        {isAdmin && (
+                          <button
+                            type="button"
+                            className={`reel-cell__btn ${reel.scheduledAt ? 'reel-cell__btn--scheduled' : ''}`}
+                            onClick={() => openScheduleModal(reel)}
+                            title="Schedule & assign"
+                            aria-label="Schedule and assign"
+                          >
+                            🕑
+                          </button>
+                        )}
                         {isAdmin && (
                           <button
                             type="button"
@@ -2740,6 +2730,89 @@ export default function App() {
               </p>
               <AccountCredentials account={selectedAccount} onSave={handleSaveCredentials} />
             </div>
+          </div>
+        )}
+
+        {scheduleReel && (
+          <div className="modal" onClick={closeScheduleModal}>
+            <form
+              className="modal__card"
+              onClick={(e) => e.stopPropagation()}
+              onSubmit={(e) => {
+                e.preventDefault();
+                saveSchedule();
+              }}
+            >
+              <div className="modal__head">
+                <h3>Schedule &amp; assign {scheduleReel.mediaType === 'image' ? 'image' : 'reel'}</h3>
+                <button
+                  type="button"
+                  className="modal__close"
+                  onClick={closeScheduleModal}
+                  aria-label="Close"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="schedule-modal__body">
+                <textarea
+                  className="bio-form__textarea"
+                  placeholder="Write a caption…"
+                  value={newContentCaption}
+                  onChange={(e) => setNewContentCaption(e.target.value)}
+                  rows={3}
+                />
+
+                <label className="cred-field">
+                  <span className="cred-field__label">Schedule date &amp; time (optional)</span>
+                  <input
+                    type="datetime-local"
+                    className="cred-form__input"
+                    value={newContentScheduledAt}
+                    onChange={(e) => setNewContentScheduledAt(e.target.value)}
+                  />
+                </label>
+
+                <AssignmentPicker
+                  employees={employees}
+                  selected={newContentEmployees}
+                  all={newContentAll}
+                  onToggle={toggleContentEmployee}
+                  onAllChange={setNewContentAll}
+                />
+
+                {(newContentAll || newContentEmployees.size > 0) && (
+                  <label className="cred-field">
+                    <span className="cred-field__label">
+                      Instagram account to post on (optional)
+                    </span>
+                    <select
+                      className="cred-form__input"
+                      value={newContentTarget}
+                      onChange={(e) => setNewContentTarget(e.target.value)}
+                    >
+                      <option value="">No specific account</option>
+                      {contentTargetAccounts.map((a) => (
+                        <option key={a.username} value={a.username}>
+                          @{a.username}
+                          {a.owner ? ` · ${a.owner}` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+              </div>
+
+              <div className="schedule-modal__actions">
+                <button type="button" className="btn btn--ghost" onClick={closeScheduleModal}>
+                  Cancel
+                </button>
+                <button type="submit" disabled={savingSchedule}>
+                  {savingSchedule ? 'Saving…' : 'Save'}
+                </button>
+              </div>
+            </form>
           </div>
         )}
 

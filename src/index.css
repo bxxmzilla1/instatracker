@@ -2585,6 +2585,35 @@ button:disabled {
   background: #dc2626;
 }
 
+.reel-cell__btn--scheduled {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.reel-cell__btn--scheduled:hover {
+  background: var(--accent-hover, var(--accent));
+}
+
+.content-upload__note {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.schedule-modal__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  margin-top: 0.5rem;
+}
+
+.schedule-modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  margin-top: 1rem;
+}
+
 @media (max-width: 640px) {
   .reels-grid {
     grid-template-columns: repeat(2, 1fr);

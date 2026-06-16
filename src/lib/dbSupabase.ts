@@ -492,6 +492,20 @@ export async function addContent(reel: ContentReel, file?: Blob): Promise<void> 
   if (error) throw new Error(error.message);
 }
 
+export async function updateContent(reel: ContentReel): Promise<void> {
+  const { error } = await client()
+    .from('content')
+    .update({
+      caption: reel.caption,
+      employees: reel.employees,
+      all_employees: reel.allEmployees,
+      target_account: reel.targetAccount ?? null,
+      scheduled_at: reel.scheduledAt ?? null,
+    })
+    .eq('id', reel.id);
+  if (error) throw new Error(error.message);
+}
+
 export async function deleteContent(id: string): Promise<void> {
   const { error } = await client().from('content').delete().eq('id', id);
   if (error) throw new Error(error.message);

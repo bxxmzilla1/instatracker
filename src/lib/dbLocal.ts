@@ -286,6 +286,20 @@ export async function addContent(reel: ContentReel, file?: Blob): Promise<void> 
   await db.put('content', record);
 }
 
+export async function updateContent(reel: ContentReel): Promise<void> {
+  const db = await getDb();
+  const existing = await db.get('content', reel.id);
+  if (!existing) return;
+  await db.put('content', {
+    ...existing,
+    caption: reel.caption,
+    employees: reel.employees,
+    allEmployees: reel.allEmployees,
+    targetAccount: reel.targetAccount,
+    scheduledAt: reel.scheduledAt,
+  });
+}
+
 export async function deleteContent(id: string): Promise<void> {
   const db = await getDb();
   await db.delete('content', id);
