@@ -633,11 +633,10 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     const linked = proxyLinkedAccounts(p);
     const acctNames = linked.length > 0 ? linked.map((h) => `@${h}`).join(', ') : undefined;
     const tag = p.label?.trim();
-    const host =
-      p.host && p.port
-        ? `${p.type || 'http'} · ${p.host}:${p.port}`
-        : p.raw || p.rotatingLink || p.id;
-    const parts = [owners || undefined, acctNames, tag || undefined, host].filter(Boolean);
+    const type = p.type || 'http';
+    const endpoint =
+      p.host && p.port ? `${p.host}:${p.port}` : p.raw || p.rotatingLink || p.id;
+    const parts = [owners || undefined, tag || undefined, type, endpoint, acctNames].filter(Boolean);
     return parts.join(' · ');
   }
 
