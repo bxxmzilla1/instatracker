@@ -8,6 +8,8 @@ interface CredentialValues {
   loginPhone: string;
   loginPassword: string;
   authSecret: string;
+  igUserId: string;
+  igAccessToken: string;
 }
 
 interface Props {
@@ -36,6 +38,8 @@ export function AccountCredentials({ account, onSave }: Props) {
   const [loginPhone, setLoginPhone] = useState(account.loginPhone ?? '');
   const [loginPassword, setLoginPassword] = useState(account.loginPassword ?? '');
   const [authSecret, setAuthSecret] = useState(account.authSecret ?? '');
+  const [igUserId, setIgUserId] = useState(account.igUserId ?? '');
+  const [igAccessToken, setIgAccessToken] = useState(account.igAccessToken ?? '');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [now, setNow] = useState(() => Date.now());
@@ -47,6 +51,8 @@ export function AccountCredentials({ account, onSave }: Props) {
     setLoginPhone(account.loginPhone ?? '');
     setLoginPassword(account.loginPassword ?? '');
     setAuthSecret(account.authSecret ?? '');
+    setIgUserId(account.igUserId ?? '');
+    setIgAccessToken(account.igAccessToken ?? '');
     setSaved(false);
   }, [
     account.username,
@@ -55,6 +61,8 @@ export function AccountCredentials({ account, onSave }: Props) {
     account.loginPhone,
     account.loginPassword,
     account.authSecret,
+    account.igUserId,
+    account.igAccessToken,
   ]);
 
   useEffect(() => {
@@ -86,6 +94,8 @@ export function AccountCredentials({ account, onSave }: Props) {
         loginPhone: loginPhone.trim(),
         loginPassword,
         authSecret: authSecret.trim(),
+        igUserId: igUserId.trim(),
+        igAccessToken: igAccessToken.trim(),
       });
       setSaved(true);
     } finally {
@@ -200,6 +210,41 @@ export function AccountCredentials({ account, onSave }: Props) {
           </div>
         )}
       </div>
+
+      <div className="cred-divider">
+        <span>Analytics API (Instagram Graph)</span>
+      </div>
+
+      <label className="cred-field">
+        <span className="cred-field__label">IG User ID</span>
+        <input
+          className="cred-form__input"
+          placeholder="Instagram Business/Creator user ID"
+          value={igUserId}
+          onChange={(e) => {
+            setIgUserId(e.target.value);
+            setSaved(false);
+          }}
+          autoComplete="off"
+          spellCheck={false}
+          inputMode="numeric"
+        />
+      </label>
+
+      <label className="cred-field">
+        <span className="cred-field__label">API token</span>
+        <input
+          className="cred-form__input"
+          placeholder="Long-lived Graph API access token"
+          value={igAccessToken}
+          onChange={(e) => {
+            setIgAccessToken(e.target.value);
+            setSaved(false);
+          }}
+          autoComplete="off"
+          spellCheck={false}
+        />
+      </label>
 
       <button type="submit" disabled={saving}>
         {saving ? 'Saving…' : saved ? 'Saved ✓' : 'Save credentials'}

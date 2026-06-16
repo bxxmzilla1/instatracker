@@ -37,6 +37,8 @@ interface AccountRow {
   login_phone: string | null;
   login_password: string | null;
   auth_secret: string | null;
+  ig_user_id: string | null;
+  ig_access_token: string | null;
   owner: string | null;
   banned: boolean | null;
   banned_at: number | null;
@@ -81,6 +83,8 @@ function toAccount(row: AccountRow): TrackedAccount {
     loginPhone: row.login_phone ?? undefined,
     loginPassword: row.login_password ?? undefined,
     authSecret: row.auth_secret ?? undefined,
+    igUserId: row.ig_user_id ?? undefined,
+    igAccessToken: row.ig_access_token ?? undefined,
     owner: row.owner ?? undefined,
     banned: row.banned ?? undefined,
     bannedAt: row.banned_at ?? undefined,
@@ -105,6 +109,8 @@ function fromAccount(account: TrackedAccount): AccountRow {
     login_phone: account.loginPhone ?? null,
     login_password: account.loginPassword ?? null,
     auth_secret: account.authSecret ?? null,
+    ig_user_id: account.igUserId ?? null,
+    ig_access_token: account.igAccessToken ?? null,
     owner: account.owner ?? null,
     banned: account.banned ?? false,
     banned_at: account.bannedAt ?? null,

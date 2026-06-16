@@ -2,6 +2,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 're
 import { AddAccountForm } from './components/AddAccountForm';
 import { AccountCard } from './components/AccountCard';
 import { AccountCredentials } from './components/AccountCredentials';
+import { AccountInsights } from './components/AccountInsights';
 import { AssignmentPicker } from './components/AssignmentPicker';
 import { BlueskySection } from './components/BlueskySection';
 import { CopyButton } from './components/CopyButton';
@@ -415,6 +416,8 @@ export default function App() {
         loginPhone: existing?.loginPhone,
         loginPassword: existing?.loginPassword,
         authSecret: existing?.authSecret,
+        igUserId: existing?.igUserId,
+        igAccessToken: existing?.igAccessToken,
         banned: existing?.banned,
         bannedAt: existing?.bannedAt,
       };
@@ -1012,6 +1015,8 @@ export default function App() {
     loginPhone: string;
     loginPassword: string;
     authSecret: string;
+    igUserId: string;
+    igAccessToken: string;
   }) {
     if (!selectedAccount) return;
     const updated: TrackedAccount = {
@@ -1021,6 +1026,8 @@ export default function App() {
       loginPhone: values.loginPhone || undefined,
       loginPassword: values.loginPassword || undefined,
       authSecret: values.authSecret || undefined,
+      igUserId: values.igUserId || undefined,
+      igAccessToken: values.igAccessToken || undefined,
     };
     await updateAccount(updated);
     await loadAccounts();
@@ -2528,6 +2535,25 @@ export default function App() {
                       <p className="profile-meta__value">{selectedAccount.bio}</p>
                     </div>
                   )}
+                </div>
+              )}
+
+              {selectedAccount.igUserId && selectedAccount.igAccessToken ? (
+                <AccountInsights
+                  key={selectedAccount.username}
+                  igUserId={selectedAccount.igUserId}
+                  accessToken={selectedAccount.igAccessToken}
+                />
+              ) : (
+                <div className="section-block">
+                  <h3>Analytics</h3>
+                  <p className="empty-note">
+                    Add this account's IG User ID and API token in{' '}
+                    <button type="button" className="link-btn" onClick={() => setShowCredentials(true)}>
+                      Credentials
+                    </button>{' '}
+                    to see followers, reach, views, demographics, and per-post insights.
+                  </p>
                 </div>
               )}
 

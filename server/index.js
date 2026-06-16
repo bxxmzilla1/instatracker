@@ -11,6 +11,7 @@ import {
 } from './instagram.js';
 import { fetchImage } from './image.js';
 import { relayThroughProxy } from './bskyProxy.js';
+import { relayGraphRequest } from './graph.js';
 
 dotenv.config();
 
@@ -70,6 +71,15 @@ app.post('/api/stories', async (req, res) => {
     res.json(data);
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/graph', async (req, res) => {
+  try {
+    const { status, data } = await relayGraphRequest(req.body ?? {});
+    res.status(status).json(data);
+  } catch (err) {
+    res.status(502).json({ error: err.message });
   }
 });
 

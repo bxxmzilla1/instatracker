@@ -186,6 +186,10 @@ export interface TrackedAccount {
   loginPhone?: string;
   loginPassword?: string;
   authSecret?: string;
+  /** Instagram Graph API user ID (Business/Creator account) for analytics. */
+  igUserId?: string;
+  /** Long-lived Instagram Graph API access token for analytics. */
+  igAccessToken?: string;
   banned?: boolean;
   bannedAt?: number;
 }

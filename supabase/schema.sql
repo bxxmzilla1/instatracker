@@ -23,6 +23,8 @@ alter table accounts add column if not exists login_email text;
 alter table accounts add column if not exists login_phone text;
 alter table accounts add column if not exists login_password text;
 alter table accounts add column if not exists auth_secret text;
+alter table accounts add column if not exists ig_user_id text;
+alter table accounts add column if not exists ig_access_token text;
 alter table accounts add column if not exists owner text;
 alter table accounts add column if not exists banned boolean default false;
 alter table accounts add column if not exists banned_at bigint;
