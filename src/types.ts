@@ -138,6 +138,8 @@ export interface Bio {
   text: string;
   employees: string[];
   allEmployees: boolean;
+  /** Instagram account usernames to push this bio to via Graph API. */
+  accounts: string[];
   createdAt: number;
 }
 

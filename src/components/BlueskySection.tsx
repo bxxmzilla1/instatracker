@@ -471,7 +471,13 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   async function submitBio(e: FormEvent) {
     e.preventDefault();
     if (!bioText.trim() || !assignValid('bio')) return;
-    await addBio({ id: crypto.randomUUID(), text: bioText, createdAt: Date.now(), ...assignPayload('bio') });
+    await addBio({
+      id: crypto.randomUUID(),
+      text: bioText,
+      createdAt: Date.now(),
+      accounts: [],
+      ...assignPayload('bio'),
+    });
     setBioText('');
     resetAssign('bio');
     await loadAll();

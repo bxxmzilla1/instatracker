@@ -669,6 +669,21 @@ code {
   font-size: 0.85rem;
 }
 
+.assign-dropdown__hint {
+  color: var(--faint);
+  font-size: 0.78rem;
+}
+
+.owner-tag--account {
+  background: rgba(124, 58, 237, 0.15);
+  color: #c4b5fd;
+}
+
+.bio-row__push {
+  font-weight: 600;
+  color: var(--accent);
+}
+
 .bio-list {
   display: flex;
   flex-direction: column;

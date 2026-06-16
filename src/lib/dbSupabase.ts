@@ -309,6 +309,7 @@ interface BioRow {
   text: string | null;
   employees: unknown;
   all_employees: boolean | null;
+  accounts: unknown;
   created_at: number | null;
 }
 
@@ -318,6 +319,7 @@ function toBio(row: BioRow): Bio {
     text: row.text ?? '',
     employees: Array.isArray(row.employees) ? (row.employees as string[]) : [],
     allEmployees: row.all_employees ?? false,
+    accounts: Array.isArray(row.accounts) ? (row.accounts as string[]) : [],
     createdAt: row.created_at ?? 0,
   };
 }
@@ -341,6 +343,7 @@ export async function addBio(bio: Bio): Promise<void> {
     text: bio.text,
     employees: bio.employees,
     all_employees: bio.allEmployees,
+    accounts: bio.accounts ?? [],
     created_at: bio.createdAt,
   });
   if (error) throw new Error(error.message);

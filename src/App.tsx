@@ -4,6 +4,7 @@ import { AccountCard } from './components/AccountCard';
 import { AccountCredentials } from './components/AccountCredentials';
 import { AccountInsights } from './components/AccountInsights';
 import { AssignmentPicker } from './components/AssignmentPicker';
+import { AccountPicker } from './components/AccountPicker';
 import { BlueskySection } from './components/BlueskySection';
 import { CopyButton } from './components/CopyButton';
 import { CopyField } from './components/CopyField';
@@ -46,7 +47,7 @@ import {
   updateAccount,
 } from './lib/db';
 import { parseProxyString } from './lib/proxy';
-import { publishContent } from './lib/igGraph';
+import { publishContent, updateAccountBiography, IG_BIO_MAX_LENGTH } from './lib/igGraph';
 import type { PublishProgress } from './lib/igGraph';
 import {
   formatDateLocal,
@@ -289,11 +290,14 @@ export default function App() {
     type: string;
     employees: Set<string>;
     allEmployees: boolean;
+    accounts?: Set<string>;
   } | null>(null);
   const [bios, setBios] = useState<Bio[]>([]);
   const [newBioText, setNewBioText] = useState('');
   const [newBioEmployees, setNewBioEmployees] = useState<Set<string>>(() => new Set());
   const [newBioAll, setNewBioAll] = useState(false);
+  const [newBioAccounts, setNewBioAccounts] = useState<Set<string>>(() => new Set());
+  const [pushingBioId, setPushingBioId] = useState<string | null>(null);
   const [ctas, setCtas] = useState<Cta[]>([]);
   const [newCtaText, setNewCtaText] = useState('');
   const [newCtaEmployees, setNewCtaEmployees] = useState<Set<string>>(() => new Set());
@@ -844,12 +848,14 @@ export default function App() {
         text: newBioText,
         employees: newBioAll ? [] : [...newBioEmployees],
         allEmployees: newBioAll,
+        accounts: [...newBioAccounts],
         createdAt: Date.now(),
       });
       await loadBios();
       setNewBioText('');
       setNewBioEmployees(new Set());
       setNewBioAll(false);
+      setNewBioAccounts(new Set());
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not add bio.');
     }
@@ -862,6 +868,65 @@ export default function App() {
       else next.add(username);
       return next;
     });
+  }
+
+  function toggleNewBioAccount(username: string) {
+    setNewBioAccounts((prev) => {
+      const next = new Set(prev);
+      if (next.has(username)) next.delete(username);
+      else next.add(username);
+      return next;
+    });
+  }
+
+  async function pushBioToInstagram(bio: Bio) {
+    if (!bio.accounts.length) {
+      setError('Assign at least one Instagram account to this bio.');
+      return;
+    }
+    const text = bio.text.trim();
+    if (!text) return;
+    if (text.length > IG_BIO_MAX_LENGTH) {
+      setError(`Instagram bios must be ${IG_BIO_MAX_LENGTH} characters or fewer.`);
+      return;
+    }
+
+    setPushingBioId(bio.id);
+    setError(null);
+    const failures: string[] = [];
+    let ok = 0;
+
+    for (const username of bio.accounts) {
+      const account = accounts.find((a) => a.username === username);
+      if (!account?.igUserId || !account?.igAccessToken) {
+        failures.push(`@${username}: no API token / User ID`);
+        continue;
+      }
+      try {
+        await updateAccountBiography(account.igUserId, account.igAccessToken, text);
+        ok += 1;
+        setAccounts((prev) =>
+          prev.map((a) => (a.username === username ? { ...a, bio: text } : a)),
+        );
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Update failed';
+        failures.push(`@${username}: ${message}`);
+      }
+    }
+
+    setPushingBioId(null);
+    if (ok > 0) {
+      setWarning(
+        failures.length > 0
+          ? `Bio updated on ${ok} account(s). ${failures.length} failed.`
+          : `Bio updated on ${ok} Instagram account(s).`,
+      );
+    }
+    if (failures.length > 0) {
+      setError(failures.join(' · '));
+    } else if (ok === 0) {
+      setError('No accounts were updated.');
+    }
   }
 
   async function handleDeleteBio(id: string) {
@@ -1261,6 +1326,7 @@ export default function App() {
       type: 'http',
       employees: new Set(bio.employees),
       allEmployees: bio.allEmployees,
+      accounts: new Set(bio.accounts ?? []),
     });
   }
 
@@ -1297,6 +1363,16 @@ export default function App() {
       if (next.has(username)) next.delete(username);
       else next.add(username);
       return { ...prev, employees: next };
+    });
+  }
+
+  function toggleEditBioAccount(username: string) {
+    setEditItem((prev) => {
+      if (!prev || prev.kind !== 'bio') return prev;
+      const next = new Set(prev.accounts ?? []);
+      if (next.has(username)) next.delete(username);
+      else next.add(username);
+      return { ...prev, accounts: next };
     });
   }
 
@@ -1345,6 +1421,7 @@ export default function App() {
           text: editItem.text,
           employees,
           allEmployees: editItem.allEmployees,
+          accounts: [...(editItem.accounts ?? [])],
           createdAt: editItem.createdAt,
         });
         await loadBios();
@@ -2150,7 +2227,11 @@ export default function App() {
                     value={newBioText}
                     onChange={(e) => setNewBioText(e.target.value)}
                     rows={4}
+                    maxLength={IG_BIO_MAX_LENGTH}
                   />
+                  <p className="cred-field__hint">
+                    {newBioText.length}/{IG_BIO_MAX_LENGTH} characters (Instagram limit)
+                  </p>
 
                   <AssignmentPicker
                     employees={employees}
@@ -2158,6 +2239,13 @@ export default function App() {
                     all={newBioAll}
                     onToggle={toggleBioEmployee}
                     onAllChange={setNewBioAll}
+                  />
+
+                  <AccountPicker
+                    accounts={accounts}
+                    selected={newBioAccounts}
+                    onToggle={toggleNewBioAccount}
+                    label="Instagram accounts to update"
                   />
 
                   <button
@@ -2196,11 +2284,27 @@ export default function App() {
                                 </span>
                               ))
                             )}
+                            {bio.accounts?.map((u) => (
+                              <span key={`acct-${u}`} className="owner-tag owner-tag--account">
+                                @{u}
+                              </span>
+                            ))}
                           </div>
                         )}
                       </div>
                       <div className="row-actions">
                         <CopyButton value={bio.text} title="Copy bio" />
+                        {isAdmin && bio.accounts.length > 0 && (
+                          <button
+                            type="button"
+                            className="row-edit bio-row__push"
+                            onClick={() => void pushBioToInstagram(bio)}
+                            disabled={pushingBioId === bio.id}
+                            title="Push bio to assigned Instagram accounts"
+                          >
+                            {pushingBioId === bio.id ? 'Pushing…' : 'Push'}
+                          </button>
+                        )}
                         {isAdmin && (
                           <>
                             <button
@@ -3293,12 +3397,20 @@ export default function App() {
                     />
                   </label>
                 ) : (
-                  <textarea
-                    className="bio-form__textarea"
-                    value={editItem.text}
-                    onChange={(e) => setEditItem({ ...editItem, text: e.target.value })}
-                    rows={4}
-                  />
+                  <>
+                    <textarea
+                      className="bio-form__textarea"
+                      value={editItem.text}
+                      onChange={(e) => setEditItem({ ...editItem, text: e.target.value })}
+                      rows={4}
+                      maxLength={editItem.kind === 'bio' ? IG_BIO_MAX_LENGTH : undefined}
+                    />
+                    {editItem.kind === 'bio' && (
+                      <p className="cred-field__hint">
+                        {editItem.text.length}/{IG_BIO_MAX_LENGTH} characters (Instagram limit)
+                      </p>
+                    )}
+                  </>
                 )}
 
                 <AssignmentPicker
@@ -3308,6 +3420,15 @@ export default function App() {
                   onToggle={toggleEditEmployee}
                   onAllChange={(all) => setEditItem({ ...editItem, allEmployees: all })}
                 />
+
+                {editItem.kind === 'bio' && (
+                  <AccountPicker
+                    accounts={accounts}
+                    selected={editItem.accounts ?? new Set()}
+                    onToggle={toggleEditBioAccount}
+                    label="Instagram accounts to update"
+                  />
+                )}
 
                 <button type="submit">Save changes</button>
               </div>

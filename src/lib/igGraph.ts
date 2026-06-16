@@ -35,6 +35,7 @@ export interface IgAccountProfile {
   id: string;
   username: string;
   name?: string;
+  biography?: string;
   followers_count?: number;
   follows_count?: number;
   media_count?: number;
@@ -115,6 +116,9 @@ interface IgMeResponse {
 }
 
 const GRAPH_HOST = 'https://graph.instagram.com';
+const FACEBOOK_GRAPH_HOST = 'https://graph.facebook.com';
+
+export const IG_BIO_MAX_LENGTH = 150;
 
 async function graphRequest<T>(
   path: string,
@@ -164,8 +168,30 @@ export async function getAccountProfile(
   accessToken: string,
 ): Promise<IgAccountProfile> {
   return graphRequest<IgAccountProfile>(`/${igUserId}`, accessToken, {
-    fields: 'id,username,name,followers_count,follows_count,media_count,profile_picture_url',
+    fields: 'id,username,name,biography,followers_count,follows_count,media_count,profile_picture_url',
   });
+}
+
+/** Update the public Instagram profile biography (max 150 characters). */
+export async function updateAccountBiography(
+  igUserId: string,
+  accessToken: string,
+  biography: string,
+): Promise<{ success: boolean }> {
+  const trimmed = biography.trim().slice(0, IG_BIO_MAX_LENGTH);
+  if (!trimmed) {
+    throw new InstagramApiError({
+      message: 'Biography cannot be empty',
+      type: 'BadRequest',
+      code: 400,
+    });
+  }
+  return graphRequest<{ success: boolean }>(
+    `/${igUserId}`,
+    accessToken,
+    { biography: trimmed },
+    { method: 'POST', host: FACEBOOK_GRAPH_HOST },
+  );
 }
 
 const ACCOUNT_INSIGHT_METRICS = [
