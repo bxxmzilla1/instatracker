@@ -2524,7 +2524,7 @@ button:disabled {
 /* Instagram-style media grid: thin lines between cells, media only */
 .reels-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 2px;
   background: var(--border);
   border: 1px solid var(--border);
@@ -2587,7 +2587,7 @@ button:disabled {
 
 @media (max-width: 640px) {
   .reels-grid {
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(2, 1fr);
   }
 }
 

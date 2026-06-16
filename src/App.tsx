@@ -2142,72 +2142,11 @@ export default function App() {
                     : contentTab === 'image'
                       ? 'Your images'
                       : 'Your reels'}
-                  {scheduleFilter && (
-                    <span className="content-filter__active"> · scheduled {scheduleFilter}</span>
-                  )}
                 </h2>
-                <div className="content-filter">
-                  {isAdmin && (
-                    <select
-                      className="content-filter__date"
-                      value={contentEmployeeFilter}
-                      onChange={(e) => setContentEmployeeFilter(e.target.value)}
-                      title="Filter by employee"
-                    >
-                      <option value="">All employees</option>
-                      {employees.map((emp) => (
-                        <option key={emp.username} value={emp.username}>
-                          {emp.username}
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                  <button
-                    type="button"
-                    className="content-filter__nav"
-                    onClick={() =>
-                      setScheduleFilter((prev) =>
-                        shiftDateKey(prev ?? toDateKey(Date.now()), -1),
-                      )
-                    }
-                    title="Previous day"
-                  >
-                    ‹
-                  </button>
-                  <input
-                    type="date"
-                    className="content-filter__date"
-                    value={scheduleFilter ?? ''}
-                    onChange={(e) => setScheduleFilter(e.target.value || null)}
-                  />
-                  <button
-                    type="button"
-                    className="content-filter__nav"
-                    onClick={() =>
-                      setScheduleFilter((prev) =>
-                        shiftDateKey(prev ?? toDateKey(Date.now()), 1),
-                      )
-                    }
-                    title="Next day"
-                  >
-                    ›
-                  </button>
-                  {scheduleFilter && (
-                    <button
-                      type="button"
-                      className="content-filter__clear"
-                      onClick={() => setScheduleFilter(null)}
-                    >
-                      All
-                    </button>
-                  )}
-                </div>
               </div>
               {displayedContent.length === 0 ? (
                 <p className="empty-note">
-                  {scheduleFilter
-                    ? `No ${contentTab === 'image' ? 'images' : 'reels'} scheduled for this date.`
-                    : isAdmin
+                  {isAdmin
                       ? `No ${contentTab === 'image' ? 'images' : 'reels'} yet. Upload one above and assign it to employees.`
                       : `No ${contentTab === 'image' ? 'image' : 'reel'} assigned to you yet.`}
                 </p>
