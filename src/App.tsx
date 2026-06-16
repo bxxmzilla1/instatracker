@@ -121,6 +121,7 @@ export default function App() {
     | 'cta'
     | 'story'
     | 'content'
+    | 'schedule'
   >('dashboard');
   const [showCredentials, setShowCredentials] = useState(false);
   const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
@@ -1139,7 +1140,9 @@ export default function App() {
                   ? 'Stories'
                   : view === 'content'
                     ? 'Content'
-                    : 'Accounts';
+                    : view === 'schedule'
+                      ? 'Schedule'
+                      : 'Accounts';
 
   const showAddForm = view === 'accounts';
 
@@ -1162,6 +1165,36 @@ export default function App() {
         .sort((a, b) => (a.scheduledAt ?? 0) - (b.scheduledAt ?? 0));
     }
     return list;
+  })();
+
+  const scheduledGroups = (() => {
+    let scheduled = content.filter((c) => c.scheduledAt);
+    if (isAdmin && contentEmployeeFilter) {
+      scheduled = scheduled.filter(
+        (c) => c.allEmployees || c.employees.includes(contentEmployeeFilter),
+      );
+    }
+    scheduled = scheduled.sort((a, b) => (a.scheduledAt ?? 0) - (b.scheduledAt ?? 0));
+    const groups: { key: string; label: string; items: ContentReel[] }[] = [];
+    for (const item of scheduled) {
+      const key = toDateKey(item.scheduledAt as number);
+      let group = groups.find((g) => g.key === key);
+      if (!group) {
+        group = {
+          key,
+          label: new Date(item.scheduledAt as number).toLocaleDateString([], {
+            weekday: 'long',
+            month: 'long',
+            day: 'numeric',
+            year: 'numeric',
+          }),
+          items: [],
+        };
+        groups.push(group);
+      }
+      group.items.push(item);
+    }
+    return groups;
   })();
 
   const searchWords = accountSearch.trim().toLowerCase().split(/\s+/).filter(Boolean);
@@ -1328,6 +1361,22 @@ export default function App() {
               <path d="M10 9l5 3-5 3z" fill="currentColor" stroke="none" />
             </svg>
             Content
+          </button>
+
+          <button
+            type="button"
+            className={view === 'schedule' ? 'nav-item nav-item--active' : 'nav-item'}
+            onClick={() => {
+              setSelectedEmployee(null);
+              setView('schedule');
+            }}
+          >
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
+              <rect x="3" y="5" width="18" height="16" rx="2" />
+              <path d="M3 9h18" />
+              <path d="M8 3v4M16 3v4" />
+            </svg>
+            Schedule
           </button>
 
           {isAdmin && (
@@ -2163,19 +2212,19 @@ export default function App() {
                       : `No ${contentTab === 'image' ? 'image' : 'reel'} assigned to you yet.`}
                 </p>
               ) : (
-                <div className="content-grid">
+                <div className="reels-grid">
                   {displayedContent.map((reel) => (
-                    <div key={reel.id} className="content-tile">
+                    <div key={reel.id} className="reel-cell">
                       {reel.mediaType === 'image' ? (
                         <img
-                          className="content-tile__video"
+                          className="reel-cell__media"
                           src={reel.videoUrl}
                           alt={reel.caption || 'Image'}
                           loading="lazy"
                         />
                       ) : (
                         <video
-                          className="content-tile__video"
+                          className="reel-cell__media"
                           src={reel.videoUrl}
                           autoPlay
                           loop
@@ -2183,60 +2232,27 @@ export default function App() {
                           playsInline
                         />
                       )}
-                      {reel.scheduledAt && (
-                        <p className="content-tile__schedule">
-                          🗓 {new Date(reel.scheduledAt).toLocaleString([], {
-                            month: 'short',
-                            day: 'numeric',
-                            hour: '2-digit',
-                            minute: '2-digit',
-                          })}
-                        </p>
-                      )}
-                      {reel.targetAccount && (
-                        <p className="content-tile__target">📲 Post on @{reel.targetAccount}</p>
-                      )}
-                      {reel.caption ? (
-                        <p className="content-tile__caption">{reel.caption}</p>
-                      ) : (
-                        <p className="content-tile__caption content-tile__caption--empty">
-                          No Caption
-                        </p>
-                      )}
-                      <div className="content-tile__meta">
+                      <div className="reel-cell__overlay">
+                        <button
+                          type="button"
+                          className="reel-cell__btn"
+                          onClick={() => downloadReel(reel)}
+                          title={reel.mediaType === 'image' ? 'Download image' : 'Download reel'}
+                          aria-label="Download"
+                        >
+                          ↓
+                        </button>
                         {isAdmin && (
-                          <div className="content-tile__assign">
-                            {reel.allEmployees ? (
-                              <span className="owner-tag">All employees</span>
-                            ) : (
-                              reel.employees.map((u) => (
-                                <span key={u} className="owner-tag">
-                                  {u}
-                                </span>
-                              ))
-                            )}
-                          </div>
-                        )}
-                        <div className="content-tile__actions">
                           <button
                             type="button"
-                            className="content-tile__download"
-                            onClick={() => downloadReel(reel)}
-                            title={reel.mediaType === 'image' ? 'Download image' : 'Download reel'}
+                            className="reel-cell__btn reel-cell__btn--danger"
+                            onClick={() => handleDeleteContent(reel.id)}
+                            title={reel.mediaType === 'image' ? 'Delete image' : 'Delete reel'}
+                            aria-label="Delete"
                           >
-                            ↓ Download
+                            ✕
                           </button>
-                          {isAdmin && (
-                            <button
-                              type="button"
-                              className="license-row__delete"
-                              onClick={() => handleDeleteContent(reel.id)}
-                              title={reel.mediaType === 'image' ? 'Delete image' : 'Delete reel'}
-                            >
-                              ✕
-                            </button>
-                          )}
-                        </div>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -2244,6 +2260,130 @@ export default function App() {
               )}
             </section>
           </>
+        )}
+
+        {view === 'schedule' && (
+          <section className="panel">
+            <div className="panel-head">
+              <h2>
+                Scheduled
+                <span className="content-filter__active">
+                  {' '}
+                  · {scheduledGroups.reduce((n, g) => n + g.items.length, 0)} item
+                  {scheduledGroups.reduce((n, g) => n + g.items.length, 0) === 1 ? '' : 's'}
+                </span>
+              </h2>
+              {isAdmin && (
+                <div className="content-filter">
+                  <select
+                    className="content-filter__date"
+                    value={contentEmployeeFilter}
+                    onChange={(e) => setContentEmployeeFilter(e.target.value)}
+                    title="Filter by employee"
+                  >
+                    <option value="">All employees</option>
+                    {employees.map((emp) => (
+                      <option key={emp.username} value={emp.username}>
+                        {emp.username}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+
+            {scheduledGroups.length === 0 ? (
+              <p className="empty-note">
+                Nothing scheduled yet. Add a schedule date when uploading reels or images.
+              </p>
+            ) : (
+              <div className="schedule-groups">
+                {scheduledGroups.map((group) => (
+                  <div key={group.key} className="schedule-group">
+                    <h3 className="schedule-group__date">{group.label}</h3>
+                    <div className="schedule-list">
+                      {group.items.map((reel) => (
+                        <div key={reel.id} className="schedule-card">
+                          {reel.mediaType === 'image' ? (
+                            <img
+                              className="schedule-card__thumb"
+                              src={reel.videoUrl}
+                              alt={reel.caption || 'Image'}
+                              loading="lazy"
+                            />
+                          ) : (
+                            <video
+                              className="schedule-card__thumb"
+                              src={reel.videoUrl}
+                              muted
+                              playsInline
+                            />
+                          )}
+                          <div className="schedule-card__body">
+                            <div className="schedule-card__top">
+                              <span className="schedule-card__time">
+                                🗓{' '}
+                                {new Date(reel.scheduledAt as number).toLocaleTimeString([], {
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                })}
+                              </span>
+                              <span className="schedule-card__type">
+                                {reel.mediaType === 'image' ? 'Image' : 'Reel'}
+                              </span>
+                            </div>
+                            {reel.caption ? (
+                              <p className="schedule-card__caption">{reel.caption}</p>
+                            ) : (
+                              <p className="schedule-card__caption schedule-card__caption--empty">
+                                No caption
+                              </p>
+                            )}
+                            {reel.targetAccount && (
+                              <p className="schedule-card__target">📲 Post on @{reel.targetAccount}</p>
+                            )}
+                            <div className="schedule-card__assign">
+                              {reel.allEmployees ? (
+                                <span className="owner-tag">All employees</span>
+                              ) : reel.employees.length > 0 ? (
+                                reel.employees.map((u) => (
+                                  <span key={u} className="owner-tag">
+                                    {u}
+                                  </span>
+                                ))
+                              ) : (
+                                <span className="owner-tag owner-tag--muted">Unassigned</span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="schedule-card__actions">
+                            <button
+                              type="button"
+                              className="content-tile__download"
+                              onClick={() => downloadReel(reel)}
+                              title={reel.mediaType === 'image' ? 'Download image' : 'Download reel'}
+                            >
+                              ↓ Download
+                            </button>
+                            {isAdmin && (
+                              <button
+                                type="button"
+                                className="license-row__delete"
+                                onClick={() => handleDeleteContent(reel.id)}
+                                title={reel.mediaType === 'image' ? 'Delete image' : 'Delete reel'}
+                              >
+                                ✕
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
         )}
 
         {view === 'proxy' && (
