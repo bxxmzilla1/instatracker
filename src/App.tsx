@@ -76,6 +76,12 @@ function toDateKey(ms: number): string {
   return `${d.getFullYear()}-${m}-${day}`;
 }
 
+function shiftDateKey(key: string, days: number): string {
+  const d = new Date(`${key}T00:00`);
+  d.setDate(d.getDate() + days);
+  return toDateKey(d.getTime());
+}
+
 function publishProgressPercent(p: PublishProgress): number {
   switch (p.stage) {
     case 'creating':
@@ -227,6 +233,7 @@ export default function App() {
   const [savingAssign, setSavingAssign] = useState(false);
   const [publishProgress, setPublishProgress] = useState<PublishProgress | null>(null);
   const [historyReel, setHistoryReel] = useState<ContentReel | null>(null);
+  const [scheduleViewDate, setScheduleViewDate] = useState<string>(() => toDateKey(Date.now()));
   const contentRef = useRef<ContentReel[]>([]);
   const accountsRef = useRef<TrackedAccount[]>([]);
   const schedulerBusyRef = useRef(false);
@@ -1388,35 +1395,26 @@ export default function App() {
     return list;
   })();
 
-  const scheduledGroups = (() => {
-    let scheduled = content.filter((c) => c.scheduledAt);
+  const scheduledForDate = (() => {
+    let scheduled = content.filter(
+      (c) => c.scheduledAt && toDateKey(c.scheduledAt) === scheduleViewDate,
+    );
     if (isAdmin && contentEmployeeFilter) {
       scheduled = scheduled.filter(
         (c) => c.allEmployees || c.employees.includes(contentEmployeeFilter),
       );
     }
-    scheduled = scheduled.sort((a, b) => (a.scheduledAt ?? 0) - (b.scheduledAt ?? 0));
-    const groups: { key: string; label: string; items: ContentReel[] }[] = [];
-    for (const item of scheduled) {
-      const key = toDateKey(item.scheduledAt as number);
-      let group = groups.find((g) => g.key === key);
-      if (!group) {
-        group = {
-          key,
-          label: new Date(item.scheduledAt as number).toLocaleDateString([], {
-            weekday: 'long',
-            month: 'long',
-            day: 'numeric',
-            year: 'numeric',
-          }),
-          items: [],
-        };
-        groups.push(group);
-      }
-      group.items.push(item);
-    }
-    return groups;
+    return scheduled.sort((a, b) => (a.scheduledAt ?? 0) - (b.scheduledAt ?? 0));
   })();
+
+  const scheduleViewLabel = new Date(`${scheduleViewDate}T00:00`).toLocaleDateString([], {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  });
+
+  const isScheduleViewToday = scheduleViewDate === toDateKey(Date.now());
 
   const searchWords = accountSearch.trim().toLowerCase().split(/\s+/).filter(Boolean);
   const filteredAccounts =
@@ -2365,11 +2363,7 @@ export default function App() {
                           </button>
                           <button
                             type="button"
-                            className={`reel-cell__action ${
-                              reel.scheduledAt
-                                ? 'reel-cell__action--active'
-                                : 'reel-cell__action--secondary'
-                            }`}
+                            className="reel-cell__action reel-cell__action--secondary"
                             onClick={() => openScheduleModal(reel, 'schedule')}
                           >
                             Schedule
@@ -2391,17 +2385,17 @@ export default function App() {
 
         {view === 'schedule' && (
           <section className="panel">
-            <div className="panel-head">
+            <div className="panel-head schedule-head">
               <h2>
-                Scheduled
+                {scheduleViewLabel}
+                {isScheduleViewToday && <span className="schedule-head__today"> · Today</span>}
                 <span className="content-filter__active">
                   {' '}
-                  · {scheduledGroups.reduce((n, g) => n + g.items.length, 0)} item
-                  {scheduledGroups.reduce((n, g) => n + g.items.length, 0) === 1 ? '' : 's'}
+                  · {scheduledForDate.length} item{scheduledForDate.length === 1 ? '' : 's'}
                 </span>
               </h2>
-              {isAdmin && (
-                <div className="content-filter">
+              <div className="schedule-controls">
+                {isAdmin && (
                   <select
                     className="content-filter__date"
                     value={contentEmployeeFilter}
@@ -2415,21 +2409,57 @@ export default function App() {
                       </option>
                     ))}
                   </select>
+                )}
+                <div className="schedule-datenav">
+                  <button
+                    type="button"
+                    className="content-filter__nav"
+                    onClick={() => setScheduleViewDate((d) => shiftDateKey(d, -1))}
+                    title="Previous day"
+                    aria-label="Previous day"
+                  >
+                    ‹
+                  </button>
+                  <input
+                    type="date"
+                    className="content-filter__date"
+                    value={scheduleViewDate}
+                    onChange={(e) =>
+                      setScheduleViewDate(e.target.value || toDateKey(Date.now()))
+                    }
+                    title="Pick a date"
+                  />
+                  <button
+                    type="button"
+                    className="content-filter__nav"
+                    onClick={() => setScheduleViewDate((d) => shiftDateKey(d, 1))}
+                    title="Next day"
+                    aria-label="Next day"
+                  >
+                    ›
+                  </button>
+                  {!isScheduleViewToday && (
+                    <button
+                      type="button"
+                      className="content-filter__clear"
+                      onClick={() => setScheduleViewDate(toDateKey(Date.now()))}
+                    >
+                      Today
+                    </button>
+                  )}
                 </div>
-              )}
+              </div>
             </div>
 
-            {scheduledGroups.length === 0 ? (
+            {scheduledForDate.length === 0 ? (
               <p className="empty-note">
-                Nothing scheduled yet. Add a schedule date when uploading reels or images.
+                Nothing scheduled for {scheduleViewLabel}.
               </p>
             ) : (
               <div className="schedule-groups">
-                {scheduledGroups.map((group) => (
-                  <div key={group.key} className="schedule-group">
-                    <h3 className="schedule-group__date">{group.label}</h3>
-                    <div className="schedule-list">
-                      {group.items.map((reel) => (
+                <div className="schedule-group">
+                  <div className="schedule-list">
+                    {scheduledForDate.map((reel) => (
                         <div key={reel.id} className="schedule-card">
                           {reel.mediaType === 'image' ? (
                             <img
@@ -2519,9 +2549,8 @@ export default function App() {
                           </div>
                         </div>
                       ))}
-                    </div>
                   </div>
-                ))}
+                </div>
               </div>
             )}
           </section>

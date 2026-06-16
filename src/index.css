@@ -2810,6 +2810,29 @@ button:disabled {
 }
 
 /* Schedule view */
+.schedule-head {
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.schedule-head__today {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.schedule-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.schedule-datenav {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
 .schedule-groups {
   display: flex;
   flex-direction: column;
