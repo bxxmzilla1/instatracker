@@ -53,7 +53,7 @@ export function Dashboard({
   const monthGain = bars.reduce((sum, bar) => (bar.isFuture ? sum : sum + bar.value), 0);
   const hasMonthGain = bars.some((bar) => !bar.isFuture && bar.value !== 0);
 
-  const chartColor = metric === 'views' ? '#d4af37' : '#b8860b';
+  const chartColor = metric === 'views' ? 'var(--chart-views)' : 'var(--chart-followers)';
 
   const selectedBar = selectedDay ? bars.find((b) => b.day === selectedDay) ?? null : null;
   const metricNoun = metric === 'views' ? 'views' : 'followers';

@@ -18,7 +18,7 @@ const LADDER = [
 
 export function BarChart({
   bars,
-  color = '#d4af37',
+  color = 'var(--chart-views)',
   markedDay,
   markedLabel = 'added',
   showValues,

@@ -18,6 +18,8 @@
   --accent-hover: #e6c453;
   --accent-soft: rgba(212, 175, 55, 0.14);
   --on-accent: #0a0a0a;
+  --chart-views: #d4af37;
+  --chart-followers: #b8860b;
   --green: #4ade80;
   --red: #f87171;
   --radius: 14px;
@@ -499,7 +501,7 @@ code {
 }
 
 .copy-field:hover {
-  background: rgba(212, 175, 55, 0.1);
+  background: var(--accent-soft);
   border-color: var(--border-strong);
 }
 
@@ -2001,12 +2003,12 @@ button:disabled {
 }
 
 .bar-chart__col--clickable:hover .bar-chart__bar-wrap {
-  background: rgba(212, 175, 55, 0.08);
+  background: var(--accent-soft);
 }
 
 .bar-chart__col--clickable:hover .bar-chart__bar {
   filter: brightness(1.15);
-  box-shadow: 0 0 12px rgba(212, 175, 55, 0.45);
+  box-shadow: 0 0 12px var(--accent-soft);
 }
 
 .bar-chart__col--clickable:hover .bar-chart__value {
@@ -2425,7 +2427,7 @@ button:disabled {
 
 .panel-add-toggle:hover {
   background: var(--accent);
-  color: #000;
+  color: var(--on-accent);
 }
 
 .content-upload {
@@ -2643,6 +2645,63 @@ button:disabled {
 .platform-switch__btn--active {
   background: var(--accent);
   color: var(--on-accent);
+}
+
+/* ---------------------------------------------------------------------------
+   Instagram theme (Insights-style magenta / purple on black)
+--------------------------------------------------------------------------- */
+.app-shell--instagram {
+  --bg: #000000;
+  --surface: #0a0a0a;
+  --surface-2: #121212;
+  --surface-3: #1a1a1a;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(225, 48, 108, 0.38);
+  --text: #ffffff;
+  --muted: #a8a8a8;
+  --faint: #737373;
+  --accent: #e1306c;
+  --accent-hover: #f04f82;
+  --accent-soft: rgba(225, 48, 108, 0.16);
+  --on-accent: #ffffff;
+  --chart-views: #e1306c;
+  --chart-followers: #833ab4;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.app-shell--instagram .sidebar {
+  background: #000000;
+  border-right-color: rgba(255, 255, 255, 0.08);
+}
+
+.app-shell--instagram .panel {
+  background: var(--surface);
+  border-color: var(--border);
+  border-radius: 16px;
+}
+
+.app-shell--instagram .account-card,
+.app-shell--instagram .stat-card,
+.app-shell--instagram .highlight-card,
+.app-shell--instagram .employee-card,
+.app-shell--instagram .content-tile {
+  background: var(--surface-2);
+  border-color: var(--border);
+}
+
+.app-shell--instagram .account-card--selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.app-shell--instagram .owner-tag {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.app-shell--instagram .delta--up {
+  color: var(--accent);
 }
 
 /* ---------------------------------------------------------------------------

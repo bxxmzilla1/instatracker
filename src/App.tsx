@@ -1172,7 +1172,7 @@ export default function App() {
   );
 
   return (
-    <div className="app-shell">
+    <div className="app-shell app-shell--instagram">
       <aside className="sidebar">
         <div className="sidebar__brand">
           <span className="sidebar__logo" aria-hidden>
