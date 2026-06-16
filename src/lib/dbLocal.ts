@@ -260,6 +260,7 @@ export async function getContent(employee?: string): Promise<ContentReel[]> {
       id: r.id,
       caption: r.caption,
       videoUrl: r.blob ? URL.createObjectURL(r.blob) : (r.videoUrl ?? ''),
+      mediaType: r.mediaType ?? 'reel',
       employees: r.employees,
       allEmployees: r.allEmployees,
       targetAccount: r.targetAccount,
@@ -273,6 +274,7 @@ export async function addContent(reel: ContentReel, file?: Blob): Promise<void> 
   const record: ContentRecord = {
     id: reel.id,
     caption: reel.caption,
+    mediaType: reel.mediaType ?? 'reel',
     employees: reel.employees,
     allEmployees: reel.allEmployees,
     targetAccount: reel.targetAccount,

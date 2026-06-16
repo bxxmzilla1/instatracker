@@ -176,6 +176,7 @@ export default function App() {
   const [newStoryEmployees, setNewStoryEmployees] = useState<Set<string>>(() => new Set());
   const [newStoryAll, setNewStoryAll] = useState(false);
   const [content, setContent] = useState<ContentReel[]>([]);
+  const [contentTab, setContentTab] = useState<'reel' | 'image'>('reel');
   const [newContentFile, setNewContentFile] = useState<File | null>(null);
   const [newContentCaption, setNewContentCaption] = useState('');
   const [newContentEmployees, setNewContentEmployees] = useState<Set<string>>(() => new Set());
@@ -797,6 +798,7 @@ export default function App() {
           id: crypto.randomUUID(),
           caption: newContentCaption,
           videoUrl: '',
+          mediaType: contentTab,
           employees: newContentAll ? [] : [...newContentEmployees],
           allEmployees: newContentAll,
           targetAccount: newContentTarget || undefined,
@@ -1148,7 +1150,7 @@ export default function App() {
   );
 
   const displayedContent = (() => {
-    let list = content;
+    let list = content.filter((reel) => (reel.mediaType ?? 'reel') === contentTab);
     if (isAdmin && contentEmployeeFilter) {
       list = list.filter(
         (reel) => reel.allEmployees || reel.employees.includes(contentEmployeeFilter),
@@ -1954,16 +1956,41 @@ export default function App() {
 
         {view === 'content' && (
           <>
+            <div className="toggle-group content-tabs">
+              <button
+                type="button"
+                className={`toggle ${contentTab === 'reel' ? 'toggle--active' : ''}`}
+                onClick={() => {
+                  setContentTab('reel');
+                  setNewContentFile(null);
+                  if (contentFileRef.current) contentFileRef.current.value = '';
+                }}
+              >
+                Reels
+              </button>
+              <button
+                type="button"
+                className={`toggle ${contentTab === 'image' ? 'toggle--active' : ''}`}
+                onClick={() => {
+                  setContentTab('image');
+                  setNewContentFile(null);
+                  if (contentFileRef.current) contentFileRef.current.value = '';
+                }}
+              >
+                Images
+              </button>
+            </div>
+
             {isAdmin && (
               <section className="panel">
                 <div className="panel-head">
-                  <h2>Upload reel</h2>
+                  <h2>{contentTab === 'image' ? 'Upload image' : 'Upload reel'}</h2>
                   <button
                     type="button"
                     className={`panel-add-toggle ${openAddForms.has('content') ? 'panel-add-toggle--open' : ''}`}
                     onClick={() => toggleAddForm('content')}
-                    title={openAddForms.has('content') ? 'Hide' : 'Upload reel'}
-                    aria-label={openAddForms.has('content') ? 'Hide' : 'Upload reel'}
+                    title={openAddForms.has('content') ? 'Hide' : `Upload ${contentTab === 'image' ? 'image' : 'reel'}`}
+                    aria-label={openAddForms.has('content') ? 'Hide' : `Upload ${contentTab === 'image' ? 'image' : 'reel'}`}
                   >
                     {openAddForms.has('content') ? 'Hide' : 'Add'}
                   </button>
@@ -1980,11 +2007,15 @@ export default function App() {
                     <input
                       ref={contentFileRef}
                       type="file"
-                      accept="video/*"
+                      accept={contentTab === 'image' ? 'image/*' : 'video/*'}
                       onChange={(e) => setNewContentFile(e.target.files?.[0] ?? null)}
                     />
                     <span className="content-upload__hint">
-                      {newContentFile ? newContentFile.name : 'Choose a reel video (MP4/WebM)'}
+                      {newContentFile
+                        ? newContentFile.name
+                        : contentTab === 'image'
+                          ? 'Choose an image (JPG/PNG/WebP)'
+                          : 'Choose a reel video (MP4/WebM)'}
                     </span>
                   </label>
 
@@ -2043,7 +2074,11 @@ export default function App() {
                       (!newContentAll && newContentEmployees.size === 0)
                     }
                   >
-                    {uploadingContent ? 'Uploading…' : 'Upload reel'}
+                    {uploadingContent
+                      ? 'Uploading…'
+                      : contentTab === 'image'
+                        ? 'Upload image'
+                        : 'Upload reel'}
                   </button>
                 </form>
                 )}
@@ -2053,7 +2088,11 @@ export default function App() {
             <section className="panel">
               <div className="panel-head">
                 <h2>
-                  {isAdmin ? `Reels (${displayedContent.length})` : 'Your reels'}
+                  {isAdmin
+                    ? `${contentTab === 'image' ? 'Images' : 'Reels'} (${displayedContent.length})`
+                    : contentTab === 'image'
+                      ? 'Your images'
+                      : 'Your reels'}
                   {scheduleFilter && (
                     <span className="content-filter__active"> · scheduled {scheduleFilter}</span>
                   )}
@@ -2118,23 +2157,32 @@ export default function App() {
               {displayedContent.length === 0 ? (
                 <p className="empty-note">
                   {scheduleFilter
-                    ? 'No reels scheduled for this date.'
+                    ? `No ${contentTab === 'image' ? 'images' : 'reels'} scheduled for this date.`
                     : isAdmin
-                      ? 'No reels yet. Upload one above and assign it to employees.'
-                      : 'No reel assigned to you yet.'}
+                      ? `No ${contentTab === 'image' ? 'images' : 'reels'} yet. Upload one above and assign it to employees.`
+                      : `No ${contentTab === 'image' ? 'image' : 'reel'} assigned to you yet.`}
                 </p>
               ) : (
                 <div className="content-grid">
                   {displayedContent.map((reel) => (
                     <div key={reel.id} className="content-tile">
-                      <video
-                        className="content-tile__video"
-                        src={reel.videoUrl}
-                        autoPlay
-                        loop
-                        muted
-                        playsInline
-                      />
+                      {reel.mediaType === 'image' ? (
+                        <img
+                          className="content-tile__video"
+                          src={reel.videoUrl}
+                          alt={reel.caption || 'Image'}
+                          loading="lazy"
+                        />
+                      ) : (
+                        <video
+                          className="content-tile__video"
+                          src={reel.videoUrl}
+                          autoPlay
+                          loop
+                          muted
+                          playsInline
+                        />
+                      )}
                       {reel.scheduledAt && (
                         <p className="content-tile__schedule">
                           🗓 {new Date(reel.scheduledAt).toLocaleString([], {
@@ -2174,7 +2222,7 @@ export default function App() {
                             type="button"
                             className="content-tile__download"
                             onClick={() => downloadReel(reel)}
-                            title="Download reel"
+                            title={reel.mediaType === 'image' ? 'Download image' : 'Download reel'}
                           >
                             ↓ Download
                           </button>
@@ -2183,7 +2231,7 @@ export default function App() {
                               type="button"
                               className="license-row__delete"
                               onClick={() => handleDeleteContent(reel.id)}
-                              title="Delete reel"
+                              title={reel.mediaType === 'image' ? 'Delete image' : 'Delete reel'}
                             >
                               ✕
                             </button>

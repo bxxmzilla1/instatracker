@@ -161,6 +161,8 @@ export interface ContentReel {
   id: string;
   caption: string;
   videoUrl: string;
+  /** Whether this content item is a reel (video) or an image. Defaults to reel. */
+  mediaType?: 'reel' | 'image';
   employees: string[];
   allEmployees: boolean;
   targetAccount?: string;

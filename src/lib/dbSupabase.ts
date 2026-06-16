@@ -412,6 +412,7 @@ interface ContentRow {
   id: string;
   caption: string | null;
   video_url: string | null;
+  media_type: string | null;
   employees: unknown;
   all_employees: boolean | null;
   target_account: string | null;
@@ -424,6 +425,7 @@ function toContent(row: ContentRow): ContentReel {
     id: row.id,
     caption: row.caption ?? '',
     videoUrl: row.video_url ?? '',
+    mediaType: row.media_type === 'image' ? 'image' : 'reel',
     employees: Array.isArray(row.employees) ? (row.employees as string[]) : [],
     allEmployees: row.all_employees ?? false,
     targetAccount: row.target_account ?? undefined,
@@ -445,16 +447,30 @@ export async function getContent(employee?: string): Promise<ContentReel[]> {
   return rows;
 }
 
+function extForFile(file: Blob, isImage: boolean): string {
+  const map: Record<string, string> = {
+    'video/webm': 'webm',
+    'video/mp4': 'mp4',
+    'video/quicktime': 'mov',
+    'image/png': 'png',
+    'image/jpeg': 'jpg',
+    'image/webp': 'webp',
+    'image/gif': 'gif',
+  };
+  return map[file.type] ?? (isImage ? 'jpg' : 'mp4');
+}
+
 export async function addContent(reel: ContentReel, file?: Blob): Promise<void> {
   const db = client();
   let videoUrl = reel.videoUrl;
+  const isImage = reel.mediaType === 'image';
 
   if (file) {
-    const ext = file.type === 'video/webm' ? 'webm' : 'mp4';
+    const ext = extForFile(file, isImage);
     const path = `content/${reel.id}.${ext}`;
     const { error: uploadError } = await db.storage.from('media').upload(path, file, {
       upsert: true,
-      contentType: file.type || 'video/mp4',
+      contentType: file.type || (isImage ? 'image/jpeg' : 'video/mp4'),
       cacheControl: '604800',
     });
     if (uploadError) throw new Error(uploadError.message);
@@ -466,6 +482,7 @@ export async function addContent(reel: ContentReel, file?: Blob): Promise<void> 
     id: reel.id,
     caption: reel.caption,
     video_url: videoUrl,
+    media_type: reel.mediaType ?? 'reel',
     employees: reel.employees,
     all_employees: reel.allEmployees,
     target_account: reel.targetAccount ?? null,

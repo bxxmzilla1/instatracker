@@ -2511,6 +2511,10 @@ button:disabled {
   font-weight: 500;
 }
 
+.content-tabs {
+  margin-bottom: 1rem;
+}
+
 .content-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));

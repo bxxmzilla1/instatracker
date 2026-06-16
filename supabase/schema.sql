@@ -99,12 +99,16 @@ create table if not exists content (
   id text primary key,
   caption text,
   video_url text,
+  media_type text default 'reel',
   employees jsonb default '[]'::jsonb,
   all_employees boolean default false,
   target_account text,
   scheduled_at bigint,
   created_at bigint
 );
+
+-- If the content table already exists, add the media type column:
+alter table content add column if not exists media_type text default 'reel';
 alter table content add column if not exists scheduled_at bigint;
 alter table content add column if not exists target_account text;
 
