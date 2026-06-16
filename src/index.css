@@ -2853,27 +2853,27 @@ button:disabled {
   color: var(--faint);
 }
 
-/* Compact, uniform metric tiles inside the analytics panel */
+/* Roomy, uniform metric tiles inside the analytics panel */
 .insight-panel .metric-grid {
-  grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
-  gap: 0.5rem;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 0.7rem;
 }
 
 .insight-panel .metric-card {
-  padding: 0.65rem 0.75rem;
-  border-radius: 10px;
+  padding: 1rem 1.1rem;
+  border-radius: 12px;
   background: var(--surface-2);
 }
 
 .insight-panel .metric-card span {
-  font-size: 0.68rem;
-  letter-spacing: 0.02em;
-  color: var(--faint);
+  font-size: 0.82rem;
+  letter-spacing: 0.01em;
+  color: var(--muted);
 }
 
 .insight-panel .metric-card strong {
-  font-size: 1.15rem;
-  font-weight: 600;
+  font-size: 1.5rem;
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
 
@@ -2884,15 +2884,15 @@ button:disabled {
 }
 
 .insight-breakdown {
-  padding: 0.8rem 0.9rem;
+  padding: 1rem 1.1rem;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 12px;
   background: var(--surface-2);
 }
 
 .insight-breakdown h4 {
-  margin: 0 0 0.6rem;
-  font-size: 0.82rem;
+  margin: 0 0 0.8rem;
+  font-size: 0.98rem;
   font-weight: 600;
 }
 
@@ -2902,14 +2902,14 @@ button:disabled {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.65rem;
 }
 
 .insight-bar__head {
   display: flex;
   justify-content: space-between;
   gap: 0.5rem;
-  font-size: 0.78rem;
+  font-size: 0.92rem;
 }
 
 .insight-bar__label {
