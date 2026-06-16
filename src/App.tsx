@@ -1153,6 +1153,8 @@ export default function App() {
         publishingAt: Date.now(),
         publishStage: 'creating',
         postError: undefined,
+        postedAt: undefined,
+        permalink: undefined,
       };
       try {
         await updateContent(publishingReel);
@@ -1192,6 +1194,8 @@ export default function App() {
         const message = err instanceof Error ? err.message : 'Could not publish to Instagram.';
         await updateContent({
           ...publishingReel,
+          postedAt: scheduleReel.postedAt,
+          permalink: scheduleReel.permalink,
           publishingAt: undefined,
           publishStage: undefined,
           postError: message,
@@ -1215,6 +1219,10 @@ export default function App() {
         scheduledAt: newContentScheduledAt
           ? parseDatetimeLocal(newContentScheduledAt)
           : undefined,
+        postedAt: undefined,
+        permalink: undefined,
+        publishingAt: undefined,
+        publishStage: undefined,
         postError: undefined,
       });
       await loadContent();
@@ -2608,6 +2616,10 @@ export default function App() {
                               <div className="schedule-card__progress">
                                 <PublishProgressBar stage={reel.publishStage ?? 'creating'} />
                               </div>
+                            ) : reel.scheduledAt && !reel.postedAt ? (
+                              <p className="schedule-card__status">
+                                Scheduled for {formatDateTimeLocal(reel.scheduledAt)}
+                              </p>
                             ) : reel.postedAt ? (
                               <p className="schedule-card__status schedule-card__status--posted">
                                 ✓ Posted{' '}

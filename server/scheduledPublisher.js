@@ -60,6 +60,7 @@ async function markPosted(db, row, result) {
     .update({
       posted_at: postedAt,
       permalink: result.permalink ?? null,
+      scheduled_at: null,
       post_error: null,
       publishing_at: null,
       publish_stage: null,
