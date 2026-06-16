@@ -497,40 +497,29 @@ export function AccountInsights({ igUserId, accessToken }: Props) {
 
       {fullInsights && (
         <div className="insight-section">
-          <h4 className="insight-section__title">Account activity ({periodDays} days)</h4>
-          <MetricGrid summary={summarizeInsights(fullInsights.activity)} labels={ACCOUNT_METRIC_LABELS} />
-          {fullInsights.supplemental.length > 0 && (
-            <MetricGrid
-              summary={summarizeInsights(
+          <h4 className="insight-section__title">Overview ({periodDays} days)</h4>
+          <MetricGrid
+            summary={{
+              ...summarizeInsights(fullInsights.activity),
+              ...summarizeInsights(
                 fullInsights.supplemental.filter(
                   (m) => m.name && !m.name.includes('_by_') && m.name !== 'profile_links_taps',
                 ),
-              )}
-              labels={ACCOUNT_METRIC_LABELS}
-            />
-          )}
-        </div>
-      )}
-
-      {accountAudienceMetrics.length > 0 && (
-        <div className="insight-section">
-          <h4 className="insight-section__title">Audience ({periodDays} days)</h4>
-          <BreakdownSections
-            metrics={accountAudienceMetrics}
-            configs={[
-              { name: 'reach_by_follow_type', dimensionKey: 'follow_type' },
-              { name: 'views_by_follower_type', dimensionKey: 'follower_type' },
-            ]}
+              ),
+            }}
+            labels={ACCOUNT_METRIC_LABELS}
           />
         </div>
       )}
 
-      {accountSurfaceMetrics.length > 0 && (
+      {(accountAudienceMetrics.length > 0 || accountSurfaceMetrics.length > 0) && (
         <div className="insight-section">
           <h4 className="insight-section__title">Breakdowns ({periodDays} days)</h4>
           <BreakdownSections
-            metrics={accountSurfaceMetrics}
+            metrics={[...accountAudienceMetrics, ...accountSurfaceMetrics]}
             configs={[
+              { name: 'reach_by_follow_type', dimensionKey: 'follow_type' },
+              { name: 'views_by_follower_type', dimensionKey: 'follower_type' },
               { name: 'reach_by_surface', dimensionKey: 'media_product_type' },
               { name: 'views_by_surface', dimensionKey: 'media_product_type' },
               { name: 'likes_by_surface', dimensionKey: 'media_product_type' },
