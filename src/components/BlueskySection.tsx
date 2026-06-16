@@ -162,6 +162,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   const [picCaption, setPicCaption] = useState('');
   const [proxyRaw, setProxyRaw] = useState('');
   const [proxyType, setProxyType] = useState('http');
+  const [newProxyLabel, setNewProxyLabel] = useState('');
   const [uploading, setUploading] = useState(false);
 
   const [acctId, setAcctId] = useState('');
@@ -546,11 +547,13 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
       username: parsed.user,
       password: parsed.pass,
       rotatingLink: '',
+      label: newProxyLabel.trim() || undefined,
       createdAt: Date.now(),
       ...assignPayload('proxy'),
     });
     setProxyRaw('');
     setProxyType('http');
+    setNewProxyLabel('');
     resetAssign('proxy');
     await loadAll();
   }
@@ -617,7 +620,10 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     setAcctPw('');
   }
 
-  function proxyLabel(p: Proxy) {
+  function proxyOptionLabel(p: Proxy) {
+    const tag = p.label?.trim();
+    const host = p.host && p.port ? `${p.host}:${p.port}` : p.raw || p.rotatingLink || p.id;
+    if (tag) return `${tag} · ${host}`;
     if (p.host && p.port) return `${p.type || 'http'} · ${p.host}:${p.port}`;
     return p.raw || p.rotatingLink || p.id;
   }
@@ -1809,6 +1815,14 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                       <form className="license-form" onSubmit={submitProxy}>
                         <input
                           className="cred-form__input"
+                          placeholder="Label (e.g. US-1, adriel)"
+                          value={newProxyLabel}
+                          onChange={(e) => setNewProxyLabel(e.target.value)}
+                          autoComplete="off"
+                          spellCheck={false}
+                        />
+                        <input
+                          className="cred-form__input"
                           placeholder="host:port:user:pass or user:pass@host:port"
                           value={proxyRaw}
                           onChange={(e) => setProxyRaw(e.target.value)}
@@ -1829,6 +1843,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                           all={getAssign('proxy').all}
                           onToggle={(u) => toggleAssign('proxy', u)}
                           onAllChange={(a) => setAssignAll('proxy', a)}
+                          adminOption
                         />
                         <button type="submit" disabled={!proxyRaw.trim() || !assignValid('proxy')}>
                           Add proxy
@@ -1847,6 +1862,9 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                         <div key={proxy.id} className="proxy-row">
                           <div className="proxy-row__body">
                             <div className="proxy-row__top">
+                              {proxy.label?.trim() && (
+                                <strong className="proxy-row__name">{proxy.label.trim()}</strong>
+                              )}
                               <span className={`proxy-type-tag proxy-type-tag--${proxy.type}`}>{proxy.type.toUpperCase()}</span>
                               {isAdmin &&
                                 (proxy.allEmployees ? (
@@ -2053,7 +2071,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                           <option value="">No proxy (direct)</option>
                           {proxies.map((p) => (
                             <option key={p.id} value={p.id}>
-                              {proxyLabel(p)}
+                              {proxyOptionLabel(p)}
                             </option>
                           ))}
                         </select>
@@ -2256,7 +2274,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                                     <option value="">No proxy (direct)</option>
                                     {proxies.map((p) => (
                                       <option key={p.id} value={p.id}>
-                                        {proxyLabel(p)}
+                                        {proxyOptionLabel(p)}
                                       </option>
                                     ))}
                                   </select>
@@ -2303,7 +2321,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                                     </span>
                                     {acct.proxyId && (
                                       <span className="follow-card__target">
-                                        🌐 {proxies.find((p) => p.id === acct.proxyId) ? proxyLabel(proxies.find((p) => p.id === acct.proxyId)!) : 'proxy'}
+                                        🌐 {proxies.find((p) => p.id === acct.proxyId) ? proxyOptionLabel(proxies.find((p) => p.id === acct.proxyId)!) : 'proxy'}
                                       </span>
                                     )}
                                   </div>

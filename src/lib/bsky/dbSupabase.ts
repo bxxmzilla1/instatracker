@@ -51,6 +51,7 @@ interface ProxyRow {
   username: string | null;
   password: string | null;
   rotating_link: string | null;
+  label: string | null;
   employee: string | null;
   employees: unknown;
   all_employees: boolean | null;
@@ -67,6 +68,7 @@ function toProxy(row: ProxyRow): Proxy {
     username: row.username ?? '',
     password: row.password ?? '',
     rotatingLink: row.rotating_link ?? '',
+    label: row.label ?? undefined,
     employees: Array.isArray(row.employees) ? (row.employees as string[]) : [],
     allEmployees: row.all_employees ?? false,
     employee: row.employee ?? undefined,
@@ -95,6 +97,7 @@ export async function addProxy(proxy: Proxy): Promise<void> {
     username: proxy.username,
     password: proxy.password,
     rotating_link: proxy.rotatingLink,
+    label: proxy.label ?? null,
     employee: proxy.employee ?? null,
     employees: proxy.employees,
     all_employees: proxy.allEmployees,

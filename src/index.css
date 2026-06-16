@@ -426,6 +426,11 @@ code {
   gap: 0.5rem;
 }
 
+.proxy-row__name {
+  font-size: 0.95rem;
+  color: var(--text);
+}
+
 .proxy-row__fields {
   display: flex;
   flex-wrap: wrap;

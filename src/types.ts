@@ -125,6 +125,8 @@ export interface Proxy {
   username: string;
   password: string;
   rotatingLink: string;
+  /** Short display name shown in proxy pickers (e.g. "US-1", "adriel"). */
+  label?: string;
   employees: string[];
   allEmployees: boolean;
   employee?: string;

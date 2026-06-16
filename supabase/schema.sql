@@ -202,11 +202,14 @@ create table if not exists bsky_proxies (
   username text,
   password text,
   rotating_link text,
+  label text,
   employee text,
   employees jsonb default '[]'::jsonb,
   all_employees boolean default false,
   created_at bigint
 );
+
+alter table bsky_proxies add column if not exists label text;
 
 create table if not exists bsky_bios (
   id text primary key,
