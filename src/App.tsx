@@ -1605,6 +1605,11 @@ export default function App() {
 
   const postableAccounts = accounts.filter((a) => a.igUserId && a.igAccessToken);
 
+  const myAccountUsernames = useMemo(
+    () => new Set(accounts.map((a) => a.username)),
+    [accounts],
+  );
+
   const displayedContent = (() => {
     let list = content.filter((reel) => (reel.mediaType ?? 'reel') === contentTab);
     if (isAdmin && contentEmployeeFilter) {
@@ -1625,6 +1630,11 @@ export default function App() {
     if (isAdmin && contentEmployeeFilter) {
       scheduled = scheduled.filter(
         ({ reel }) => reel.allEmployees || reel.employees.includes(contentEmployeeFilter),
+      );
+    }
+    if (!isAdmin) {
+      scheduled = scheduled.filter(({ scheduledPost }) =>
+        myAccountUsernames.has(scheduledPost.account),
       );
     }
     return scheduled;
@@ -2439,16 +2449,14 @@ export default function App() {
                     <div key={reel.id} className="reel-cell">
                       <ContentMediaPreview reel={reel} />
                       <div className="reel-cell__overlay">
-                        {isAdmin && (
-                          <button
-                            type="button"
-                            className="reel-cell__btn reel-cell__btn--wide"
-                            onClick={() => setHistoryReel(reel)}
-                            title="Post history"
-                          >
-                            History
-                          </button>
-                        )}
+                        <button
+                          type="button"
+                          className="reel-cell__btn reel-cell__btn--wide"
+                          onClick={() => setHistoryReel(reel)}
+                          title="Post history"
+                        >
+                          History
+                        </button>
                         <button
                           type="button"
                           className="reel-cell__btn reel-cell__btn--wide"
@@ -2480,26 +2488,24 @@ export default function App() {
                           </button>
                         )}
                       </div>
-                      {isAdmin && (
-                        <div className="reel-cell__footer">
-                          <button
-                            type="button"
-                            className="reel-cell__action reel-cell__action--primary"
-                            onClick={() => openScheduleModal(reel, 'post')}
-                            disabled={isContentPublishing(reel)}
-                          >
-                            Post
-                          </button>
-                          <button
-                            type="button"
-                            className="reel-cell__action reel-cell__action--secondary"
-                            onClick={() => openScheduleModal(reel, 'schedule')}
-                            disabled={isContentPublishing(reel)}
-                          >
-                            Schedule
-                          </button>
-                        </div>
-                      )}
+                      <div className="reel-cell__footer">
+                        <button
+                          type="button"
+                          className="reel-cell__action reel-cell__action--primary"
+                          onClick={() => openScheduleModal(reel, 'post')}
+                          disabled={isContentPublishing(reel)}
+                        >
+                          Post
+                        </button>
+                        <button
+                          type="button"
+                          className="reel-cell__action reel-cell__action--secondary"
+                          onClick={() => openScheduleModal(reel, 'schedule')}
+                          disabled={isContentPublishing(reel)}
+                        >
+                          Schedule
+                        </button>
+                      </div>
                       {isContentPublishing(reel) && (
                         <div className="reel-cell__progress">
                           <PublishProgressBar
@@ -2511,7 +2517,7 @@ export default function App() {
                           />
                         </div>
                       )}
-                      {isAdmin && reel.postError && !isContentPublishing(reel) && (
+                      {reel.postError && !isContentPublishing(reel) && (
                         <div className="reel-cell__error" title={reel.postError}>
                           ⚠ Post failed
                         </div>
@@ -2700,17 +2706,15 @@ export default function App() {
                             >
                               ↓ Download
                             </button>
-                            {isAdmin && (
-                              <button
-                                type="button"
-                                className="license-row__delete"
-                                onClick={() => handleUnscheduleContent(reel, scheduledPost.id)}
-                                title="Remove from schedule"
-                                aria-label="Remove from schedule"
-                              >
-                                ✕
-                              </button>
-                            )}
+                            <button
+                              type="button"
+                              className="license-row__delete"
+                              onClick={() => handleUnscheduleContent(reel, scheduledPost.id)}
+                              title="Remove from schedule"
+                              aria-label="Remove from schedule"
+                            >
+                              ✕
+                            </button>
                           </div>
                         </div>
                       ))}
@@ -3216,6 +3220,7 @@ export default function App() {
                   </select>
                   <span className="cred-field__hint">
                     Only Instagram accounts with a saved API token &amp; User ID can be posted to.
+                    {!isAdmin ? ' You can only post to accounts you have added under Accounts.' : ''}
                     {' '}
                     You can post or schedule the same{' '}
                     {scheduleReel ? contentTabSingular(scheduleReel.mediaType ?? 'reel') : 'item'} to
