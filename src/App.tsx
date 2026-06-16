@@ -49,13 +49,14 @@ import { parseProxyString } from './lib/proxy';
 import { publishContent } from './lib/igGraph';
 import type { PublishProgress } from './lib/igGraph';
 import {
-  formatDatePH,
-  formatDateTimePH,
-  formatTimePH,
-  parseDatetimeLocalPH,
-  shiftDateKeyPH,
-  toDateKeyPH,
-  toDatetimeLocalPH,
+  formatDateLocal,
+  formatDateTimeLocal,
+  formatTimeLocal,
+  getTimezoneLabel,
+  nowDatetimeLocal,
+  parseDatetimeLocal,
+  shiftDateKey,
+  toDateKey,
 } from './lib/timezone';
 import { assignedEmployees } from './lib/assignment';
 import { latestByReel, withMonotonicReelViews } from './lib/dashboard';
@@ -242,7 +243,8 @@ export default function App() {
   const [savingAssign, setSavingAssign] = useState(false);
   const [publishProgress, setPublishProgress] = useState<PublishProgress | null>(null);
   const [historyReel, setHistoryReel] = useState<ContentReel | null>(null);
-  const [scheduleViewDate, setScheduleViewDate] = useState<string>(() => toDateKeyPH(Date.now()));
+  const [scheduleViewDate, setScheduleViewDate] = useState<string>(() => toDateKey(Date.now()));
+  const timezoneLabel = getTimezoneLabel();
   const [contentEmployeeFilter, setContentEmployeeFilter] = useState('');
   const [openAddForms, setOpenAddForms] = useState<Set<string>>(() => new Set());
 
@@ -911,7 +913,7 @@ export default function App() {
     setScheduleMode(mode);
     setNewContentCaption('');
     setNewContentTarget(reel.targetAccount ?? '');
-    setNewContentScheduledAt(reel.scheduledAt ? toDatetimeLocalPH(reel.scheduledAt) : '');
+    setNewContentScheduledAt(mode === 'schedule' ? nowDatetimeLocal() : '');
     setPublishProgress(
       reel.publishingAt && !reel.postedAt
         ? { stage: reel.publishStage ?? 'creating' }
@@ -1034,7 +1036,7 @@ export default function App() {
         caption: newContentCaption,
         targetAccount: newContentTarget || undefined,
         scheduledAt: newContentScheduledAt
-          ? parseDatetimeLocalPH(newContentScheduledAt)
+          ? parseDatetimeLocal(newContentScheduledAt)
           : undefined,
         postError: undefined,
       });
@@ -1400,7 +1402,7 @@ export default function App() {
 
   const scheduledForDate = (() => {
     let scheduled = content.filter(
-      (c) => c.scheduledAt && toDateKeyPH(c.scheduledAt) === scheduleViewDate,
+      (c) => c.scheduledAt && toDateKey(c.scheduledAt) === scheduleViewDate,
     );
     if (isAdmin && contentEmployeeFilter) {
       scheduled = scheduled.filter(
@@ -1410,9 +1412,9 @@ export default function App() {
     return scheduled.sort((a, b) => (a.scheduledAt ?? 0) - (b.scheduledAt ?? 0));
   })();
 
-  const scheduleViewLabel = formatDatePH(parseDatetimeLocalPH(`${scheduleViewDate}T12:00`));
+  const scheduleViewLabel = formatDateLocal(parseDatetimeLocal(`${scheduleViewDate}T12:00`));
 
-  const isScheduleViewToday = scheduleViewDate === toDateKeyPH(Date.now());
+  const isScheduleViewToday = scheduleViewDate === toDateKey(Date.now());
 
   const searchWords = accountSearch.trim().toLowerCase().split(/\s+/).filter(Boolean);
   const filteredAccounts =
@@ -2407,7 +2409,7 @@ export default function App() {
               <h2>
                 {scheduleViewLabel}
                 {isScheduleViewToday && <span className="schedule-head__today"> · Today</span>}
-                <span className="content-filter__active schedule-head__tz"> · PHT</span>
+                <span className="content-filter__active schedule-head__tz"> · {timezoneLabel}</span>
                 <span className="content-filter__active">
                   {' '}
                   · {scheduledForDate.length} item{scheduledForDate.length === 1 ? '' : 's'}
@@ -2433,7 +2435,7 @@ export default function App() {
                   <button
                     type="button"
                     className="content-filter__nav"
-                    onClick={() => setScheduleViewDate((d) => shiftDateKeyPH(d, -1))}
+                    onClick={() => setScheduleViewDate((d) => shiftDateKey(d, -1))}
                     title="Previous day"
                     aria-label="Previous day"
                   >
@@ -2444,14 +2446,14 @@ export default function App() {
                     className="content-filter__date"
                     value={scheduleViewDate}
                     onChange={(e) =>
-                      setScheduleViewDate(e.target.value || toDateKeyPH(Date.now()))
+                      setScheduleViewDate(e.target.value || toDateKey(Date.now()))
                     }
                     title="Pick a date"
                   />
                   <button
                     type="button"
                     className="content-filter__nav"
-                    onClick={() => setScheduleViewDate((d) => shiftDateKeyPH(d, 1))}
+                    onClick={() => setScheduleViewDate((d) => shiftDateKey(d, 1))}
                     title="Next day"
                     aria-label="Next day"
                   >
@@ -2461,7 +2463,7 @@ export default function App() {
                     <button
                       type="button"
                       className="content-filter__clear"
-                      onClick={() => setScheduleViewDate(toDateKeyPH(Date.now()))}
+                      onClick={() => setScheduleViewDate(toDateKey(Date.now()))}
                     >
                       Today
                     </button>
@@ -2498,7 +2500,7 @@ export default function App() {
                           <div className="schedule-card__body">
                             <div className="schedule-card__top">
                               <span className="schedule-card__time">
-                                🗓 {formatTimePH(reel.scheduledAt as number)}
+                                🗓 {formatTimeLocal(reel.scheduledAt as number)}
                               </span>
                               <span className="schedule-card__type">
                                 {reel.mediaType === 'image' ? 'Image' : 'Reel'}
@@ -3029,7 +3031,9 @@ export default function App() {
 
                 {scheduleMode === 'schedule' && (
                   <label className="cred-field">
-                    <span className="cred-field__label">Schedule date &amp; time (Philippines / PHT)</span>
+                    <span className="cred-field__label">
+                      Schedule date &amp; time ({timezoneLabel})
+                    </span>
                     <input
                       type="datetime-local"
                       className="cred-form__input"
@@ -3179,7 +3183,7 @@ export default function App() {
                         <div className="post-history__main">
                           <span className="post-history__account">@{entry.account}</span>
                           <span className="post-history__date">
-                            {formatDateTimePH(entry.postedAt)}
+                            {formatDateTimeLocal(entry.postedAt)}
                           </span>
                         </div>
                         {entry.permalink && (

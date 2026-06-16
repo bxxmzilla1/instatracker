@@ -1,46 +1,49 @@
-/** App-wide schedule timezone (Philippines, UTC+8, no DST). */
-export const APP_TIMEZONE = 'Asia/Manila';
-
-/** YYYY-MM-DD for a timestamp in Philippines time. */
-export function toDateKeyPH(ms: number): string {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: APP_TIMEZONE,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(new Date(ms));
+/** Browser-local timezone (IANA name, e.g. America/New_York). */
+export function getAppTimezone(): string {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone;
 }
 
-/** Value for `<input type="datetime-local">` interpreted as Philippines time. */
-export function toDatetimeLocalPH(ms: number): string {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: APP_TIMEZONE,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  }).formatToParts(new Date(ms));
-  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? '00';
-  return `${get('year')}-${get('month')}-${get('day')}T${get('hour')}:${get('minute')}`;
+/** Short label for the local timezone (e.g. PST, GMT+8). */
+export function getTimezoneLabel(): string {
+  const parts = new Intl.DateTimeFormat(undefined, {
+    timeZoneName: 'short',
+  }).formatToParts(new Date());
+  return parts.find((p) => p.type === 'timeZoneName')?.value ?? getAppTimezone();
 }
 
-/** Parse datetime-local string as Philippines time → epoch ms. */
-export function parseDatetimeLocalPH(value: string): number {
+/** YYYY-MM-DD for a timestamp in the user's local timezone. */
+export function toDateKey(ms: number): string {
+  const d = new Date(ms);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/** Value for `<input type="datetime-local">` in the user's local timezone. */
+export function toDatetimeLocal(ms: number): string {
+  const d = new Date(ms);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/** Current local date & time formatted for `<input type="datetime-local">`. */
+export function nowDatetimeLocal(): string {
+  return toDatetimeLocal(Date.now());
+}
+
+/** Parse datetime-local string as local time → epoch ms. */
+export function parseDatetimeLocal(value: string): number {
   if (!value) return NaN;
   const normalized = value.length === 16 ? `${value}:00` : value;
-  return new Date(`${normalized}+08:00`).getTime();
+  return new Date(normalized).getTime();
 }
 
-export function shiftDateKeyPH(key: string, days: number): string {
-  const base = parseDatetimeLocalPH(`${key}T12:00`);
-  return toDateKeyPH(base + days * 86_400_000);
+export function shiftDateKey(key: string, days: number): string {
+  const base = parseDatetimeLocal(`${key}T12:00`);
+  return toDateKey(base + days * 86_400_000);
 }
 
-export function formatDatePH(ms: number): string {
-  return new Date(ms).toLocaleDateString('en-PH', {
-    timeZone: APP_TIMEZONE,
+export function formatDateLocal(ms: number): string {
+  return new Date(ms).toLocaleDateString(undefined, {
     weekday: 'long',
     month: 'long',
     day: 'numeric',
@@ -48,17 +51,15 @@ export function formatDatePH(ms: number): string {
   });
 }
 
-export function formatTimePH(ms: number): string {
-  return new Date(ms).toLocaleTimeString('en-PH', {
-    timeZone: APP_TIMEZONE,
+export function formatTimeLocal(ms: number): string {
+  return new Date(ms).toLocaleTimeString(undefined, {
     hour: '2-digit',
     minute: '2-digit',
   });
 }
 
-export function formatDateTimePH(ms: number): string {
-  return new Date(ms).toLocaleString('en-PH', {
-    timeZone: APP_TIMEZONE,
+export function formatDateTimeLocal(ms: number): string {
+  return new Date(ms).toLocaleString(undefined, {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
