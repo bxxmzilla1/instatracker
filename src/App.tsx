@@ -40,6 +40,8 @@ import {
   addContent,
   updateContent,
   deleteContent,
+  getApiLink,
+  saveApiLink,
   removeAccount,
   saveFollowerSnapshot,
   saveReelSnapshots,
@@ -79,6 +81,7 @@ import { latestByReel, withMonotonicReelViews } from './lib/dashboard';
 import { cacheImage, imgKey } from './lib/media';
 import { formatCount, formatDate, proxiedImage } from './lib/format';
 import type {
+  ApiLink,
   Bio,
   ContentMediaType,
   ContentReel,
@@ -87,6 +90,7 @@ import type {
   FollowerSnapshot,
   License,
   ParsedReel,
+  META_SESSIONS_LINK_ID,
   Platform,
   Proxy,
   ReelHistory,
@@ -95,6 +99,14 @@ import type {
   StoryNote,
   TrackedAccount,
 } from './types';
+
+const META_SESSIONS_LINK_LABEL = 'Sessions Link - Meta Developer';
+
+function externalHref(url: string): string {
+  const trimmed = url.trim();
+  if (!trimmed) return '';
+  return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+}
 
 function publishProgressPercent(p: PublishProgress): number {
   switch (p.stage) {
@@ -249,6 +261,7 @@ export default function App() {
     | 'employee'
     | 'license'
     | 'proxy'
+    | 'api'
     | 'bio'
     | 'cta'
     | 'content'
@@ -327,6 +340,10 @@ export default function App() {
   const [savingAssign, setSavingAssign] = useState(false);
   const [publishProgress, setPublishProgress] = useState<PublishProgress | null>(null);
   const [historyReel, setHistoryReel] = useState<ContentReel | null>(null);
+  const [metaSessionsLink, setMetaSessionsLink] = useState<ApiLink | null>(null);
+  const [editingMetaSessionsLink, setEditingMetaSessionsLink] = useState(false);
+  const [metaSessionsDraft, setMetaSessionsDraft] = useState('');
+  const [savingMetaSessionsLink, setSavingMetaSessionsLink] = useState(false);
   const [scheduleViewDate, setScheduleViewDate] = useState<string>(() => toDateKey(Date.now()));
   const timezoneLabel = getTimezoneLabel();
   const [contentEmployeeFilter, setContentEmployeeFilter] = useState('');
@@ -404,6 +421,10 @@ export default function App() {
     setContent(await getContent(filter));
   }, [session]);
 
+  const loadMetaSessionsLink = useCallback(async () => {
+    setMetaSessionsLink(await getApiLink(META_SESSIONS_LINK_ID));
+  }, []);
+
   const loadDashboardData = useCallback(async () => {
     const [reels, followers] = await Promise.all([
       getAllReelSnapshots(),
@@ -441,6 +462,7 @@ export default function App() {
         await loadCtas();
         await loadStories();
         await loadContent();
+        await loadMetaSessionsLink();
         if (session?.role === 'admin') {
           const [emps, allAccts] = await Promise.all([getEmployees(), getAccounts()]);
           setEmployees(emps);
@@ -467,6 +489,7 @@ export default function App() {
     loadCtas,
     loadStories,
     loadContent,
+    loadMetaSessionsLink,
   ]);
 
   useEffect(() => {
@@ -962,6 +985,48 @@ export default function App() {
   async function handleDeleteCta(id: string) {
     await deleteCta(id);
     await loadCtas();
+  }
+
+  function startEditMetaSessionsLink() {
+    setMetaSessionsDraft(metaSessionsLink?.url ?? '');
+    setEditingMetaSessionsLink(true);
+  }
+
+  function cancelEditMetaSessionsLink() {
+    setEditingMetaSessionsLink(false);
+    setMetaSessionsDraft('');
+  }
+
+  async function saveMetaSessionsLink() {
+    const url = metaSessionsDraft.trim();
+    if (!url) {
+      setError('Enter a sessions link URL.');
+      return;
+    }
+    setSavingMetaSessionsLink(true);
+    try {
+      const link: ApiLink = {
+        id: META_SESSIONS_LINK_ID,
+        label: META_SESSIONS_LINK_LABEL,
+        url,
+        updatedAt: Date.now(),
+      };
+      await saveApiLink(link);
+      setMetaSessionsLink(link);
+      setEditingMetaSessionsLink(false);
+      setMetaSessionsDraft('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save sessions link.');
+    } finally {
+      setSavingMetaSessionsLink(false);
+    }
+  }
+
+  function openMetaSessionsLink() {
+    if (!metaSessionsLink?.url) return;
+    const href = externalHref(metaSessionsLink.url);
+    if (!href) return;
+    window.open(href, '_blank', 'noopener,noreferrer');
   }
 
   async function submitStory() {
@@ -1591,7 +1656,9 @@ export default function App() {
           ? 'Blaze License'
           : view === 'proxy'
             ? 'Proxy'
-            : view === 'bio'
+            : view === 'api'
+              ? 'API'
+              : view === 'bio'
               ? 'Account Bio'
               : view === 'cta'
                 ? 'CTA'
@@ -1773,6 +1840,22 @@ export default function App() {
               <path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" />
             </svg>
             Proxy
+          </button>
+
+          <button
+            type="button"
+            className={view === 'api' ? 'nav-item nav-item--active' : 'nav-item'}
+            onClick={() => {
+              setSelectedEmployee(null);
+              setView('api');
+            }}
+          >
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M8 9h8M8 13h6" />
+              <rect x="3" y="4" width="18" height="16" rx="2" />
+              <path d="M7 4V2.5M17 4V2.5" />
+            </svg>
+            API
           </button>
 
           <button
@@ -2881,6 +2964,75 @@ export default function App() {
               )}
             </section>
           </>
+        )}
+
+        {view === 'api' && (
+          <section className="panel">
+            <h2>API</h2>
+            <div className="api-links-grid">
+              <div className="api-bubble-card">
+                <div className="api-bubble-card__head">
+                  <span className="api-bubble-card__label">{META_SESSIONS_LINK_LABEL}</span>
+                  {metaSessionsLink?.url && !editingMetaSessionsLink && (
+                    <div className="row-actions">
+                      <button
+                        type="button"
+                        className="row-edit"
+                        onClick={startEditMetaSessionsLink}
+                        title="Edit link"
+                      >
+                        ✎
+                      </button>
+                      <button
+                        type="button"
+                        className="api-bubble-card__open"
+                        onClick={openMetaSessionsLink}
+                        title="Open in browser"
+                      >
+                        Open
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {editingMetaSessionsLink || !metaSessionsLink?.url ? (
+                  <div className="api-bubble-card__form">
+                    <input
+                      className="cred-form__input"
+                      type="url"
+                      placeholder="https://developers.facebook.com/..."
+                      value={metaSessionsDraft}
+                      onChange={(e) => setMetaSessionsDraft(e.target.value)}
+                      autoComplete="off"
+                      spellCheck={false}
+                    />
+                    <div className="api-bubble-card__form-actions">
+                      {editingMetaSessionsLink && (
+                        <button
+                          type="button"
+                          className="api-bubble-card__cancel"
+                          onClick={cancelEditMetaSessionsLink}
+                        >
+                          Cancel
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={saveMetaSessionsLink}
+                        disabled={savingMetaSessionsLink || !metaSessionsDraft.trim()}
+                      >
+                        {savingMetaSessionsLink ? 'Saving…' : 'Save'}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="api-bubble-card__url" title={metaSessionsLink.url}>
+                    {metaSessionsLink.url}
+                  </p>
+                )}
+              </div>
+            </div>
+          </section>
         )}
 
         {(view === 'accounts' || view === 'employee') && (

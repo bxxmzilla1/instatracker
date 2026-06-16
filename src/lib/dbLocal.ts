@@ -1,6 +1,7 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
 import { matchesEmployee } from './assignment';
 import type {
+  ApiLink,
   Bio,
   ContentReel,
   Cta,
@@ -53,6 +54,10 @@ interface InstatrackerDB extends DBSchema {
     key: string;
     value: ContentRecord;
   };
+  apiLinks: {
+    key: string;
+    value: ApiLink;
+  };
   followerHistory: {
     key: number;
     value: FollowerSnapshot;
@@ -69,7 +74,7 @@ let dbPromise: Promise<IDBPDatabase<InstatrackerDB>> | null = null;
 
 function getDb() {
   if (!dbPromise) {
-    dbPromise = openDB<InstatrackerDB>('instatracker-v1', 9, {
+    dbPromise = openDB<InstatrackerDB>('instatracker-v1', 10, {
       upgrade(db, oldVersion) {
         if (!db.objectStoreNames.contains('accounts')) {
           db.createObjectStore('accounts', { keyPath: 'username' });
@@ -101,6 +106,10 @@ function getDb() {
 
         if (!db.objectStoreNames.contains('content')) {
           db.createObjectStore('content', { keyPath: 'id' });
+        }
+
+        if (!db.objectStoreNames.contains('apiLinks')) {
+          db.createObjectStore('apiLinks', { keyPath: 'id' });
         }
 
         if (oldVersion < 2) {
@@ -351,6 +360,16 @@ export async function deleteContent(id: string): Promise<void> {
 export async function deleteCta(id: string): Promise<void> {
   const db = await getDb();
   await db.delete('ctas', id);
+}
+
+export async function getApiLink(id: string): Promise<ApiLink | null> {
+  const db = await getDb();
+  return (await db.get('apiLinks', id)) ?? null;
+}
+
+export async function saveApiLink(link: ApiLink): Promise<void> {
+  const db = await getDb();
+  await db.put('apiLinks', link);
 }
 
 export async function addAccount(account: TrackedAccount): Promise<void> {

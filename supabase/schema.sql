@@ -122,6 +122,14 @@ alter table content add column if not exists media_urls jsonb default '[]'::json
 alter table content add column if not exists proxy_id text;
 alter table content add column if not exists scheduled_posts jsonb default '[]'::jsonb;
 
+-- Saved API links (e.g. Meta Developer sessions URL).
+create table if not exists api_links (
+  id text primary key,
+  label text,
+  url text,
+  updated_at bigint
+);
+
 create table if not exists follower_snapshots (
   id bigint generated always as identity primary key,
   username text not null,
@@ -166,6 +174,7 @@ alter table bios enable row level security;
 alter table ctas enable row level security;
 alter table stories enable row level security;
 alter table content enable row level security;
+alter table api_links enable row level security;
 
 drop policy if exists "allow anon all" on accounts;
 drop policy if exists "allow anon all" on follower_snapshots;
@@ -177,6 +186,7 @@ drop policy if exists "allow anon all" on bios;
 drop policy if exists "allow anon all" on ctas;
 drop policy if exists "allow anon all" on stories;
 drop policy if exists "allow anon all" on content;
+drop policy if exists "allow anon all" on api_links;
 
 create policy "allow anon all" on accounts
   for all to anon using (true) with check (true);
@@ -197,6 +207,8 @@ create policy "allow anon all" on ctas
 create policy "allow anon all" on stories
   for all to anon using (true) with check (true);
 create policy "allow anon all" on content
+  for all to anon using (true) with check (true);
+create policy "allow anon all" on api_links
   for all to anon using (true) with check (true);
 
 -- ===========================================================================

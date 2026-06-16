@@ -1966,6 +1966,74 @@ button:disabled {
   color: var(--text);
 }
 
+.api-links-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 0.85rem;
+}
+
+.api-bubble-card {
+  padding: 1.1rem 1.2rem;
+  border-radius: 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+
+.api-bubble-card__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.85rem;
+}
+
+.api-bubble-card__label {
+  display: block;
+  color: var(--text);
+  font-size: 0.92rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.api-bubble-card__form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.api-bubble-card__form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.api-bubble-card__cancel {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+
+.api-bubble-card__cancel:hover {
+  color: var(--text);
+  border-color: var(--muted);
+}
+
+.api-bubble-card__open {
+  padding: 0.35rem 0.75rem;
+  border-radius: 8px;
+  font-size: 0.82rem;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.api-bubble-card__url {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.45;
+  word-break: break-all;
+}
+
 .dashboard__chart {
   margin-bottom: 1.5rem;
 }
@@ -3292,6 +3360,7 @@ button:disabled {
 
 .app-shell--instagram .account-card,
 .app-shell--instagram .stat-card,
+.app-shell--instagram .api-bubble-card,
 .app-shell--instagram .highlight-card,
 .app-shell--instagram .employee-card,
 .app-shell--instagram .content-tile {
@@ -3680,6 +3749,7 @@ button:disabled {
 
 .app-shell--bluesky .account-card,
 .app-shell--bluesky .stat-card,
+.app-shell--bluesky .api-bubble-card,
 .app-shell--bluesky .highlight-card,
 .app-shell--bluesky .employee-card,
 .app-shell--bluesky .content-tile,

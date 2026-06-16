@@ -4,6 +4,7 @@ import { matchesEmployee } from './assignment';
 import { extForContentFile, isImageFile } from './content';
 import { normalizeScheduledPosts } from './contentSchedule';
 import type {
+  ApiLink,
   Bio,
   ContentReel,
   Cta,
@@ -378,6 +379,42 @@ export async function addCta(cta: Cta): Promise<void> {
 
 export async function deleteCta(id: string): Promise<void> {
   const { error } = await client().from('ctas').delete().eq('id', id);
+  if (error) throw new Error(error.message);
+}
+
+interface ApiLinkRow {
+  id: string;
+  label: string | null;
+  url: string | null;
+  updated_at: number | null;
+}
+
+function toApiLink(row: ApiLinkRow): ApiLink {
+  return {
+    id: row.id,
+    label: row.label ?? '',
+    url: row.url ?? '',
+    updatedAt: row.updated_at ?? 0,
+  };
+}
+
+export async function getApiLink(id: string): Promise<ApiLink | null> {
+  const { data, error } = await client()
+    .from('api_links')
+    .select('*')
+    .eq('id', id)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return data ? toApiLink(data as ApiLinkRow) : null;
+}
+
+export async function saveApiLink(link: ApiLink): Promise<void> {
+  const { error } = await client().from('api_links').upsert({
+    id: link.id,
+    label: link.label,
+    url: link.url,
+    updated_at: link.updatedAt,
+  });
   if (error) throw new Error(error.message);
 }
 

@@ -149,6 +149,16 @@ export interface Cta {
   createdAt: number;
 }
 
+export const META_SESSIONS_LINK_ID = 'meta-sessions';
+
+/** Saved external API link (e.g. Meta Developer sessions URL). */
+export interface ApiLink {
+  id: string;
+  label: string;
+  url: string;
+  updatedAt: number;
+}
+
 export interface StoryNote {
   id: string;
   text: string;

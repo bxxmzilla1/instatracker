@@ -37,4 +37,6 @@ export const {
   addContent,
   updateContent,
   deleteContent,
+  getApiLink,
+  saveApiLink,
 } = impl;
