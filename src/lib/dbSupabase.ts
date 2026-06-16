@@ -413,6 +413,7 @@ interface ContentRow {
   caption: string | null;
   video_url: string | null;
   media_type: string | null;
+  media_urls: unknown;
   employees: unknown;
   all_employees: boolean | null;
   target_account: string | null;
@@ -426,12 +427,21 @@ interface ContentRow {
   publish_stage: string | null;
 }
 
+function parseMediaType(value: string | null | undefined): ContentReel['mediaType'] {
+  if (value === 'image' || value === 'story' || value === 'carousel' || value === 'reel') {
+    return value;
+  }
+  return 'reel';
+}
+
 function toContent(row: ContentRow): ContentReel {
+  const mediaUrls = Array.isArray(row.media_urls) ? (row.media_urls as string[]) : [];
   return {
     id: row.id,
     caption: row.caption ?? '',
-    videoUrl: row.video_url ?? '',
-    mediaType: row.media_type === 'image' ? 'image' : 'reel',
+    videoUrl: row.video_url ?? mediaUrls[0] ?? '',
+    mediaType: parseMediaType(row.media_type),
+    mediaUrls: mediaUrls.length > 0 ? mediaUrls : undefined,
     employees: Array.isArray(row.employees) ? (row.employees as string[]) : [],
     allEmployees: row.all_employees ?? false,
     targetAccount: row.target_account ?? undefined,
@@ -474,22 +484,38 @@ function extForFile(file: Blob, isImage: boolean): string {
   return map[file.type] ?? (isImage ? 'jpg' : 'mp4');
 }
 
-export async function addContent(reel: ContentReel, file?: Blob): Promise<void> {
+export async function addContent(reel: ContentReel, file?: Blob | Blob[]): Promise<void> {
   const db = client();
   let videoUrl = reel.videoUrl;
-  const isImage = reel.mediaType === 'image';
+  let mediaUrls = reel.mediaUrls ?? [];
+  const files = file ? (Array.isArray(file) ? file : [file]) : [];
 
-  if (file) {
-    const ext = extForFile(file, isImage);
-    const path = `content/${reel.id}.${ext}`;
-    const { error: uploadError } = await db.storage.from('media').upload(path, file, {
-      upsert: true,
-      contentType: file.type || (isImage ? 'image/jpeg' : 'video/mp4'),
-      cacheControl: '604800',
-    });
-    if (uploadError) throw new Error(uploadError.message);
-    const { data } = db.storage.from('media').getPublicUrl(path);
-    videoUrl = data?.publicUrl ?? videoUrl;
+  if (files.length > 0) {
+    const uploaded: string[] = [];
+    for (let i = 0; i < files.length; i++) {
+      const blob = files[i];
+      const isImage =
+        blob.type.startsWith('image/') ||
+        reel.mediaType === 'image' ||
+        reel.mediaType === 'carousel';
+      const ext = extForFile(blob, isImage);
+      const path =
+        files.length > 1 ? `content/${reel.id}/${i}.${ext}` : `content/${reel.id}.${ext}`;
+      const { error: uploadError } = await db.storage.from('media').upload(path, blob, {
+        upsert: true,
+        contentType: blob.type || (isImage ? 'image/jpeg' : 'video/mp4'),
+        cacheControl: '604800',
+      });
+      if (uploadError) throw new Error(uploadError.message);
+      const { data } = db.storage.from('media').getPublicUrl(path);
+      if (data?.publicUrl) uploaded.push(data.publicUrl);
+    }
+    if (reel.mediaType === 'carousel') {
+      mediaUrls = uploaded;
+      videoUrl = uploaded[0] ?? '';
+    } else {
+      videoUrl = uploaded[0] ?? videoUrl;
+    }
   }
 
   const { error } = await db.from('content').upsert({
@@ -497,6 +523,7 @@ export async function addContent(reel: ContentReel, file?: Blob): Promise<void> 
     caption: reel.caption,
     video_url: videoUrl,
     media_type: reel.mediaType ?? 'reel',
+    media_urls: mediaUrls,
     employees: reel.employees,
     all_employees: reel.allEmployees,
     target_account: reel.targetAccount ?? null,

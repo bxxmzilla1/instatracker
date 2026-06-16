@@ -2529,8 +2529,51 @@ button:disabled {
   font-weight: 500;
 }
 
-.content-tabs {
+.content-tabs,
+.schedule-tabs {
   margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
+.carousel-cell__album {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  grid-template-rows: repeat(2, 1fr);
+  width: 100%;
+  height: 100%;
+  gap: 2px;
+  background: #000;
+}
+
+.carousel-cell__thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.schedule-card__thumb-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.schedule-card__thumb-wrap--carousel .schedule-card__thumb {
+  width: 72px;
+  height: 72px;
+  object-fit: cover;
+  border-radius: 8px;
+}
+
+.schedule-card__carousel-count {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  padding: 0.1rem 0.35rem;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.72);
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 700;
 }
 
 .content-grid {

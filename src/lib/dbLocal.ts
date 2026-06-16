@@ -14,7 +14,11 @@ import type {
   TrackedAccount,
 } from '../types';
 
-type ContentRecord = Omit<ContentReel, 'videoUrl'> & { videoUrl?: string; blob?: Blob };
+type ContentRecord = Omit<ContentReel, 'videoUrl'> & {
+  videoUrl?: string;
+  blob?: Blob;
+  blobs?: Blob[];
+};
 
 interface InstatrackerDB extends DBSchema {
   accounts: {
@@ -256,27 +260,42 @@ export async function getContent(employee?: string): Promise<ContentReel[]> {
   }
   return rows
     .sort((a, b) => b.createdAt - a.createdAt)
-    .map((r) => ({
-      id: r.id,
-      caption: r.caption,
-      videoUrl: r.blob ? URL.createObjectURL(r.blob) : (r.videoUrl ?? ''),
-      mediaType: r.mediaType ?? 'reel',
-      employees: r.employees,
-      allEmployees: r.allEmployees,
-      targetAccount: r.targetAccount,
-      scheduledAt: r.scheduledAt,
-      createdAt: r.createdAt,
-      postedAt: r.postedAt,
-      permalink: r.permalink,
-      postError: r.postError,
-      postHistory: r.postHistory ?? [],
-      publishingAt: r.publishingAt,
-      publishStage: r.publishStage,
-    }));
+    .map((r) => {
+      const blobUrls = r.blobs?.map((blob) => URL.createObjectURL(blob)) ?? [];
+      const mediaUrls =
+        r.mediaUrls?.length
+          ? r.mediaUrls
+          : blobUrls.length > 0
+            ? blobUrls
+            : undefined;
+      const primaryUrl =
+        r.blob
+          ? URL.createObjectURL(r.blob)
+          : mediaUrls?.[0] ?? r.videoUrl ?? '';
+      return {
+        id: r.id,
+        caption: r.caption,
+        videoUrl: primaryUrl,
+        mediaType: r.mediaType ?? 'reel',
+        mediaUrls,
+        employees: r.employees,
+        allEmployees: r.allEmployees,
+        targetAccount: r.targetAccount,
+        scheduledAt: r.scheduledAt,
+        createdAt: r.createdAt,
+        postedAt: r.postedAt,
+        permalink: r.permalink,
+        postError: r.postError,
+        postHistory: r.postHistory ?? [],
+        publishingAt: r.publishingAt,
+        publishStage: r.publishStage,
+      };
+    });
 }
 
-export async function addContent(reel: ContentReel, file?: Blob): Promise<void> {
+export async function addContent(reel: ContentReel, file?: Blob | Blob[]): Promise<void> {
   const db = await getDb();
+  const files = file ? (Array.isArray(file) ? file : [file]) : [];
   const record: ContentRecord = {
     id: reel.id,
     caption: reel.caption,
@@ -287,8 +306,15 @@ export async function addContent(reel: ContentReel, file?: Blob): Promise<void> 
     scheduledAt: reel.scheduledAt,
     createdAt: reel.createdAt,
   };
-  if (file) record.blob = file;
-  else record.videoUrl = reel.videoUrl;
+  if (files.length > 1 || reel.mediaType === 'carousel') {
+    record.blobs = files;
+    record.mediaUrls = reel.mediaUrls;
+  } else if (files[0]) {
+    record.blob = files[0];
+  } else {
+    record.videoUrl = reel.videoUrl;
+    record.mediaUrls = reel.mediaUrls;
+  }
   await db.put('content', record);
 }
 

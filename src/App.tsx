@@ -58,12 +58,21 @@ import {
   shiftDateKey,
   toDateKey,
 } from './lib/timezone';
-import { assignedEmployees } from './lib/assignment';
+import {
+  contentMediaLabel,
+  contentTabLabel,
+  contentTabSingular,
+  getContentMediaUrls,
+  isStoryVideo,
+  MAX_CAROUSEL_ITEMS,
+  MIN_CAROUSEL_ITEMS,
+} from './lib/content';
 import { latestByReel, withMonotonicReelViews } from './lib/dashboard';
 import { cacheImage, imgKey } from './lib/media';
 import { formatCount, formatDate, proxiedImage } from './lib/format';
 import type {
   Bio,
+  ContentMediaType,
   ContentReel,
   Cta,
   Employee,
@@ -128,6 +137,81 @@ function PublishProgressBar({
       <span className="publish-progress__label">{publishProgressLabel(progress)}</span>
     </div>
   );
+}
+
+function ContentMediaPreview({
+  reel,
+  compact,
+}: {
+  reel: ContentReel;
+  compact?: boolean;
+}) {
+  const urls = getContentMediaUrls(reel);
+  const mediaClass = compact ? 'schedule-card__thumb' : 'reel-cell__media';
+
+  if (reel.mediaType === 'carousel') {
+    if (compact) {
+      return (
+        <div className="schedule-card__thumb-wrap schedule-card__thumb-wrap--carousel">
+          <img
+            className="schedule-card__thumb"
+            src={urls[0]}
+            alt="Carousel cover"
+            loading="lazy"
+          />
+          <span className="schedule-card__carousel-count">{urls.length}</span>
+        </div>
+      );
+    }
+    return (
+      <div className="carousel-cell__album">
+        {urls.map((url, i) => (
+          <img
+            key={`${url}-${i}`}
+            className="carousel-cell__thumb"
+            src={url}
+            alt={`Slide ${i + 1}`}
+            loading="lazy"
+          />
+        ))}
+      </div>
+    );
+  }
+
+  const showImage =
+    reel.mediaType === 'image' || (reel.mediaType === 'story' && !isStoryVideo(reel));
+  if (showImage) {
+    return (
+      <img
+        className={mediaClass}
+        src={reel.videoUrl}
+        alt={reel.caption || contentMediaLabel(reel.mediaType)}
+        loading="lazy"
+      />
+    );
+  }
+  return (
+    <video
+      className={mediaClass}
+      src={reel.videoUrl}
+      autoPlay={!compact}
+      loop={!compact}
+      muted
+      playsInline
+    />
+  );
+}
+
+function contentFileAccept(tab: ContentMediaType): string {
+  switch (tab) {
+    case 'image':
+    case 'carousel':
+      return 'image/*';
+    case 'story':
+      return 'image/*,video/*';
+    default:
+      return 'video/*';
+  }
 }
 
 function loadSession(): Session | null {
@@ -228,7 +312,8 @@ export default function App() {
   const [newStoryEmployees, setNewStoryEmployees] = useState<Set<string>>(() => new Set());
   const [newStoryAll, setNewStoryAll] = useState(false);
   const [content, setContent] = useState<ContentReel[]>([]);
-  const [contentTab, setContentTab] = useState<'reel' | 'image'>('reel');
+  const [contentTab, setContentTab] = useState<ContentMediaType>('reel');
+  const [scheduleFilterTab, setScheduleFilterTab] = useState<'all' | ContentMediaType>('all');
   const [newContentCaption, setNewContentCaption] = useState('');
   const [newContentEmployees, setNewContentEmployees] = useState<Set<string>>(() => new Set());
   const [newContentAll, setNewContentAll] = useState(false);
@@ -869,7 +954,19 @@ export default function App() {
     await loadStories();
   }
 
-  async function uploadContentFile(file: File) {
+  async function uploadContentFiles(files: File[]) {
+    if (files.length === 0) return;
+    if (contentTab === 'carousel') {
+      if (files.length < MIN_CAROUSEL_ITEMS) {
+        setError(`Carousels need at least ${MIN_CAROUSEL_ITEMS} images.`);
+        return;
+      }
+      if (files.length > MAX_CAROUSEL_ITEMS) {
+        setError(`Carousels can have at most ${MAX_CAROUSEL_ITEMS} images.`);
+        return;
+      }
+    }
+
     setUploadingContent(true);
     try {
       await addContent(
@@ -884,7 +981,7 @@ export default function App() {
           scheduledAt: undefined,
           createdAt: Date.now(),
         },
-        file,
+        contentTab === 'carousel' ? files : files[0],
       );
       await loadContent();
     } catch (err) {
@@ -905,6 +1002,19 @@ export default function App() {
 
   async function handleDeleteContent(id: string) {
     await deleteContent(id);
+    await loadContent();
+  }
+
+  async function handleUnscheduleContent(reel: ContentReel) {
+    await updateContent({
+      ...reel,
+      caption: '',
+      targetAccount: undefined,
+      scheduledAt: undefined,
+      postError: undefined,
+      publishingAt: undefined,
+      publishStage: undefined,
+    });
     await loadContent();
   }
 
@@ -939,7 +1049,8 @@ export default function App() {
     if (!account?.igUserId || !account?.igAccessToken) {
       throw new Error('The selected Instagram account has no saved API token / User ID.');
     }
-    if (!reel.videoUrl) {
+    const mediaUrls = getContentMediaUrls(reel);
+    if (!mediaUrls.length) {
       throw new Error('This item has no uploaded media to publish.');
     }
     return publishContent(
@@ -947,8 +1058,8 @@ export default function App() {
       account.igAccessToken,
       {
         mediaType: reel.mediaType ?? 'reel',
-        mediaUrls: [reel.videoUrl],
-        caption,
+        mediaUrls,
+        caption: reel.mediaType === 'story' ? '' : caption,
       },
       onProgress,
     );
@@ -1080,20 +1191,29 @@ export default function App() {
   }
 
   async function downloadReel(reel: ContentReel) {
-    if (!reel.videoUrl) return;
+    const urls = getContentMediaUrls(reel);
+    if (!urls.length) return;
+    const ext =
+      reel.mediaType === 'image' ||
+      reel.mediaType === 'carousel' ||
+      (reel.mediaType === 'story' && !isStoryVideo(reel))
+        ? 'jpg'
+        : 'mp4';
     try {
-      const res = await fetch(reel.videoUrl);
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `reel-${reel.id}.mp4`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
+      for (let i = 0; i < urls.length; i++) {
+        const res = await fetch(urls[i]);
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${reel.mediaType ?? 'reel'}-${reel.id}${urls.length > 1 ? `-${i + 1}` : ''}.${ext}`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      }
     } catch {
-      window.open(reel.videoUrl, '_blank', 'noopener');
+      window.open(urls[0], '_blank', 'noopener');
     }
   }
 
@@ -1404,6 +1524,9 @@ export default function App() {
     let scheduled = content.filter(
       (c) => c.scheduledAt && toDateKey(c.scheduledAt) === scheduleViewDate,
     );
+    if (scheduleFilterTab !== 'all') {
+      scheduled = scheduled.filter((c) => (c.mediaType ?? 'reel') === scheduleFilterTab);
+    }
     if (isAdmin && contentEmployeeFilter) {
       scheduled = scheduled.filter(
         (c) => c.allEmployees || c.employees.includes(contentEmployeeFilter),
@@ -2238,37 +2361,31 @@ export default function App() {
         {view === 'content' && (
           <>
             <div className="toggle-group content-tabs">
-              <button
-                type="button"
-                className={`toggle ${contentTab === 'reel' ? 'toggle--active' : ''}`}
-                onClick={() => {
-                  setContentTab('reel');
-                  if (contentFileRef.current) contentFileRef.current.value = '';
-                }}
-              >
-                Reels
-              </button>
-              <button
-                type="button"
-                className={`toggle ${contentTab === 'image' ? 'toggle--active' : ''}`}
-                onClick={() => {
-                  setContentTab('image');
-                  if (contentFileRef.current) contentFileRef.current.value = '';
-                }}
-              >
-                Images
-              </button>
+              {(['reel', 'image', 'story', 'carousel'] as const).map((tab) => (
+                <button
+                  key={tab}
+                  type="button"
+                  className={`toggle ${contentTab === tab ? 'toggle--active' : ''}`}
+                  onClick={() => {
+                    setContentTab(tab);
+                    if (contentFileRef.current) contentFileRef.current.value = '';
+                  }}
+                >
+                  {contentTabLabel(tab)}
+                </button>
+              ))}
             </div>
 
             {isAdmin && (
               <input
                 ref={contentFileRef}
                 type="file"
-                accept={contentTab === 'image' ? 'image/*' : 'video/*'}
+                accept={contentFileAccept(contentTab)}
+                multiple={contentTab === 'carousel'}
                 style={{ display: 'none' }}
                 onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) void uploadContentFile(file);
+                  const files = e.target.files ? Array.from(e.target.files) : [];
+                  if (files.length) void uploadContentFiles(files);
                   e.target.value = '';
                 }}
               />
@@ -2278,10 +2395,8 @@ export default function App() {
               <div className="panel-head">
                 <h2>
                   {isAdmin
-                    ? `${contentTab === 'image' ? 'Images' : 'Reels'} (${displayedContent.length})`
-                    : contentTab === 'image'
-                      ? 'Your images'
-                      : 'Your reels'}
+                    ? `${contentTabLabel(contentTab)} (${displayedContent.length})`
+                    : `Your ${contentTabSingular(contentTab)}s`}
                 </h2>
                 {isAdmin && (
                   <button
@@ -2292,37 +2407,25 @@ export default function App() {
                   >
                     {uploadingContent
                       ? 'Uploading…'
-                      : `Add ${contentTab === 'image' ? 'image' : 'reel'}`}
+                      : contentTab === 'carousel'
+                        ? 'Add carousel'
+                        : `Add ${contentTabSingular(contentTab)}`}
                   </button>
                 )}
               </div>
               {displayedContent.length === 0 ? (
                 <p className="empty-note">
                   {isAdmin
-                      ? `No ${contentTab === 'image' ? 'images' : 'reels'} yet. Upload one above and assign it to employees.`
-                      : `No ${contentTab === 'image' ? 'image' : 'reel'} assigned to you yet.`}
+                    ? contentTab === 'carousel'
+                      ? `No carousels yet. Upload ${MIN_CAROUSEL_ITEMS}–${MAX_CAROUSEL_ITEMS} images to create one.`
+                      : `No ${contentTabSingular(contentTab)}s yet. Upload one above and assign it to employees.`
+                    : `No ${contentTabSingular(contentTab)} assigned to you yet.`}
                 </p>
               ) : (
                 <div className="reels-grid">
                   {displayedContent.map((reel) => (
                     <div key={reel.id} className="reel-cell">
-                      {reel.mediaType === 'image' ? (
-                        <img
-                          className="reel-cell__media"
-                          src={reel.videoUrl}
-                          alt={reel.caption || 'Image'}
-                          loading="lazy"
-                        />
-                      ) : (
-                        <video
-                          className="reel-cell__media"
-                          src={reel.videoUrl}
-                          autoPlay
-                          loop
-                          muted
-                          playsInline
-                        />
-                      )}
+                      <ContentMediaPreview reel={reel} />
                       <div className="reel-cell__overlay">
                         {isAdmin && (
                           <button
@@ -2338,7 +2441,7 @@ export default function App() {
                           type="button"
                           className="reel-cell__btn reel-cell__btn--wide"
                           onClick={() => downloadReel(reel)}
-                          title={reel.mediaType === 'image' ? 'Download image' : 'Download reel'}
+                          title={`Download ${contentTabSingular(reel.mediaType ?? 'reel')}`}
                         >
                           Download
                         </button>
@@ -2358,7 +2461,7 @@ export default function App() {
                             type="button"
                             className="reel-cell__btn reel-cell__btn--danger"
                             onClick={() => handleDeleteContent(reel.id)}
-                            title={reel.mediaType === 'image' ? 'Delete image' : 'Delete reel'}
+                            title={`Delete ${contentTabSingular(reel.mediaType ?? 'reel')}`}
                             aria-label="Delete"
                           >
                             ✕
@@ -2472,6 +2575,26 @@ export default function App() {
               </div>
             </div>
 
+            <div className="toggle-group schedule-tabs">
+              <button
+                type="button"
+                className={`toggle ${scheduleFilterTab === 'all' ? 'toggle--active' : ''}`}
+                onClick={() => setScheduleFilterTab('all')}
+              >
+                All
+              </button>
+              {(['reel', 'image', 'story', 'carousel'] as const).map((tab) => (
+                <button
+                  key={tab}
+                  type="button"
+                  className={`toggle ${scheduleFilterTab === tab ? 'toggle--active' : ''}`}
+                  onClick={() => setScheduleFilterTab(tab)}
+                >
+                  {contentTabLabel(tab)}
+                </button>
+              ))}
+            </div>
+
             {scheduledForDate.length === 0 ? (
               <p className="empty-note">
                 Nothing scheduled for {scheduleViewLabel}.
@@ -2482,28 +2605,14 @@ export default function App() {
                   <div className="schedule-list">
                     {scheduledForDate.map((reel) => (
                         <div key={reel.id} className="schedule-card">
-                          {reel.mediaType === 'image' ? (
-                            <img
-                              className="schedule-card__thumb"
-                              src={reel.videoUrl}
-                              alt={reel.caption || 'Image'}
-                              loading="lazy"
-                            />
-                          ) : (
-                            <video
-                              className="schedule-card__thumb"
-                              src={reel.videoUrl}
-                              muted
-                              playsInline
-                            />
-                          )}
+                          <ContentMediaPreview reel={reel} compact />
                           <div className="schedule-card__body">
                             <div className="schedule-card__top">
                               <span className="schedule-card__time">
                                 🗓 {formatTimeLocal(reel.scheduledAt as number)}
                               </span>
                               <span className="schedule-card__type">
-                                {reel.mediaType === 'image' ? 'Image' : 'Reel'}
+                                {contentMediaLabel(reel.mediaType)}
                               </span>
                             </div>
                             {reel.caption ? (
@@ -2561,8 +2670,9 @@ export default function App() {
                               <button
                                 type="button"
                                 className="license-row__delete"
-                                onClick={() => handleDeleteContent(reel.id)}
-                                title={reel.mediaType === 'image' ? 'Delete image' : 'Delete reel'}
+                                onClick={() => handleUnscheduleContent(reel)}
+                                title="Remove from schedule"
+                                aria-label="Remove from schedule"
                               >
                                 ✕
                               </button>
@@ -3008,7 +3118,7 @@ export default function App() {
               <div className="modal__head">
                 <h3>
                   {scheduleMode === 'post' ? 'Post' : 'Schedule'}{' '}
-                  {scheduleReel.mediaType === 'image' ? 'image' : 'reel'}
+                  {contentTabSingular(scheduleReel.mediaType ?? 'reel')}
                 </h3>
                 <button
                   type="button"
@@ -3021,13 +3131,21 @@ export default function App() {
               </div>
 
               <div className="schedule-modal__body">
-                <textarea
-                  className="bio-form__textarea"
-                  placeholder="Write a caption…"
-                  value={newContentCaption}
-                  onChange={(e) => setNewContentCaption(e.target.value)}
-                  rows={3}
-                />
+                {scheduleReel.mediaType !== 'story' && (
+                  <textarea
+                    className="bio-form__textarea"
+                    placeholder="Write a caption…"
+                    value={newContentCaption}
+                    onChange={(e) => setNewContentCaption(e.target.value)}
+                    rows={3}
+                  />
+                )}
+
+                {scheduleReel.mediaType === 'story' && (
+                  <p className="cred-field__hint">
+                    Instagram Stories publish without a feed caption.
+                  </p>
+                )}
 
                 {scheduleMode === 'schedule' && (
                   <label className="cred-field">

@@ -157,12 +157,16 @@ export interface StoryNote {
   createdAt: number;
 }
 
+export type ContentMediaType = 'reel' | 'image' | 'story' | 'carousel';
+
 export interface ContentReel {
   id: string;
   caption: string;
   videoUrl: string;
-  /** Whether this content item is a reel (video) or an image. Defaults to reel. */
-  mediaType?: 'reel' | 'image';
+  /** Content format: reel, feed image, story, or multi-image carousel. */
+  mediaType?: ContentMediaType;
+  /** Image URLs for carousel albums (feed carousels only). */
+  mediaUrls?: string[];
   employees: string[];
   allEmployees: boolean;
   targetAccount?: string;

@@ -628,22 +628,71 @@ export async function publishCarousel(
   return { mediaId, permalink };
 }
 
+export async function publishStoryImage(
+  igUserId: string,
+  accessToken: string,
+  imageUrl: string,
+  onProgress?: (progress: PublishProgress) => void,
+): Promise<PublishResult> {
+  onProgress?.({ stage: 'creating' });
+  const containerId = await createMediaContainer(igUserId, accessToken, {
+    media_type: 'STORIES',
+    image_url: imageUrl,
+  });
+  onProgress?.({ stage: 'publishing' });
+  const mediaId = await publishContainer(igUserId, accessToken, containerId);
+  const permalink = await resolvePermalink(mediaId, accessToken);
+  onProgress?.({ stage: 'done', mediaId, permalink });
+  return { mediaId, permalink };
+}
+
+export async function publishStoryVideo(
+  igUserId: string,
+  accessToken: string,
+  videoUrl: string,
+  onProgress?: (progress: PublishProgress) => void,
+): Promise<PublishResult> {
+  onProgress?.({ stage: 'creating' });
+  const containerId = await createMediaContainer(igUserId, accessToken, {
+    media_type: 'STORIES',
+    video_url: videoUrl,
+  });
+  onProgress?.({ stage: 'processing', status: 'IN_PROGRESS' });
+  await waitForContainerReady(containerId, accessToken, (status) =>
+    onProgress?.({ stage: 'processing', status }),
+  );
+  onProgress?.({ stage: 'publishing' });
+  const mediaId = await publishContainer(igUserId, accessToken, containerId);
+  const permalink = await resolvePermalink(mediaId, accessToken);
+  onProgress?.({ stage: 'done', mediaId, permalink });
+  return { mediaId, permalink };
+}
+
 /**
- * Publishes a single content item (reel or image) or a carousel when more than
- * one media URL is provided.
+ * Publishes reels, feed images, stories, or carousels.
  */
 export async function publishContent(
   igUserId: string,
   accessToken: string,
-  options: { mediaType: 'reel' | 'image'; mediaUrls: string[]; caption: string },
+  options: {
+    mediaType: 'reel' | 'image' | 'story' | 'carousel';
+    mediaUrls: string[];
+    caption: string;
+  },
   onProgress?: (progress: PublishProgress) => void,
 ): Promise<PublishResult> {
   const { mediaType, mediaUrls, caption } = options;
   if (mediaUrls.length === 0) {
     throw new InstagramApiError({ message: 'No media to publish', type: 'BadRequest', code: 400 });
   }
-  if (mediaUrls.length > 1) {
+  if (mediaType === 'carousel' || mediaUrls.length > 1) {
     return publishCarousel(igUserId, accessToken, mediaUrls, caption, onProgress);
+  }
+  if (mediaType === 'story') {
+    const isVideo = /\.(mp4|mov|webm)(\?|$)/i.test(mediaUrls[0]);
+    return isVideo
+      ? publishStoryVideo(igUserId, accessToken, mediaUrls[0], onProgress)
+      : publishStoryImage(igUserId, accessToken, mediaUrls[0], onProgress);
   }
   if (mediaType === 'reel') {
     return publishReel(igUserId, accessToken, mediaUrls[0], caption, onProgress);

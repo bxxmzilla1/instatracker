@@ -104,7 +104,6 @@ export async function runScheduledPublisher({ limit = 3 } = {}) {
     .is('posted_at', null)
     .is('publishing_at', null)
     .not('target_account', 'is', null)
-    .not('video_url', 'is', null)
     .order('scheduled_at', { ascending: true })
     .limit(limit);
 
@@ -112,21 +111,31 @@ export async function runScheduledPublisher({ limit = 3 } = {}) {
     return { ok: false, error: error.message, processed: 0 };
   }
 
+  const dueWithMedia = (due ?? []).filter(
+    (row) =>
+      row.video_url ||
+      (Array.isArray(row.media_urls) && row.media_urls.length > 0),
+  );
+
   let processed = 0;
   const results = [];
 
-  for (const row of due ?? []) {
+  for (const row of dueWithMedia) {
     const claimed = await claimItem(db, row.id);
     if (!claimed) continue;
 
     try {
       const { igUserId, igAccessToken } = await getAccountCredentials(db, row.target_account);
+      const mediaUrls =
+        Array.isArray(row.media_urls) && row.media_urls.length > 0
+          ? row.media_urls
+          : [row.video_url];
       const result = await publishContent(
         igUserId,
         igAccessToken,
         {
-          mediaType: row.media_type === 'image' ? 'image' : 'reel',
-          mediaUrls: [row.video_url],
+          mediaType: row.media_type ?? 'reel',
+          mediaUrls,
           caption: row.caption ?? '',
         },
         async (progress) => {

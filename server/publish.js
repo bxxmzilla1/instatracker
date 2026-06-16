@@ -123,11 +123,47 @@ export async function publishCarousel(igUserId, accessToken, mediaUrls, caption,
   return { mediaId, permalink };
 }
 
+export async function publishStoryImage(igUserId, accessToken, imageUrl, onProgress) {
+  onProgress?.({ stage: 'creating' });
+  const containerId = await createMediaContainer(igUserId, accessToken, {
+    media_type: 'STORIES',
+    image_url: imageUrl,
+  });
+  onProgress?.({ stage: 'publishing' });
+  const mediaId = await publishContainer(igUserId, accessToken, containerId);
+  const permalink = await resolvePermalink(mediaId, accessToken);
+  onProgress?.({ stage: 'done', mediaId, permalink });
+  return { mediaId, permalink };
+}
+
+export async function publishStoryVideo(igUserId, accessToken, videoUrl, onProgress) {
+  onProgress?.({ stage: 'creating' });
+  const containerId = await createMediaContainer(igUserId, accessToken, {
+    media_type: 'STORIES',
+    video_url: videoUrl,
+  });
+  onProgress?.({ stage: 'processing', status: 'IN_PROGRESS' });
+  await waitForContainerReady(containerId, accessToken, (status) =>
+    onProgress?.({ stage: 'processing', status }),
+  );
+  onProgress?.({ stage: 'publishing' });
+  const mediaId = await publishContainer(igUserId, accessToken, containerId);
+  const permalink = await resolvePermalink(mediaId, accessToken);
+  onProgress?.({ stage: 'done', mediaId, permalink });
+  return { mediaId, permalink };
+}
+
 export async function publishContent(igUserId, accessToken, options, onProgress) {
   const { mediaType, mediaUrls, caption } = options;
   if (!mediaUrls?.length) throw new Error('No media to publish');
-  if (mediaUrls.length > 1) {
+  if (mediaType === 'carousel' || mediaUrls.length > 1) {
     return publishCarousel(igUserId, accessToken, mediaUrls, caption, onProgress);
+  }
+  if (mediaType === 'story') {
+    const isVideo = /\.(mp4|mov|webm)(\?|$)/i.test(mediaUrls[0]);
+    return isVideo
+      ? publishStoryVideo(igUserId, accessToken, mediaUrls[0], onProgress)
+      : publishStoryImage(igUserId, accessToken, mediaUrls[0], onProgress);
   }
   if (mediaType === 'reel') {
     return publishReel(igUserId, accessToken, mediaUrls[0], caption, onProgress);
