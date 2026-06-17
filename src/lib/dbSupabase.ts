@@ -2,7 +2,6 @@ import { supabase } from './supabase';
 import { groupReelHistories } from './dbLocal';
 import { matchesEmployee } from './assignment';
 import { extForContentFile, isImageFile } from './content';
-import { prepareMediaForLibrary } from './mediaOptimize';
 import { normalizeScheduledPosts } from './contentSchedule';
 import type {
   ApiLink,
@@ -542,16 +541,15 @@ export async function addContent(reel: ContentReel, file?: Blob | Blob[]): Promi
   if (files.length > 0) {
     const uploaded: string[] = [];
     for (let i = 0; i < files.length; i++) {
-      const blob = files[i]!;
+      const blob = files[i];
       const fileName = blob instanceof File ? blob.name : undefined;
-      const prepared = await prepareMediaForLibrary(blob, fileName);
-      const isImage = isImageFile(prepared, fileName);
-      const ext = extForFile(prepared, fileName);
+      const isImage = isImageFile(blob, fileName);
+      const ext = extForFile(blob, fileName);
       const path =
         files.length > 1 ? `content/${reel.id}/${i}.${ext}` : `content/${reel.id}.${ext}`;
-      const { error: uploadError } = await db.storage.from('media').upload(path, prepared, {
+      const { error: uploadError } = await db.storage.from('media').upload(path, blob, {
         upsert: true,
-        contentType: prepared.type || (isImage ? 'image/jpeg' : 'video/mp4'),
+        contentType: blob.type || (isImage ? 'image/jpeg' : 'video/mp4'),
         cacheControl: '604800',
       });
       if (uploadError) throw new Error(uploadError.message);

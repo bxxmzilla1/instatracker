@@ -68,7 +68,7 @@ import { SavedAccountPicker } from './SavedAccountPicker';
 import { SquareImageCropModal } from './SquareImageCropModal';
 import { BskyFollowChart, type FollowBar } from './BskyFollowChart';
 import { CopyButton } from './CopyButton';
-import { CopyField } from './CopyField';
+import { HoverLoopVideo } from './HoverLoopVideo';
 import { assignedEmployees, matchesEmployee } from '../lib/assignment';
 import { parseProxyString } from '../lib/proxy';
 import { formatCount, formatDate } from '../lib/format';
@@ -3123,13 +3123,9 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                             return (
                               <div key={post.id} className="reel-cell">
                                 {post.mediaType === 'video' && post.videoUrl ? (
-                                  <video
+                                  <HoverLoopVideo
                                     className="reel-cell__media"
                                     src={post.videoUrl}
-                                    autoPlay
-                                    loop
-                                    muted
-                                    playsInline
                                   />
                                 ) : post.imageUrl ? (
                                   <img
@@ -3240,13 +3236,9 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                             <div key={post.id} className="post-engagement-card">
                               <div className="post-engagement-card__media">
                                 {post.mediaType === 'video' && post.videoUrl ? (
-                                  <video
+                                  <HoverLoopVideo
                                     className="bsky-video"
                                     src={post.videoUrl}
-                                    autoPlay
-                                    loop
-                                    muted
-                                    playsInline
                                   />
                                 ) : post.imageUrl ? (
                                   <img className="bsky-image bsky-image--post" src={post.imageUrl} alt="" loading="lazy" />

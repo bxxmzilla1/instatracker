@@ -1,6 +1,5 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
 import { matchesEmployee } from './assignment';
-import { prepareMediaForLibrary } from './mediaOptimize';
 import type {
   ApiLink,
   Bio,
@@ -307,12 +306,7 @@ export async function getContent(employee?: string): Promise<ContentReel[]> {
 
 export async function addContent(reel: ContentReel, file?: Blob | Blob[]): Promise<void> {
   const db = await getDb();
-  const rawFiles = file ? (Array.isArray(file) ? file : [file]) : [];
-  const files: Blob[] = [];
-  for (const blob of rawFiles) {
-    const fileName = blob instanceof File ? blob.name : undefined;
-    files.push(await prepareMediaForLibrary(blob, fileName));
-  }
+  const files = file ? (Array.isArray(file) ? file : [file]) : [];
   const record: ContentRecord = {
     id: reel.id,
     caption: reel.caption,

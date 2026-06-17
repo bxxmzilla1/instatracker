@@ -8,7 +8,7 @@ import { BlueskySection } from './components/BlueskySection';
 import { CopyButton } from './components/CopyButton';
 import { CopyField } from './components/CopyField';
 import { Dashboard } from './components/Dashboard';
-import { Login } from './components/Login';
+import { HoverLoopVideo } from './components/HoverLoopVideo';
 import { ReelCard } from './components/ReelCard';
 import { checkHealth, fetchProfile, fetchReels } from './lib/api';
 import {
@@ -238,14 +238,7 @@ function ContentMediaPreview({
     );
   }
   return (
-    <video
-      className={mediaClass}
-      src={reel.videoUrl}
-      autoPlay={!compact}
-      loop={!compact}
-      muted
-      playsInline
-    />
+    <HoverLoopVideo className={mediaClass} src={reel.videoUrl} />
   );
 }
 

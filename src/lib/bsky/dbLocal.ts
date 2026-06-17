@@ -1,6 +1,5 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
 import { matchesEmployee } from '../assignment';
-import { prepareMediaForLibrary } from '../mediaOptimize';
 import type {
   Bio,
   BskyAccount,
@@ -176,7 +175,7 @@ async function addImage(store: 'banners' | 'profilePics', asset: ImageAsset, fil
     allEmployees: asset.allEmployees,
     createdAt: asset.createdAt,
   };
-  if (file) record.blob = await prepareMediaForLibrary(file);
+  if (file) record.blob = file;
   else record.url = asset.url;
   await db.put(store, record);
 }
@@ -250,9 +249,8 @@ export async function addPost(post: BskyPost, file?: Blob): Promise<void> {
     createdAt: post.createdAt,
   };
   if (file) {
-    const prepared = await prepareMediaForLibrary(file);
-    if (post.mediaType === 'video') record.videoBlob = prepared;
-    else record.blob = prepared;
+    if (post.mediaType === 'video') record.videoBlob = file;
+    else record.blob = file;
   } else {
     record.imageUrl = post.imageUrl;
     record.videoUrl = post.videoUrl;

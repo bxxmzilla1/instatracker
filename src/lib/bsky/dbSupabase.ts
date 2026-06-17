@@ -1,6 +1,5 @@
 import { supabase } from '../supabase';
 import { matchesEmployee } from '../assignment';
-import { prepareMediaForLibrary } from '../mediaOptimize';
 import type {
   Bio,
   BskyAccount,
@@ -196,20 +195,11 @@ function toImage(row: ImageRow): ImageAsset {
 
 async function uploadMedia(folder: string, id: string, file: Blob): Promise<string> {
   const db = client();
-  const prepared = await prepareMediaForLibrary(file);
-  const ext = prepared.type.includes('video')
-    ? prepared.type.includes('webm')
-      ? 'webm'
-      : 'mp4'
-    : prepared.type.includes('png')
-      ? 'png'
-      : prepared.type.includes('webp')
-        ? 'webp'
-        : 'jpg';
+  const ext = file.type.includes('png') ? 'png' : file.type.includes('webp') ? 'webp' : 'jpg';
   const path = `bsky/${folder}/${id}.${ext}`;
-  const { error } = await db.storage.from('media').upload(path, prepared, {
+  const { error } = await db.storage.from('media').upload(path, file, {
     upsert: true,
-    contentType: prepared.type || 'image/jpeg',
+    contentType: file.type || 'image/jpeg',
     cacheControl: '604800',
   });
   if (error) throw new Error(error.message);

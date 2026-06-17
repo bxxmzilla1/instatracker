@@ -3108,6 +3108,11 @@ button:disabled {
   gap: 4px;
   opacity: 0;
   transition: opacity 0.15s ease;
+  pointer-events: none;
+}
+
+.reel-cell__overlay .reel-cell__btn {
+  pointer-events: auto;
 }
 
 .reel-cell:hover .reel-cell__overlay {
@@ -3163,6 +3168,11 @@ button:disabled {
   opacity: 0;
   transform: translateY(8px);
   transition: opacity 0.18s ease, transform 0.18s ease;
+  pointer-events: none;
+}
+
+.reel-cell__footer .reel-cell__action {
+  pointer-events: auto;
 }
 
 .reel-cell:hover .reel-cell__footer {
