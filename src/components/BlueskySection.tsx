@@ -3115,13 +3115,13 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                             : `No ${postMediaTab === 'image' ? 'images' : 'videos'} assigned to you yet.`}
                         </p>
                       ) : (
-                        <div className="post-library-grid">
+                        <div className="reels-grid">
                           {displayedPosts.map((post) => {
                             const hasPublished = (post.publishes ?? []).some((p) => p.uri && !p.error);
                             const postable = postableAccountsForPost(post);
                             const isPublishing = postPublishingId === post.id;
                             return (
-                              <div key={post.id} className="reel-cell reel-cell--post">
+                              <div key={post.id} className="reel-cell">
                                 {post.mediaType === 'video' && post.videoUrl ? (
                                   <video
                                     className="reel-cell__media"

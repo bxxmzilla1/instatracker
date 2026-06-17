@@ -1,3 +1,4 @@
+import { prepareImageForLibrary } from './mediaOptimize';
 import { isSupabaseConfigured, supabase } from './supabase';
 
 const BUCKET = 'media';
@@ -25,9 +26,10 @@ export async function cacheImage(
     if (!response.ok) return sourceUrl;
 
     const blob = await response.blob();
-    const { error } = await supabase.storage.from(BUCKET).upload(path, blob, {
+    const optimized = await prepareImageForLibrary(blob);
+    const { error } = await supabase.storage.from(BUCKET).upload(path, optimized, {
       upsert: true,
-      contentType: blob.type || 'image/jpeg',
+      contentType: optimized.type || 'image/jpeg',
       cacheControl: '604800',
     });
     if (error) return sourceUrl;
