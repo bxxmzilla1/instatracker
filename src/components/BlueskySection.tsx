@@ -186,6 +186,8 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   const [editBioItem, setEditBioItem] = useState<Bio | null>(null);
   const [editBioText, setEditBioText] = useState('');
   const [savingBioEdit, setSavingBioEdit] = useState(false);
+  const [addBioOpen, setAddBioOpen] = useState(false);
+  const [savingBioAdd, setSavingBioAdd] = useState(false);
   const [picFile, setPicFile] = useState<File | null>(null);
   const [picCaption, setPicCaption] = useState('');
   const [proxyRaw, setProxyRaw] = useState('');
@@ -197,7 +199,8 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   const [picPushAccountIds, setPicPushAccountIds] = useState<Set<string>>(() => new Set());
   const [picPushAllAccounts, setPicPushAllAccounts] = useState(false);
   const [picPushAccountId, setPicPushAccountId] = useState('');
-  const [bioPushAccountId, setBioPushAccountId] = useState('');
+  const [bioPushAccountIds, setBioPushAccountIds] = useState<Set<string>>(() => new Set());
+  const [bioPushAllAccounts, setBioPushAllAccounts] = useState(false);
   const [directPicFile, setDirectPicFile] = useState<File | null>(null);
   const [profilePushing, setProfilePushing] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -508,23 +511,35 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     }
   }
 
-  async function submitBio(e: FormEvent) {
-    e.preventDefault();
+  async function saveBioAdd() {
     if (!bioText.trim()) return;
-    await addBio({
-      id: crypto.randomUUID(),
-      text: bioText.trim(),
-      createdAt: Date.now(),
-      employees: [],
-      allEmployees: false,
-    });
+    setSavingBioAdd(true);
+    try {
+      await addBio({
+        id: crypto.randomUUID(),
+        text: bioText.trim(),
+        createdAt: Date.now(),
+        employees: [],
+        allEmployees: false,
+      });
+      setBioText('');
+      setAddBioOpen(false);
+      await loadAll();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not add bio.');
+    } finally {
+      setSavingBioAdd(false);
+    }
+  }
+
+  function openAddBioModal() {
     setBioText('');
-    setOpenForms((prev) => {
-      const next = new Set(prev);
-      next.delete('bio');
-      return next;
-    });
-    await loadAll();
+    setAddBioOpen(true);
+  }
+
+  function closeAddBioModal() {
+    setAddBioOpen(false);
+    setBioText('');
   }
 
   async function submitPost(e: FormEvent) {
@@ -968,10 +983,17 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     if (profilePushInFlightRef.current === 0) setProfilePushing(null);
   }
 
-  async function pushBioToAccount(accountId: string, text: string, pushKey: string) {
-    const acct = pushableAccounts.find((a) => a.id === accountId);
-    if (!acct) {
-      setError('Select a Bluesky account with saved credentials.');
+  async function pushBioToSelectedAccounts(
+    selectedIds: Set<string>,
+    allAccounts: boolean,
+    text: string,
+    pushKey: string,
+  ) {
+    const targets = allAccounts
+      ? pushableAccounts
+      : pushableAccounts.filter((a) => selectedIds.has(a.id));
+    if (targets.length === 0) {
+      setError('Select at least one Bluesky account with saved credentials.');
       return;
     }
     if (!text.trim()) {
@@ -979,11 +1001,28 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
       return;
     }
     beginProfilePush(pushKey);
+    const failures: string[] = [];
+    let ok = 0;
     try {
-      await pushProfileBio(credentialsForSavedAccount(acct), text.trim());
-      setSuccessMessage('Bio updated on Bluesky.');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not update Bluesky bio.');
+      for (const acct of targets) {
+        const handle = acct.handle.replace(/^@/, '');
+        try {
+          await pushProfileBio(credentialsForSavedAccount(acct), text.trim());
+          ok += 1;
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : 'Push failed';
+          failures.push(`@${handle}: ${msg}`);
+        }
+      }
+      if (failures.length === 0) {
+        setSuccessMessage(`Bio updated on ${ok} account${ok === 1 ? '' : 's'}.`);
+      } else if (ok > 0) {
+        setError(
+          `Bio updated on ${ok} account${ok === 1 ? '' : 's'}, but failed on ${failures.length}: ${failures.join(' · ')}`,
+        );
+      } else {
+        setError(failures.join(' · '));
+      }
     } finally {
       endProfilePush();
     }
@@ -1002,6 +1041,16 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   function togglePicPushAccount(id: string) {
     setPicPushAllAccounts(false);
     setPicPushAccountIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleBioPushAccount(id: string) {
+    setBioPushAllAccounts(false);
+    setBioPushAccountIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
@@ -1798,13 +1847,9 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     );
   };
 
-  const bioSection = (
-    items: Bio[],
-    text: string,
-    setText: (t: string) => void,
-    submit: (e: FormEvent) => void,
-    onDelete: (id: string) => Promise<void>,
-  ) => {
+  const bioSection = (items: Bio[], onDelete: (id: string) => Promise<void>) => {
+    const canPushBio = bioPushAllAccounts || bioPushAccountIds.size > 0;
+
     const renderBioLibrary = (libraryItems: Bio[]) => (
       <div className="bio-library-grid">
         {libraryItems.map((item) => (
@@ -1846,8 +1891,15 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
               <button
                 type="button"
                 className="reel-cell__action reel-cell__action--primary"
-                disabled={profilePushing !== null || !bioPushAccountId}
-                onClick={() => void pushBioToAccount(bioPushAccountId, item.text, item.id)}
+                disabled={profilePushing !== null || !canPushBio}
+                onClick={() =>
+                  void pushBioToSelectedAccounts(
+                    bioPushAccountIds,
+                    bioPushAllAccounts,
+                    item.text,
+                    item.id,
+                  )
+                }
               >
                 {profilePushing === item.id ? 'Pushing…' : 'Push to Bluesky'}
               </button>
@@ -1863,15 +1915,14 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
       <section className="panel">
         <h2>Update on Bluesky</h2>
         <div className="bio-form">
-          <SavedAccountPicker
+          <SavedAccountMultiPicker
             accounts={pushableAccounts}
-            value={bioPushAccountId}
-            onChange={setBioPushAccountId}
-            label="Bluesky account to update"
+            selected={bioPushAccountIds}
+            all={bioPushAllAccounts}
+            onToggle={toggleBioPushAccount}
+            onAllChange={setBioPushAllAccounts}
+            hint="Choose saved accounts from Accounts, then push a library item below."
           />
-          <span className="cred-field__hint">
-            Choose a saved account from Accounts, then push a library item below.
-          </span>
         </div>
       </section>
 
@@ -1881,26 +1932,12 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
             <h2>Bio library ({items.length})</h2>
             <button
               type="button"
-              className={`panel-add-toggle ${openForms.has('bio') ? 'panel-add-toggle--open' : ''}`}
-              onClick={() => toggleForm('bio')}
+              className="panel-add-toggle"
+              onClick={openAddBioModal}
             >
-              {openForms.has('bio') ? 'Hide' : 'ADD'}
+              ADD
             </button>
           </div>
-          {openForms.has('bio') && (
-            <form className="bio-form" onSubmit={submit}>
-              <textarea
-                className="bio-form__textarea"
-                placeholder="Write the bio…"
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-                rows={4}
-              />
-              <button type="submit" disabled={!text.trim()}>
-                Add bio
-              </button>
-            </form>
-          )}
           {items.length === 0 ? (
             <p className="empty-note">Nothing here yet.</p>
           ) : (
@@ -2545,7 +2582,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                 },
               )}
 
-            {view === 'bio' && bioSection(bios, bioText, setBioText, submitBio, deleteBio)}
+            {view === 'bio' && bioSection(bios, deleteBio)}
 
             {view === 'post' && (
               <>
@@ -3387,6 +3424,51 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                 </button>
                 <button type="submit" disabled={savingBioEdit || !editBioText.trim()}>
                   {savingBioEdit ? 'Saving…' : 'Save'}
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
+
+        {addBioOpen && (
+          <div className="modal" onClick={closeAddBioModal}>
+            <form
+              className="modal__card"
+              onClick={(e) => e.stopPropagation()}
+              onSubmit={(e) => {
+                e.preventDefault();
+                void saveBioAdd();
+              }}
+            >
+              <div className="modal__head">
+                <h3>Add bio</h3>
+                <button
+                  type="button"
+                  className="modal__close"
+                  onClick={closeAddBioModal}
+                  aria-label="Close"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="schedule-modal__body">
+                <textarea
+                  className="bio-form__textarea"
+                  placeholder="Write the bio…"
+                  value={bioText}
+                  onChange={(e) => setBioText(e.target.value)}
+                  rows={6}
+                  autoFocus
+                />
+              </div>
+
+              <div className="schedule-modal__actions">
+                <button type="button" className="btn btn--ghost" onClick={closeAddBioModal}>
+                  Cancel
+                </button>
+                <button type="submit" disabled={savingBioAdd || !bioText.trim()}>
+                  {savingBioAdd ? 'Adding…' : 'Add bio'}
                 </button>
               </div>
             </form>
