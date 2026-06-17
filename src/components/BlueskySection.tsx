@@ -56,6 +56,7 @@ import {
   pushProfileImageFromUrl,
   publishBskyMediaPost,
   getBskyPostEngagement,
+  deleteBskyPost,
   runAccountJob,
   type BskyCredentials,
   type JobResult,
@@ -231,6 +232,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   const [postPublishingId, setPostPublishingId] = useState<string | null>(null);
   const [postPublishProgress, setPostPublishProgress] = useState<ProfilePushProgressState | null>(null);
   const [refreshingPostStats, setRefreshingPostStats] = useState<string | null>(null);
+  const [deletingProfilePost, setDeletingProfilePost] = useState<string | null>(null);
   const [postCaptionModal, setPostCaptionModal] = useState<{ post: BskyPost } | null>(null);
   const [postCaptionText, setPostCaptionText] = useState('');
   const [assignPost, setAssignPost] = useState<BskyPost | null>(null);
@@ -922,6 +924,46 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
       setError(err instanceof Error ? err.message : 'Could not refresh engagement stats.');
     } finally {
       setRefreshingPostStats(null);
+    }
+  }
+
+  // Removes the published post(s) from the Bluesky profile(s) but keeps the
+  // underlying video/image in the library. Only clears the publish records
+  // that were successfully deleted on Bluesky so failures can be retried.
+  async function deleteProfilePost(post: BskyPost) {
+    setDeletingProfilePost(post.id);
+    setError(null);
+    const remaining: BskyPostPublish[] = [];
+    const failures: string[] = [];
+    try {
+      for (const pub of post.publishes ?? []) {
+        if (!pub.uri || pub.error) continue;
+        const acct = pushableAccounts.find((a) => a.id === pub.accountId);
+        if (!acct) {
+          remaining.push(pub);
+          failures.push(`@${pub.handle.replace(/^@/, '')}: account not found`);
+          continue;
+        }
+        try {
+          await deleteBskyPost(credentialsForSavedAccount(acct), pub.uri);
+        } catch (err) {
+          remaining.push(pub);
+          failures.push(
+            `@${pub.handle.replace(/^@/, '')}: ${err instanceof Error ? err.message : 'delete failed'}`,
+          );
+        }
+      }
+      await updatePost({ ...post, publishes: remaining });
+      await loadAll();
+      if (failures.length > 0) {
+        setError(`Could not remove some posts: ${failures.join(' · ')}`);
+      } else {
+        setSuccessMessage('Removed post from Bluesky. Video kept in library.');
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not delete post from Bluesky.');
+    } finally {
+      setDeletingProfilePost(null);
     }
   }
 
@@ -3280,10 +3322,11 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                                     <button
                                       type="button"
                                       className="license-row__delete"
-                                      onClick={() => void deletePost(post.id).then(loadAll)}
-                                      title="Delete"
+                                      disabled={deletingProfilePost === post.id || successful.length === 0}
+                                      onClick={() => void deleteProfilePost(post)}
+                                      title="Delete from Bluesky profile (keeps video in library)"
                                     >
-                                      ✕
+                                      {deletingProfilePost === post.id ? '…' : '✕'}
                                     </button>
                                   )}
                                 </div>

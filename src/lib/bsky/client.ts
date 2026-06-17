@@ -808,3 +808,12 @@ export async function getBskyPostEngagement(
     repostCount: post.repostCount ?? 0,
   };
 }
+
+/** Deletes a single published post from a Bluesky profile by its AT URI. */
+export async function deleteBskyPost(
+  credentials: BskyCredentials,
+  uri: string,
+): Promise<void> {
+  const agent = await loginBskyAgent(credentials);
+  await agent.deletePost(uri);
+}
