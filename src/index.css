@@ -444,6 +444,57 @@ code {
   gap: 0.5rem;
 }
 
+.proxy-row__ip {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.6rem;
+  padding-top: 0.6rem;
+  border-top: 1px dashed var(--border);
+}
+
+.proxy-row__ip-status {
+  font-size: 0.8rem;
+  color: var(--text);
+}
+
+.proxy-row__ip-status b {
+  color: var(--text-muted, #8899a6);
+  font-weight: 600;
+}
+
+.proxy-row__ip-status--empty {
+  color: var(--text-muted, #8899a6);
+  font-style: italic;
+}
+
+.proxy-row__ip-refresh {
+  padding: 0.2rem 0.6rem;
+  font-size: 0.75rem;
+  color: var(--accent);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.proxy-row__ip-refresh:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: rgba(29, 155, 240, 0.12);
+}
+
+.proxy-row__ip-refresh:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.post-history__ip {
+  font-size: 0.75rem;
+  color: var(--text-muted, #8899a6);
+}
+
 .proxy-type-tag {
   text-transform: uppercase;
   letter-spacing: 0.06em;

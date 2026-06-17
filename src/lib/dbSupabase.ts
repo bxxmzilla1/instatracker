@@ -247,6 +247,9 @@ interface ProxyRow {
   username: string | null;
   password: string | null;
   rotating_link: string | null;
+  current_ip: string | null;
+  ip_info: unknown;
+  ip_checked_at: number | null;
   employee: string | null;
   employees: unknown;
   all_employees: boolean | null;
@@ -263,6 +266,9 @@ function toProxy(row: ProxyRow): Proxy {
     username: row.username ?? '',
     password: row.password ?? '',
     rotatingLink: row.rotating_link ?? '',
+    currentIp: row.current_ip ?? undefined,
+    ipInfo: (row.ip_info as Proxy['ipInfo']) ?? undefined,
+    ipCheckedAt: row.ip_checked_at ?? undefined,
     employees: Array.isArray(row.employees) ? (row.employees as string[]) : [],
     allEmployees: row.all_employees ?? false,
     employee: row.employee ?? undefined,
@@ -293,6 +299,9 @@ export async function addProxy(proxy: Proxy): Promise<void> {
     username: proxy.username,
     password: proxy.password,
     rotating_link: proxy.rotatingLink,
+    current_ip: proxy.currentIp ?? null,
+    ip_info: proxy.ipInfo ?? null,
+    ip_checked_at: proxy.ipCheckedAt ?? null,
     employee: proxy.employee ?? null,
     employees: proxy.employees,
     all_employees: proxy.allEmployees,

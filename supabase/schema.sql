@@ -66,6 +66,9 @@ create table if not exists proxies (
 alter table proxies add column if not exists rotating_link text;
 alter table proxies add column if not exists employees jsonb default '[]'::jsonb;
 alter table proxies add column if not exists all_employees boolean default false;
+alter table proxies add column if not exists current_ip text;
+alter table proxies add column if not exists ip_info jsonb;
+alter table proxies add column if not exists ip_checked_at bigint;
 
 -- Account bios assigned to employees (or all).
 create table if not exists bios (

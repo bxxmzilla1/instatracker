@@ -4,6 +4,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { collectDueScheduledItems, normalizeScheduledPosts } from './contentSchedule.js';
 import { publishContent, proxyRowToRelay } from './publish.js';
+import { lookupExitIp } from './ipinfo.js';
 
 const STALE_PUBLISH_MS = 15 * 60 * 1000;
 const LOCK_KEY = 'scheduled-publisher';
@@ -158,7 +159,7 @@ async function getAccountCredentials(db, username) {
   return { igUserId: data.ig_user_id, igAccessToken: data.ig_access_token };
 }
 
-async function markScheduledPosted(db, rowId, postId, result) {
+async function markScheduledPosted(db, rowId, postId, result, ipInfo) {
   const { data: row, error } = await db.from('content').select('*').eq('id', rowId).maybeSingle();
   if (error) throw new Error(error.message);
   if (!row) return;
@@ -167,6 +168,9 @@ async function markScheduledPosted(db, rowId, postId, result) {
   const post = posts.find((entry) => entry.id === postId);
   if (!post) return;
 
+  const publishedIp = ipInfo?.ip || undefined;
+  const publishedIpCountry = ipInfo ? ipInfo.countryName || ipInfo.country || undefined : undefined;
+
   const postedAt = Date.now();
   const updated = posts.map((entry) =>
     entry.id === postId
@@ -174,6 +178,8 @@ async function markScheduledPosted(db, rowId, postId, result) {
           ...entry,
           postedAt,
           permalink: result.permalink,
+          publishedIp,
+          publishedIpCountry,
           publishingAt: undefined,
           publishStage: undefined,
           postError: undefined,
@@ -195,6 +201,8 @@ async function markScheduledPosted(db, rowId, postId, result) {
         account: post.account,
         postedAt,
         permalink: result.permalink,
+        publishedIp,
+        publishedIpCountry,
       },
     ],
   };
@@ -296,6 +304,13 @@ export async function runScheduledPublisher() {
             ? claimedRow.media_urls
             : [claimedRow.video_url];
         const proxy = await getProxyRelay(db, claimedPost.proxyId ?? claimedRow.proxy_id);
+        // Capture the exit IP this post is published through (best-effort).
+        let ipInfo;
+        try {
+          ipInfo = await lookupExitIp(proxy);
+        } catch {
+          ipInfo = undefined;
+        }
         const result = await publishContent(
           igUserId,
           igAccessToken,
@@ -313,7 +328,7 @@ export async function runScheduledPublisher() {
             }
           },
         );
-        await markScheduledPosted(db, claimedRow.id, claimedPost.id, result);
+        await markScheduledPosted(db, claimedRow.id, claimedPost.id, result, ipInfo);
         processed += 1;
         results.push({
           id: claimedRow.id,

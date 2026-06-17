@@ -14,6 +14,7 @@ import { relayThroughProxy } from './bskyProxy.js';
 import { pushProfileImageToBsky } from './bskyProfilePush.js';
 import { relayGraphRequest } from './graph.js';
 import { runScheduledPublisher } from './scheduledPublisher.js';
+import { lookupExitIp, lookupIp } from './ipinfo.js';
 
 dotenv.config();
 
@@ -82,6 +83,16 @@ app.post('/api/graph', async (req, res) => {
     res.status(status).json(data);
   } catch (err) {
     res.status(502).json({ error: err.message });
+  }
+});
+
+app.post('/api/proxy-ip', async (req, res) => {
+  try {
+    const { proxy, ip } = req.body ?? {};
+    const info = ip ? await lookupIp(ip) : await lookupExitIp(proxy);
+    res.status(200).json({ ...info, checkedAt: Date.now() });
+  } catch (err) {
+    res.status(502).json({ error: err.message || 'IP lookup failed' });
   }
 });
 

@@ -159,6 +159,20 @@ export interface License {
   createdAt: number;
 }
 
+/** Geo/network details for an IP, resolved via IPinfo. */
+export interface ProxyIpInfo {
+  ip: string;
+  city?: string;
+  region?: string;
+  /** ISO country code (e.g. "US"). */
+  country?: string;
+  /** Full country name (e.g. "United States"). */
+  countryName?: string;
+  /** Network/AS name (e.g. "Comcast Cable"). */
+  org?: string;
+  hostname?: string;
+}
+
 export interface Proxy {
   id: string;
   raw: string;
@@ -170,6 +184,12 @@ export interface Proxy {
   rotatingLink: string;
   /** Short display name shown in proxy pickers (e.g. "US-1", "adriel"). */
   label?: string;
+  /** Most recently checked exit IP for this proxy. */
+  currentIp?: string;
+  /** Geo/network details for the current exit IP. */
+  ipInfo?: ProxyIpInfo;
+  /** When the exit IP was last checked (ms epoch). */
+  ipCheckedAt?: number;
   employees: string[];
   allEmployees: boolean;
   employee?: string;
@@ -251,6 +271,10 @@ export interface PostHistoryEntry {
   postedAt: number;
   /** Permalink to the published media, if available. */
   permalink?: string;
+  /** Proxy exit IP the post was published through. */
+  publishedIp?: string;
+  /** Readable country for the publish IP (e.g. "United States"). */
+  publishedIpCountry?: string;
 }
 
 /** A single scheduled publish of content to one Instagram account. */
@@ -265,6 +289,10 @@ export interface ScheduledPost {
   postedAt?: number;
   permalink?: string;
   postError?: string;
+  /** Proxy exit IP this post was published through. */
+  publishedIp?: string;
+  /** Readable country for the publish IP (e.g. "United States"). */
+  publishedIpCountry?: string;
 }
 
 export interface TrackedAccount {

@@ -52,6 +52,7 @@ import { assignedEmployees } from './lib/assignment';
 import { getScheduledPostsForDate, normalizeScheduledPosts } from './lib/contentSchedule';
 import { parseProxyString } from './lib/proxy';
 import { proxyOptionLabel, proxyToRelayConfig } from './lib/proxyRelay';
+import { fetchProxyIp, formatIpInfo } from './lib/ipinfo';
 import { publishContent } from './lib/igGraph';
 import type { PublishProgress } from './lib/igGraph';
 import {
@@ -319,6 +320,8 @@ export default function App() {
   const [newProxyAll, setNewProxyAll] = useState(false);
   const [newProxyType, setNewProxyType] = useState('http');
   const [newProxyRotating, setNewProxyRotating] = useState('');
+  // Proxy ids currently having their exit IP re-checked.
+  const [refreshingProxyIps, setRefreshingProxyIps] = useState<Set<string>>(() => new Set());
   const [editItem, setEditItem] = useState<{
     kind: 'proxy' | 'license' | 'bio' | 'cta' | 'story';
     id: string;
@@ -910,6 +913,57 @@ export default function App() {
     }
   }
 
+  // Checks the live exit IP for one proxy (routed through it) and saves it.
+  async function refreshProxyIp(proxy: Proxy): Promise<boolean> {
+    const relay = proxyToRelayConfig(proxy);
+    if (!relay) {
+      setError('Could not parse this proxy. Check host, port, and credentials.');
+      return false;
+    }
+    setRefreshingProxyIps((prev) => new Set(prev).add(proxy.id));
+    try {
+      const info = await fetchProxyIp(relay);
+      await addProxy({
+        ...proxy,
+        currentIp: info.ip,
+        ipInfo: {
+          ip: info.ip,
+          city: info.city,
+          region: info.region,
+          country: info.country,
+          countryName: info.countryName,
+          org: info.org,
+          hostname: info.hostname,
+        },
+        ipCheckedAt: info.checkedAt ?? Date.now(),
+      });
+      return true;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not check the proxy IP.');
+      return false;
+    } finally {
+      setRefreshingProxyIps((prev) => {
+        const next = new Set(prev);
+        next.delete(proxy.id);
+        return next;
+      });
+    }
+  }
+
+  async function handleRefreshProxyIp(proxy: Proxy) {
+    const ok = await refreshProxyIp(proxy);
+    if (ok) await loadProxies();
+  }
+
+  async function handleRefreshAllProxyIps() {
+    let changed = false;
+    for (const proxy of proxies) {
+      const ok = await refreshProxyIp(proxy);
+      changed = changed || ok;
+    }
+    if (changed) await loadProxies();
+  }
+
   async function submitBio() {
     const text = newBioText.trim();
     if (!text) return;
@@ -1287,6 +1341,20 @@ export default function App() {
           },
         );
         const now = Date.now();
+        // Record the exit IP this post was published through (best-effort).
+        let publishedIp: string | undefined;
+        let publishedIpCountry: string | undefined;
+        try {
+          const proxyRecord = newContentProxyId
+            ? proxies.find((p) => p.id === newContentProxyId)
+            : undefined;
+          const relay = proxyRecord ? proxyToRelayConfig(proxyRecord) : undefined;
+          const info = await fetchProxyIp(relay);
+          publishedIp = info.ip;
+          publishedIpCountry = info.countryName || info.country;
+        } catch {
+          // IP lookup is non-fatal; the post already succeeded.
+        }
         await updateContent({
           ...publishingReel,
           mediaType: scheduleReel.mediaType ?? 'reel',
@@ -1301,7 +1369,13 @@ export default function App() {
           publishStage: undefined,
           postHistory: [
             ...(scheduleReel.postHistory ?? []),
-            { account: newContentTarget, postedAt: now, permalink: result.permalink },
+            {
+              account: newContentTarget,
+              postedAt: now,
+              permalink: result.permalink,
+              publishedIp,
+              publishedIpCountry,
+            },
           ],
         });
         await loadContent();
@@ -2806,6 +2880,14 @@ export default function App() {
                                 </p>
                               ) : null;
                             })()}
+                            {scheduledPost.postedAt && scheduledPost.publishedIp && (
+                              <p className="schedule-card__target">
+                                📍 Posted from IP: {scheduledPost.publishedIp}
+                                {scheduledPost.publishedIpCountry
+                                  ? ` (${scheduledPost.publishedIpCountry})`
+                                  : ''}
+                              </p>
+                            )}
                             {scheduledPost.publishingAt && !scheduledPost.postedAt ? (
                               <div className="schedule-card__progress">
                                 <PublishProgressBar stage={scheduledPost.publishStage ?? 'creating'} />
@@ -2954,7 +3036,19 @@ export default function App() {
             )}
 
             <section className="panel">
-              <h2>{isAdmin ? `Proxies (${proxies.length})` : 'Your proxies'}</h2>
+              <div className="panel-head">
+                <h2>{isAdmin ? `Proxies (${proxies.length})` : 'Your proxies'}</h2>
+                {proxies.length > 0 && (
+                  <button
+                    type="button"
+                    className="panel-add-toggle"
+                    disabled={refreshingProxyIps.size > 0}
+                    onClick={() => void handleRefreshAllProxyIps()}
+                  >
+                    {refreshingProxyIps.size > 0 ? 'Checking IPs…' : 'Refresh IPs'}
+                  </button>
+                )}
+              </div>
               {proxies.length === 0 ? (
                 <p className="empty-note">
                   {isAdmin
@@ -3005,6 +3099,31 @@ export default function App() {
                           <CopyField label="Port" value={proxy.port} />
                           <CopyField label="Username" value={proxy.username} />
                           <CopyField label="Password" value={proxy.password} />
+                        </div>
+                        <div className="proxy-row__ip">
+                          {refreshingProxyIps.has(proxy.id) ? (
+                            <span className="proxy-row__ip-status">Checking current IP…</span>
+                          ) : proxy.currentIp ? (
+                            <span className="proxy-row__ip-status">
+                              <b>Current IP:</b> {formatIpInfo(proxy.ipInfo) || proxy.currentIp}
+                              {proxy.ipInfo?.org ? ` · ${proxy.ipInfo.org}` : ''}
+                              {proxy.ipCheckedAt
+                                ? ` · checked ${formatDateTimeLocal(proxy.ipCheckedAt)}`
+                                : ''}
+                            </span>
+                          ) : (
+                            <span className="proxy-row__ip-status proxy-row__ip-status--empty">
+                              Current IP not checked yet
+                            </span>
+                          )}
+                          <button
+                            type="button"
+                            className="proxy-row__ip-refresh"
+                            disabled={refreshingProxyIps.has(proxy.id)}
+                            onClick={() => void handleRefreshProxyIp(proxy)}
+                          >
+                            {refreshingProxyIps.has(proxy.id) ? '…' : 'Refresh IP'}
+                          </button>
                         </div>
                       </div>
                       {isAdmin && (
@@ -3652,6 +3771,12 @@ export default function App() {
                           <span className="post-history__date">
                             {formatDateTimeLocal(entry.postedAt)}
                           </span>
+                          {entry.publishedIp && (
+                            <span className="post-history__ip">
+                              📍 {entry.publishedIp}
+                              {entry.publishedIpCountry ? ` (${entry.publishedIpCountry})` : ''}
+                            </span>
+                          )}
                         </div>
                         {entry.permalink && (
                           <a
