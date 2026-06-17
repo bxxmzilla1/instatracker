@@ -2991,11 +2991,7 @@ button:disabled {
 .reels-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 2px;
-  background: var(--border);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  overflow: hidden;
+  gap: 1rem;
 }
 
 .reel-cell {
@@ -3003,6 +2999,7 @@ button:disabled {
   aspect-ratio: 9 / 16;
   background: #000;
   overflow: hidden;
+  border-radius: 12px;
 }
 
 .reel-cell--banner {
@@ -3335,6 +3332,26 @@ button:disabled {
 .publish-progress__label {
   font-size: 0.8rem;
   color: var(--muted);
+}
+
+.publish-progress--indeterminate .publish-progress__track {
+  position: relative;
+}
+
+.publish-progress--indeterminate .publish-progress__fill {
+  width: 40%;
+  position: absolute;
+  left: 0;
+  animation: publish-progress-indeterminate 1.1s ease-in-out infinite;
+}
+
+@keyframes publish-progress-indeterminate {
+  0% {
+    left: -45%;
+  }
+  100% {
+    left: 100%;
+  }
 }
 
 .post-history {

@@ -3150,6 +3150,16 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                           </button>
                         )}
                       </div>
+                      {uploading && (
+                        <div className="publish-progress publish-progress--indeterminate">
+                          <div className="publish-progress__track">
+                            <div className="publish-progress__fill" />
+                          </div>
+                          <span className="publish-progress__label">
+                            Uploading {postMediaTab === 'image' ? 'image' : 'video'}…
+                          </span>
+                        </div>
+                      )}
                       {displayedPosts.length === 0 ? (
                         <p className="empty-note">
                           {isAdmin
