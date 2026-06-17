@@ -106,6 +106,23 @@ function externalHref(url: string): string {
   return url.trim();
 }
 
+function filterPostableAccountsForContent(
+  reel: ContentReel,
+  postable: TrackedAccount[],
+): TrackedAccount[] {
+  const assigned = reel.employees ?? [];
+  if (!reel.allEmployees && assigned.length === 0) {
+    return postable;
+  }
+  return postable.filter((account) => {
+    const owner = (account.owner ?? 'admin').trim().toLowerCase();
+    if (reel.allEmployees) {
+      return owner !== 'admin';
+    }
+    return assigned.some((employee) => employee.trim().toLowerCase() === owner);
+  });
+}
+
 function publishProgressPercent(p: PublishProgress): number {
   switch (p.stage) {
     case 'creating':
@@ -1216,9 +1233,18 @@ export default function App() {
   async function saveSchedule() {
     if (!scheduleReel) return;
 
+    const allowedAccounts = filterPostableAccountsForContent(
+      scheduleReel,
+      accounts.filter((a) => a.igUserId && a.igAccessToken),
+    );
+
     if (scheduleMode === 'post') {
       if (!newContentTarget) {
         setError('Select an Instagram account to post to.');
+        return;
+      }
+      if (!allowedAccounts.some((a) => a.username === newContentTarget)) {
+        setError('Select an account added by the assigned employee.');
         return;
       }
       setSavingSchedule(true);
@@ -1290,6 +1316,10 @@ export default function App() {
     try {
       if (!newContentTarget) {
         setError('Select an Instagram account to schedule.');
+        return;
+      }
+      if (!allowedAccounts.some((a) => a.username === newContentTarget)) {
+        setError('Select an account added by the assigned employee.');
         return;
       }
       if (!newContentScheduledAt) {
@@ -1679,6 +1709,12 @@ export default function App() {
   const showAddForm = view === 'accounts';
 
   const postableAccounts = accounts.filter((a) => a.igUserId && a.igAccessToken);
+  const schedulePostableAccounts = scheduleReel
+    ? filterPostableAccountsForContent(scheduleReel, postableAccounts)
+    : postableAccounts;
+  const scheduleReelHasEmployeeAssignment = Boolean(
+    scheduleReel && (scheduleReel.allEmployees || (scheduleReel.employees?.length ?? 0) > 0),
+  );
 
   const displayedContent = (() => {
     let list = content.filter((reel) => (reel.mediaType ?? 'reel') === contentTab);
@@ -3364,11 +3400,13 @@ export default function App() {
                     onChange={(e) => setNewContentTarget(e.target.value)}
                   >
                     <option value="">
-                      {postableAccounts.length === 0
-                        ? 'No accounts with saved API credentials'
+                      {schedulePostableAccounts.length === 0
+                        ? scheduleReelHasEmployeeAssignment
+                          ? 'No accounts added by the assigned employee(s)'
+                          : 'No accounts with saved API credentials'
                         : 'Select an account…'}
                     </option>
-                    {postableAccounts.map((a) => (
+                    {schedulePostableAccounts.map((a) => (
                       <option key={a.username} value={a.username}>
                         @{a.username}
                         {a.owner ? ` · ${a.owner}` : ''}
@@ -3377,7 +3415,11 @@ export default function App() {
                   </select>
                   <span className="cred-field__hint">
                     Only Instagram accounts with a saved API token &amp; User ID can be posted to.
-                    {!isAdmin ? ' You can only post to accounts you have added under Accounts.' : ''}
+                    {scheduleReelHasEmployeeAssignment
+                      ? ' Showing accounts added by the assigned employee(s) only.'
+                      : !isAdmin
+                        ? ' You can only post to accounts you have added under Accounts.'
+                        : ''}
                     {' '}
                     You can post or schedule the same{' '}
                     {scheduleReel ? contentTabSingular(scheduleReel.mediaType ?? 'reel') : 'item'} to
