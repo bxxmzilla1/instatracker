@@ -674,6 +674,47 @@ code {
   font-size: 0.78rem;
 }
 
+.saved-account-picker {
+  max-width: none;
+}
+
+.saved-account-picker__menu {
+  max-height: 280px;
+}
+
+.saved-account-picker__search {
+  position: sticky;
+  top: 0;
+  margin-bottom: 0.35rem;
+  z-index: 1;
+}
+
+.saved-account-picker__search input {
+  margin-bottom: 0;
+}
+
+.saved-account-picker__option {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  padding: 0.5rem 0.55rem;
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.saved-account-picker__option:hover {
+  background: var(--surface-2);
+}
+
+.saved-account-picker__option--selected {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
 .owner-tag--account {
   background: rgba(124, 58, 237, 0.15);
   color: #c4b5fd;

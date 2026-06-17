@@ -55,6 +55,7 @@ import {
   type ProxyConfig,
 } from '../lib/bsky/client';
 import { AssignmentPicker } from './AssignmentPicker';
+import { SavedAccountPicker } from './SavedAccountPicker';
 import { BskyFollowChart, type FollowBar } from './BskyFollowChart';
 import { CopyButton } from './CopyButton';
 import { CopyField } from './CopyField';
@@ -2219,22 +2220,11 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                       </div>
 
                       {acctMode === 'select' ? (
-                        <label className="cred-field">
-                          <span className="cred-field__label">Select account</span>
-                          <select
-                            className="cred-form__input"
-                            value={selectedSavedId}
-                            onChange={(e) => pickSavedAccount(e.target.value)}
-                          >
-                            <option value="">Select account</option>
-                            {savedAccounts.map((a) => (
-                              <option key={a.id} value={a.id}>
-                                @{a.handle}
-                                {a.owner && a.owner !== 'admin' ? ` · ${a.owner}` : ''}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
+                        <SavedAccountPicker
+                          accounts={savedAccounts}
+                          value={selectedSavedId}
+                          onChange={pickSavedAccount}
+                        />
                       ) : (
                         <>
                           <input
