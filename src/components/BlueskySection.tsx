@@ -986,8 +986,10 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
 
   // Looks up the post's current position in Bluesky's "Top" search results for
   // the given hashtag/keyword and stores it for display in the engagement card.
+  // The leading '#' is stripped so the lookup mirrors typing the plain word in
+  // the app's search bar (a tag-scoped query returns a different, smaller set).
   async function checkPostRank(post: BskyPost, query: string) {
-    const q = query.trim();
+    const q = query.trim().replace(/^#+/, '').trim();
     if (!q) return;
     const pub = (post.publishes ?? []).find((p) => p.uri && !p.error);
     if (!pub) {
@@ -3921,7 +3923,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                                     <input
                                       className="cred-form__input search-rank__input"
                                       type="text"
-                                      placeholder="Search a hashtag or keyword…"
+                                      placeholder="Search a keyword (e.g. blonde)…"
                                       value={rankInput}
                                       onChange={(e) =>
                                         setRankQueryInput((prev) => ({ ...prev, [post.id]: e.target.value }))
