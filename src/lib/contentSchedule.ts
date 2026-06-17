@@ -55,10 +55,17 @@ export function getScheduledPostsForDate(
 }
 
 export function getDueScheduledPosts(reel: ContentReel, now: number): ScheduledPost[] {
+  if (rowHasActiveScheduledPublish(reel)) return [];
   return normalizeScheduledPosts(reel).filter(
     (post) =>
       post.scheduledAt <= now &&
       !post.postedAt &&
       !post.publishingAt,
   );
+}
+
+export function rowHasActiveScheduledPublish(
+  reel: Pick<ContentReel, 'scheduledPosts' | 'scheduledAt' | 'targetAccount' | 'postedAt' | 'id'>,
+): boolean {
+  return normalizeScheduledPosts(reel).some((post) => post.publishingAt && !post.postedAt);
 }
