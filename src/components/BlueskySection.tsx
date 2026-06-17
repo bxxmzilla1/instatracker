@@ -3236,11 +3236,11 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                                   <div className="reel-cell__footer">
                                     <button
                                       type="button"
-                                      className="reel-cell__action reel-cell__action--primary"
+                                      className="reel-cell__action reel-cell__action--primary reel-cell__action--publish"
                                       disabled={isPublishing || postable.length === 0}
                                       onClick={() => openPostPublishModal(post)}
                                     >
-                                      Post to Bluesky
+                                      Publish
                                     </button>
                                   </div>
                                 )}
