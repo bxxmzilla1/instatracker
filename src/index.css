@@ -2762,6 +2762,14 @@ button:disabled {
   overflow: hidden;
 }
 
+.reel-cell--banner {
+  aspect-ratio: 3 / 1;
+}
+
+.reel-cell--banner .reel-cell__media {
+  object-fit: cover;
+}
+
 .reel-cell__media {
   width: 100%;
   height: 100%;

@@ -57,6 +57,7 @@ import {
 } from '../lib/bsky/client';
 import { AssignmentPicker } from './AssignmentPicker';
 import { ProxyPicker } from './ProxyPicker';
+import { SavedAccountMultiPicker } from './SavedAccountMultiPicker';
 import { SavedAccountPicker } from './SavedAccountPicker';
 import { BskyFollowChart, type FollowBar } from './BskyFollowChart';
 import { CopyButton } from './CopyButton';
@@ -173,7 +174,8 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   const [proxyType, setProxyType] = useState('http');
   const [newProxyLabel, setNewProxyLabel] = useState('');
   const [proxySearch, setProxySearch] = useState('');
-  const [bannerPushAccountId, setBannerPushAccountId] = useState('');
+  const [bannerPushAccountIds, setBannerPushAccountIds] = useState<Set<string>>(() => new Set());
+  const [bannerPushAllAccounts, setBannerPushAllAccounts] = useState(false);
   const [picPushAccountId, setPicPushAccountId] = useState('');
   const [bioPushAccountId, setBioPushAccountId] = useState('');
   const [directPicFile, setDirectPicFile] = useState<File | null>(null);
@@ -829,6 +831,16 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     }
   }
 
+  function toggleBannerPushAccount(id: string) {
+    setBannerPushAllAccounts(false);
+    setBannerPushAccountIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
   async function pushImageToAccount(
     accountId: string,
     imageSource: string | File,
@@ -848,6 +860,40 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
         await pushProfileImageFromUrl(credentials, imageSource, field);
       } else {
         await pushProfileImageFromFile(credentials, imageSource, field);
+      }
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : 'Could not update Bluesky profile image.',
+      );
+    } finally {
+      setProfilePushing(null);
+    }
+  }
+
+  async function pushImageToSelectedAccounts(
+    selectedIds: Set<string>,
+    allAccounts: boolean,
+    imageSource: string | File,
+    field: 'banner' | 'avatar',
+    pushKey: string,
+  ) {
+    const targets = allAccounts
+      ? pushableAccounts
+      : pushableAccounts.filter((a) => selectedIds.has(a.id));
+    if (targets.length === 0) {
+      setError('Select at least one Bluesky account with saved credentials.');
+      return;
+    }
+    setProfilePushing(pushKey);
+    setError(null);
+    try {
+      for (const acct of targets) {
+        const credentials = credentialsForSavedAccount(acct);
+        if (typeof imageSource === 'string') {
+          await pushProfileImageFromUrl(credentials, imageSource, field);
+        } else {
+          await pushProfileImageFromFile(credentials, imageSource, field);
+        }
       }
     } catch (err) {
       setError(
@@ -1278,6 +1324,14 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
       onInstantAdd?: (file: File) => void;
       addInputRef?: React.RefObject<HTMLInputElement | null>;
       hideDownload?: boolean;
+      mergeLibraryAdd?: boolean;
+      useReelCellLayout?: boolean;
+      multiAccountSelect?: {
+        selected: Set<string>;
+        all: boolean;
+        onToggle: (id: string) => void;
+        onAllChange: (all: boolean) => void;
+      };
     },
   ) => {
     const showCaption = options?.showCaption ?? true;
@@ -1286,6 +1340,28 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     const hideDirectUpload = options?.hideDirectUpload ?? false;
     const instantLibraryAdd = options?.instantLibraryAdd ?? false;
     const hideDownload = options?.hideDownload ?? false;
+    const mergeLibraryAdd = options?.mergeLibraryAdd ?? false;
+    const useReelCellLayout = options?.useReelCellLayout ?? false;
+    const multiAccountSelect = options?.multiAccountSelect;
+
+    const canPush =
+      multiAccountSelect != null
+        ? multiAccountSelect.all || multiAccountSelect.selected.size > 0
+        : Boolean(accountId);
+
+    function handlePush(item: ImageAsset, source: string | File) {
+      if (multiAccountSelect) {
+        void pushImageToSelectedAccounts(
+          multiAccountSelect.selected,
+          multiAccountSelect.all,
+          source,
+          profileField,
+          item.id,
+        );
+      } else {
+        void pushImageToAccount(accountId, source, profileField, item.id);
+      }
+    }
 
     return (
     <>
@@ -1293,11 +1369,22 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
         <h2>Update on Bluesky</h2>
         {hideDirectUpload ? (
           <div className="bio-form">
-            {accountSelectField(
-              accountId,
-              setAccountId,
-              undefined,
-              'Choose a saved account from Accounts, then push a library item below.',
+            {multiAccountSelect ? (
+              <SavedAccountMultiPicker
+                accounts={pushableAccounts}
+                selected={multiAccountSelect.selected}
+                all={multiAccountSelect.all}
+                onToggle={multiAccountSelect.onToggle}
+                onAllChange={multiAccountSelect.onAllChange}
+                hint="Choose saved accounts from Accounts, then push a library item below."
+              />
+            ) : (
+              accountSelectField(
+                accountId,
+                setAccountId,
+                undefined,
+                'Choose a saved account from Accounts, then push a library item below.',
+              )
             )}
           </div>
         ) : (
@@ -1330,7 +1417,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
         )}
       </section>
 
-      {isAdmin && (
+      {isAdmin && !mergeLibraryAdd && (
         <section className="panel">
           <div className="panel-head">
             <h2>Add {title.toLowerCase()} to library</h2>
@@ -1397,9 +1484,75 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
         </section>
       )}
       <section className="panel">
-        <h2>{isAdmin ? `${title} library (${items.length})` : `Your ${title.toLowerCase()}s`}</h2>
+        <div className="panel-head">
+          <h2>{isAdmin ? `${title} library (${items.length})` : `Your ${title.toLowerCase()}s`}</h2>
+          {isAdmin && instantLibraryAdd && mergeLibraryAdd && (
+            <>
+              <button
+                type="button"
+                className="panel-add-toggle"
+                disabled={uploading}
+                onClick={() => options?.addInputRef?.current?.click()}
+              >
+                {uploading ? 'Uploading…' : 'ADD'}
+              </button>
+              <input
+                ref={options?.addInputRef}
+                type="file"
+                accept="image/*"
+                hidden
+                onChange={(e) => {
+                  const picked = e.target.files?.[0];
+                  e.target.value = '';
+                  if (picked) options?.onInstantAdd?.(picked);
+                }}
+              />
+            </>
+          )}
+        </div>
         {items.length === 0 ? (
           <p className="empty-note">Nothing here yet.</p>
+        ) : useReelCellLayout ? (
+          <div className="reels-grid">
+            {items.map((item) => (
+              <div key={item.id} className="reel-cell reel-cell--banner">
+                <img className="reel-cell__media" src={item.url} alt={item.caption ?? ''} loading="lazy" />
+                <div className="reel-cell__overlay">
+                  {isAdmin && onAssignItem && (
+                    <button
+                      type="button"
+                      className="reel-cell__btn reel-cell__btn--wide"
+                      onClick={() => onAssignItem(item)}
+                      title="Assign to employees"
+                    >
+                      Assign
+                    </button>
+                  )}
+                  {isAdmin && (
+                    <button
+                      type="button"
+                      className="reel-cell__btn reel-cell__btn--danger"
+                      onClick={() => onDelete(item.id)}
+                      title="Delete"
+                      aria-label="Delete"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+                <div className="reel-cell__footer">
+                  <button
+                    type="button"
+                    className="reel-cell__action reel-cell__action--primary"
+                    disabled={profilePushing === item.id || !canPush}
+                    onClick={() => handlePush(item, item.url)}
+                  >
+                    {profilePushing === item.id ? 'Pushing…' : 'Push to Bluesky'}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
         ) : (
           <div className="content-grid">
             {items.map((item) => (
@@ -1412,8 +1565,8 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                     <button
                       type="button"
                       className="content-tile__download"
-                      disabled={profilePushing === item.id || !accountId}
-                      onClick={() => void pushImageToAccount(accountId, item.url, profileField, item.id)}
+                      disabled={profilePushing === item.id || !canPush}
+                      onClick={() => handlePush(item, item.url)}
                     >
                       {profilePushing === item.id ? 'Pushing…' : 'Push to Bluesky'}
                     </button>
@@ -2108,11 +2261,28 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                 deleteBanner,
                 'banner',
                 'banner',
-                bannerPushAccountId,
-                setBannerPushAccountId,
+                '',
+                () => {},
                 null,
                 () => {},
-                { showCaption: false, assignInForm: false, onAssignItem: openAssignBannerModal, hideDirectUpload: true, instantLibraryAdd: true, onInstantAdd: uploadBanner, addInputRef: bannerAddInputRef, hideDownload: true },
+                {
+                  showCaption: false,
+                  assignInForm: false,
+                  onAssignItem: openAssignBannerModal,
+                  hideDirectUpload: true,
+                  instantLibraryAdd: true,
+                  onInstantAdd: uploadBanner,
+                  addInputRef: bannerAddInputRef,
+                  hideDownload: true,
+                  mergeLibraryAdd: true,
+                  useReelCellLayout: true,
+                  multiAccountSelect: {
+                    selected: bannerPushAccountIds,
+                    all: bannerPushAllAccounts,
+                    onToggle: toggleBannerPushAccount,
+                    onAllChange: setBannerPushAllAccounts,
+                  },
+                },
               )}
 
             {view === 'profilepic' &&
