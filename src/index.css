@@ -731,6 +731,96 @@ code {
   gap: 0.6rem;
 }
 
+.bio-library-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 1rem;
+}
+
+.bio-cell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 132px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.bio-cell__body {
+  flex: 1;
+  padding: 0.75rem 0.8rem 2.5rem;
+  min-width: 0;
+}
+
+.bio-cell__text {
+  margin: 0;
+  color: var(--text);
+  font-size: 0.82rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+  display: -webkit-box;
+  -webkit-line-clamp: 6;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.bio-cell__overlay {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.bio-cell:hover .bio-cell__overlay {
+  opacity: 1;
+}
+
+.bio-cell__footer {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.78), rgba(0, 0, 0, 0));
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.bio-cell:hover .bio-cell__footer {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.bio-cell__footer .reel-cell__action--primary {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.72rem;
+  padding: 0.45rem 0.5rem;
+}
+
+.bio-cell__footer .row-edit {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+
 .bio-row {
   display: flex;
   align-items: flex-start;
@@ -3431,6 +3521,10 @@ button:disabled {
   .profile-pic-library-grid {
     grid-template-columns: repeat(3, 1fr);
   }
+
+  .bio-library-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
 }
 
 @media (max-width: 640px) {
@@ -3439,6 +3533,10 @@ button:disabled {
   }
 
   .profile-pic-library-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .bio-library-grid {
     grid-template-columns: repeat(2, 1fr);
   }
 }

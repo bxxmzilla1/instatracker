@@ -109,6 +109,18 @@ export async function addBio(bio: Bio): Promise<void> {
   await db.put('bios', bio);
 }
 
+export async function updateBio(bio: Bio): Promise<void> {
+  const db = await getDb();
+  const existing = await db.get('bios', bio.id);
+  if (!existing) throw new Error('Bio not found');
+  await db.put('bios', {
+    ...existing,
+    text: bio.text,
+    employees: bio.employees,
+    allEmployees: bio.allEmployees,
+  });
+}
+
 export async function deleteBio(id: string): Promise<void> {
   const db = await getDb();
   await db.delete('bios', id);
@@ -183,6 +195,17 @@ export async function deleteBanner(id: string): Promise<void> {
 
 export const getProfilePics = (employee?: string) => getImages('profilePics', employee);
 export const addProfilePic = (asset: ImageAsset, file?: Blob) => addImage('profilePics', asset, file);
+export async function updateProfilePic(asset: ImageAsset): Promise<void> {
+  const db = await getDb();
+  const existing = await db.get('profilePics', asset.id);
+  if (!existing) throw new Error('Profile picture not found');
+  await db.put('profilePics', {
+    ...existing,
+    employees: asset.employees,
+    allEmployees: asset.allEmployees,
+    caption: asset.caption,
+  });
+}
 export async function deleteProfilePic(id: string): Promise<void> {
   const db = await getDb();
   await db.delete('profilePics', id);

@@ -150,6 +150,17 @@ async function addText(table: string, item: Bio | Cta): Promise<void> {
 
 export const getBios = (employee?: string) => getText<Bio>('bsky_bios', employee);
 export const addBio = (bio: Bio) => addText('bsky_bios', bio);
+export async function updateBio(bio: Bio): Promise<void> {
+  const { error } = await client()
+    .from('bsky_bios')
+    .update({
+      text: bio.text,
+      employees: bio.employees,
+      all_employees: bio.allEmployees,
+    })
+    .eq('id', bio.id);
+  if (error) throw new Error(error.message);
+}
 export async function deleteBio(id: string): Promise<void> {
   const { error } = await client().from('bsky_bios').delete().eq('id', id);
   if (error) throw new Error(error.message);
@@ -238,6 +249,17 @@ export async function deleteBanner(id: string): Promise<void> {
 export const getProfilePics = (employee?: string) => getImages('bsky_profile_pics', employee);
 export const addProfilePic = (asset: ImageAsset, file?: Blob) =>
   addImage('bsky_profile_pics', 'profile_pics', asset, file);
+export async function updateProfilePic(asset: ImageAsset): Promise<void> {
+  const { error } = await client()
+    .from('bsky_profile_pics')
+    .update({
+      employees: asset.employees,
+      all_employees: asset.allEmployees,
+      caption: asset.caption ?? null,
+    })
+    .eq('id', asset.id);
+  if (error) throw new Error(error.message);
+}
 export async function deleteProfilePic(id: string): Promise<void> {
   const { error } = await client().from('bsky_profile_pics').delete().eq('id', id);
   if (error) throw new Error(error.message);

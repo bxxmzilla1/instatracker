@@ -45,6 +45,8 @@ import {
   getTargets,
   upsertRun,
   updateBanner,
+  updateBio,
+  updateProfilePic,
 } from '../lib/bsky/db';
 import {
   pushProfileBio,
@@ -173,6 +175,14 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   const [assignBannerEmployees, setAssignBannerEmployees] = useState<Set<string>>(() => new Set());
   const [assignBannerAll, setAssignBannerAll] = useState(false);
   const [savingBannerAssign, setSavingBannerAssign] = useState(false);
+  const [assignProfilePic, setAssignProfilePic] = useState<ImageAsset | null>(null);
+  const [assignProfilePicEmployees, setAssignProfilePicEmployees] = useState<Set<string>>(() => new Set());
+  const [assignProfilePicAll, setAssignProfilePicAll] = useState(false);
+  const [savingProfilePicAssign, setSavingProfilePicAssign] = useState(false);
+  const [assignBioItem, setAssignBioItem] = useState<Bio | null>(null);
+  const [assignBioEmployees, setAssignBioEmployees] = useState<Set<string>>(() => new Set());
+  const [assignBioAll, setAssignBioAll] = useState(false);
+  const [savingBioAssign, setSavingBioAssign] = useState(false);
   const [picFile, setPicFile] = useState<File | null>(null);
   const [picCaption, setPicCaption] = useState('');
   const [proxyRaw, setProxyRaw] = useState('');
@@ -497,15 +507,20 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
 
   async function submitBio(e: FormEvent) {
     e.preventDefault();
-    if (!bioText.trim() || !assignValid('bio')) return;
+    if (!bioText.trim()) return;
     await addBio({
       id: crypto.randomUUID(),
-      text: bioText,
+      text: bioText.trim(),
       createdAt: Date.now(),
-      ...assignPayload('bio'),
+      employees: [],
+      allEmployees: false,
     });
     setBioText('');
-    resetAssign('bio');
+    setOpenForms((prev) => {
+      const next = new Set(prev);
+      next.delete('bio');
+      return next;
+    });
     await loadAll();
   }
 
@@ -595,6 +610,84 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
       setError(err instanceof Error ? err.message : 'Could not assign banner.');
     } finally {
       setSavingBannerAssign(false);
+    }
+  }
+
+  function openAssignProfilePicModal(item: ImageAsset) {
+    setAssignProfilePic(item);
+    setAssignProfilePicEmployees(new Set(item.employees ?? []));
+    setAssignProfilePicAll(Boolean(item.allEmployees));
+  }
+
+  function closeAssignProfilePicModal() {
+    setAssignProfilePic(null);
+    setAssignProfilePicEmployees(new Set());
+    setAssignProfilePicAll(false);
+  }
+
+  function toggleAssignProfilePicEmployee(username: string) {
+    setAssignProfilePicEmployees((prev) => {
+      const next = new Set(prev);
+      if (next.has(username)) next.delete(username);
+      else next.add(username);
+      return next;
+    });
+  }
+
+  async function saveProfilePicAssign() {
+    if (!assignProfilePic) return;
+    setSavingProfilePicAssign(true);
+    try {
+      await updateProfilePic({
+        ...assignProfilePic,
+        employees: assignProfilePicAll ? [] : [...assignProfilePicEmployees],
+        allEmployees: assignProfilePicAll,
+      });
+      await loadAll();
+      closeAssignProfilePicModal();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not assign profile picture.');
+    } finally {
+      setSavingProfilePicAssign(false);
+    }
+  }
+
+  function openAssignBioModal(bio: Bio) {
+    setAssignBioItem(bio);
+    setAssignBioEmployees(new Set(bio.employees ?? []));
+    setAssignBioAll(Boolean(bio.allEmployees));
+  }
+
+  function closeAssignBioModal() {
+    setAssignBioItem(null);
+    setAssignBioEmployees(new Set());
+    setAssignBioAll(false);
+  }
+
+  function toggleAssignBioEmployee(username: string) {
+    setAssignBioEmployees((prev) => {
+      const next = new Set(prev);
+      if (next.has(username)) next.delete(username);
+      else next.add(username);
+      return next;
+    });
+  }
+
+  async function saveBioAssign() {
+    if (!assignBioItem) return;
+    setSavingBioAssign(true);
+    try {
+      await updateBio({
+        ...assignBioItem,
+        employees: assignBioAll ? [] : [...assignBioEmployees],
+        allEmployees: assignBioAll,
+      });
+      await loadAll();
+      closeAssignBioModal();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not assign bio.');
+    } finally {
+      setSavingBioAssign(false);
     }
   }
 
@@ -1679,7 +1772,52 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     setText: (t: string) => void,
     submit: (e: FormEvent) => void,
     onDelete: (id: string) => Promise<void>,
-  ) => (
+  ) => {
+    const renderBioLibrary = (libraryItems: Bio[]) => (
+      <div className="bio-library-grid">
+        {libraryItems.map((item) => (
+          <div key={item.id} className="bio-cell">
+            <div className="bio-cell__body">
+              <p className="bio-cell__text">{item.text}</p>
+            </div>
+            {isAdmin && (
+              <div className="bio-cell__overlay">
+                <button
+                  type="button"
+                  className="reel-cell__btn reel-cell__btn--wide"
+                  onClick={() => openAssignBioModal(item)}
+                  title="Assign to employees"
+                >
+                  Assign
+                </button>
+                <button
+                  type="button"
+                  className="reel-cell__btn reel-cell__btn--danger"
+                  onClick={() => onDelete(item.id)}
+                  title="Delete"
+                  aria-label="Delete"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
+            <div className="bio-cell__footer">
+              <button
+                type="button"
+                className="reel-cell__action reel-cell__action--primary"
+                disabled={profilePushing !== null || !bioPushAccountId}
+                onClick={() => void pushBioToAccount(bioPushAccountId, item.text, item.id)}
+              >
+                {profilePushing === item.id ? 'Pushing…' : 'Push to Bluesky'}
+              </button>
+              <CopyButton value={item.text} title="Copy bio" />
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+
+    return (
     <>
       <section className="panel">
         <h2>Update on Bluesky</h2>
@@ -1714,14 +1852,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                 onChange={(e) => setText(e.target.value)}
                 rows={4}
               />
-              <AssignmentPicker
-                employees={employees}
-                selected={getAssign('bio').set}
-                all={getAssign('bio').all}
-                onToggle={(u) => toggleAssign('bio', u)}
-                onAllChange={(a) => setAssignAll('bio', a)}
-              />
-              <button type="submit" disabled={!text.trim() || !assignValid('bio')}>
+              <button type="submit" disabled={!text.trim()}>
                 Add bio
               </button>
             </form>
@@ -1729,36 +1860,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
           {items.length === 0 ? (
             <p className="empty-note">Nothing here yet.</p>
           ) : (
-            <div className="bio-list">
-              {items.map((item) => (
-                <div key={item.id} className="bio-row">
-                  <div className="bio-row__body">
-                    <p className="bio-row__text">{item.text}</p>
-                    <div className="bio-row__assign">{renderAssignTags(item)}</div>
-                  </div>
-                  <div className="row-actions">
-                    <button
-                      type="button"
-                      className="row-edit bio-row__push"
-                      disabled={profilePushing === item.id || !bioPushAccountId}
-                      onClick={() => void pushBioToAccount(bioPushAccountId, item.text, item.id)}
-                      title="Push to Bluesky"
-                    >
-                      {profilePushing === item.id ? '…' : 'Push'}
-                    </button>
-                    <CopyButton value={item.text} title="Copy bio" />
-                    <button
-                      type="button"
-                      className="license-row__delete"
-                      onClick={() => onDelete(item.id)}
-                      title="Delete"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
+            renderBioLibrary(items)
           )}
         </section>
       )}
@@ -1768,32 +1870,13 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
         {items.length === 0 ? (
           <p className="empty-note">Nothing here yet.</p>
         ) : (
-          <div className="bio-list">
-            {items.map((item) => (
-              <div key={item.id} className="bio-row">
-                <div className="bio-row__body">
-                  <p className="bio-row__text">{item.text}</p>
-                </div>
-                <div className="row-actions">
-                  <button
-                    type="button"
-                    className="row-edit bio-row__push"
-                    disabled={profilePushing === item.id || !bioPushAccountId}
-                    onClick={() => void pushBioToAccount(bioPushAccountId, item.text, item.id)}
-                    title="Push to Bluesky"
-                  >
-                    {profilePushing === item.id ? '…' : 'Push'}
-                  </button>
-                  <CopyButton value={item.text} title="Copy bio" />
-                </div>
-              </div>
-            ))}
-          </div>
+          renderBioLibrary(items)
         )}
       </section>
       )}
     </>
-  );
+    );
+  };
 
   const bannedCount = savedAccounts.filter((a) => a.banned).length;
 
@@ -2400,6 +2483,8 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                 setDirectPicFile,
                 {
                   hideDirectUpload: true,
+                  assignInForm: false,
+                  onAssignItem: openAssignProfilePicModal,
                   instantLibraryAdd: true,
                   onInstantAdd: (file) => setProfilePicCropFile(file),
                   addInputRef: picAddInputRef,
@@ -3168,6 +3253,109 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
               void uploadProfilePic(new File([blob], 'profile-pic.jpg', { type: 'image/jpeg' }));
             }}
           />
+        )}
+
+        {assignBioItem && (
+          <div className="modal" onClick={closeAssignBioModal}>
+            <form
+              className="modal__card"
+              onClick={(e) => e.stopPropagation()}
+              onSubmit={(e) => {
+                e.preventDefault();
+                void saveBioAssign();
+              }}
+            >
+              <div className="modal__head">
+                <h3>Assign bio</h3>
+                <button
+                  type="button"
+                  className="modal__close"
+                  onClick={closeAssignBioModal}
+                  aria-label="Close"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <p className="cred-note">Select which employees will see this bio in their library.</p>
+
+              <div className="schedule-modal__body">
+                <AssignmentPicker
+                  employees={employees}
+                  selected={assignBioEmployees}
+                  all={assignBioAll}
+                  onToggle={toggleAssignBioEmployee}
+                  onAllChange={setAssignBioAll}
+                />
+              </div>
+
+              <div className="schedule-modal__actions">
+                <button type="button" className="btn btn--ghost" onClick={closeAssignBioModal}>
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingBioAssign || (!assignBioAll && assignBioEmployees.size === 0)}
+                >
+                  {savingBioAssign ? 'Saving…' : 'Assign'}
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
+
+        {assignProfilePic && (
+          <div className="modal" onClick={closeAssignProfilePicModal}>
+            <form
+              className="modal__card"
+              onClick={(e) => e.stopPropagation()}
+              onSubmit={(e) => {
+                e.preventDefault();
+                void saveProfilePicAssign();
+              }}
+            >
+              <div className="modal__head">
+                <h3>Assign profile picture</h3>
+                <button
+                  type="button"
+                  className="modal__close"
+                  onClick={closeAssignProfilePicModal}
+                  aria-label="Close"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <p className="cred-note">
+                Select which employees will see this profile picture in their library.
+              </p>
+
+              <div className="schedule-modal__body">
+                <AssignmentPicker
+                  employees={employees}
+                  selected={assignProfilePicEmployees}
+                  all={assignProfilePicAll}
+                  onToggle={toggleAssignProfilePicEmployee}
+                  onAllChange={setAssignProfilePicAll}
+                />
+              </div>
+
+              <div className="schedule-modal__actions">
+                <button type="button" className="btn btn--ghost" onClick={closeAssignProfilePicModal}>
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={
+                    savingProfilePicAssign ||
+                    (!assignProfilePicAll && assignProfilePicEmployees.size === 0)
+                  }
+                >
+                  {savingProfilePicAssign ? 'Saving…' : 'Assign'}
+                </button>
+              </div>
+            </form>
+          </div>
         )}
 
         {assignBanner && (
