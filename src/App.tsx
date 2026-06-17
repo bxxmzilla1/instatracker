@@ -67,6 +67,7 @@ import {
   parseDatetimeLocal,
   shiftDateKey,
   toDateKey,
+  toDatetimeLocal,
 } from './lib/timezone';
 import {
   ALL_MEDIA_ACCEPT,
@@ -99,6 +100,7 @@ import type {
   Proxy,
   ReelHistory,
   ReelSnapshot,
+  ScheduledPost,
   Session,
   StoryNote,
   TrackedAccount,
@@ -362,6 +364,11 @@ export default function App() {
   const contentFileRef = useRef<HTMLInputElement>(null);
   const [scheduleReel, setScheduleReel] = useState<ContentReel | null>(null);
   const [scheduleMode, setScheduleMode] = useState<'post' | 'schedule'>('schedule');
+  // When set, the schedule modal edits this existing scheduled post in place.
+  const [editingScheduledPost, setEditingScheduledPost] = useState<{
+    reelId: string;
+    postId: string;
+  } | null>(null);
   const [savingSchedule, setSavingSchedule] = useState(false);
   const [assignReel, setAssignReel] = useState<ContentReel | null>(null);
   const [savingAssign, setSavingAssign] = useState(false);
@@ -1231,6 +1238,7 @@ export default function App() {
     const fresh = content.find((c) => c.id === reel.id) ?? reel;
     setScheduleReel(fresh);
     setScheduleMode(mode);
+    setEditingScheduledPost(null);
     setNewContentCaption(fresh.caption ?? '');
     setNewContentTarget('');
     setNewContentProxyId('');
@@ -1247,6 +1255,21 @@ export default function App() {
     );
   }
 
+  // Opens the schedule modal to edit an existing scheduled post in place
+  // (time, account, caption, and proxy), instead of creating a new one.
+  function openEditScheduledPost(reel: ContentReel, scheduledPost: ScheduledPost) {
+    const fresh = content.find((c) => c.id === reel.id) ?? reel;
+    setScheduleReel(fresh);
+    setScheduleMode('schedule');
+    setNewContentCaption(scheduledPost.caption ?? fresh.caption ?? '');
+    setNewContentTarget(scheduledPost.account);
+    setNewContentProxyId(scheduledPost.proxyId ?? '');
+    setNewContentScheduledAt(toDatetimeLocal(scheduledPost.scheduledAt));
+    setEditingScheduledPost({ reelId: fresh.id, postId: scheduledPost.id });
+    setPublishProgress(null);
+    setAutoUniqueStatus(null);
+  }
+
   function closeScheduleModal() {
     setScheduleReel(null);
     setNewContentCaption('');
@@ -1255,6 +1278,7 @@ export default function App() {
     setNewContentScheduledAt('');
     setPublishProgress(null);
     setAutoUniqueStatus(null);
+    setEditingScheduledPost(null);
   }
 
   // Used IPs already recorded anywhere in the content library (for Auto Unique).
@@ -1507,18 +1531,39 @@ export default function App() {
       }
 
       const existing = normalizeScheduledPosts(scheduleReel);
-      const newEntry = {
-        id: crypto.randomUUID(),
-        account: newContentTarget,
-        scheduledAt: parseDatetimeLocal(newContentScheduledAt),
-        caption: newContentCaption || undefined,
-        proxyId: newContentProxyId || undefined,
-      };
+      const scheduledAtMs = parseDatetimeLocal(newContentScheduledAt);
+
+      let nextScheduledPosts;
+      if (editingScheduledPost) {
+        // Update the existing scheduled post in place.
+        nextScheduledPosts = existing.map((post) =>
+          post.id === editingScheduledPost.postId
+            ? {
+                ...post,
+                account: newContentTarget,
+                scheduledAt: scheduledAtMs,
+                caption: newContentCaption || undefined,
+                proxyId: newContentProxyId || undefined,
+              }
+            : post,
+        );
+      } else {
+        nextScheduledPosts = [
+          ...existing,
+          {
+            id: crypto.randomUUID(),
+            account: newContentTarget,
+            scheduledAt: scheduledAtMs,
+            caption: newContentCaption || undefined,
+            proxyId: newContentProxyId || undefined,
+          },
+        ];
+      }
 
       await updateContent({
         ...scheduleReel,
         caption: newContentCaption,
-        scheduledPosts: [...existing, newEntry],
+        scheduledPosts: nextScheduledPosts,
         scheduledAt: undefined,
         targetAccount: undefined,
         proxyId: undefined,
@@ -3028,11 +3073,12 @@ export default function App() {
                           <div className="schedule-card__actions">
                             <button
                               type="button"
-                              className="content-tile__download"
-                              onClick={() => downloadReel(reel)}
-                              title={`Download ${contentTabSingular(reel.mediaType ?? 'reel')}`}
+                              className="row-edit"
+                              onClick={() => openEditScheduledPost(reel, scheduledPost)}
+                              title="Edit scheduled post"
+                              aria-label="Edit scheduled post"
                             >
-                              ↓ Download
+                              ✎
                             </button>
                             <button
                               type="button"
@@ -3591,7 +3637,11 @@ export default function App() {
             >
               <div className="modal__head">
                 <h3>
-                  {scheduleMode === 'post' ? 'Post' : 'Schedule'}{' '}
+                  {editingScheduledPost
+                    ? 'Edit scheduled '
+                    : scheduleMode === 'post'
+                      ? 'Post '
+                      : 'Schedule '}
                   {contentTabSingular(scheduleReel.mediaType ?? 'reel')}
                 </h3>
                 <button
@@ -3733,9 +3783,11 @@ export default function App() {
                     ? scheduleMode === 'post'
                       ? 'Posting…'
                       : 'Saving…'
-                    : scheduleMode === 'post'
-                      ? 'Post'
-                      : 'Schedule'}
+                    : editingScheduledPost
+                      ? 'Save changes'
+                      : scheduleMode === 'post'
+                        ? 'Post'
+                        : 'Schedule'}
                 </button>
               </div>
             </form>
