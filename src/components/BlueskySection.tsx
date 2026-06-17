@@ -59,6 +59,7 @@ import { AssignmentPicker } from './AssignmentPicker';
 import { ProxyPicker } from './ProxyPicker';
 import { SavedAccountMultiPicker } from './SavedAccountMultiPicker';
 import { SavedAccountPicker } from './SavedAccountPicker';
+import { SquareImageCropModal } from './SquareImageCropModal';
 import { BskyFollowChart, type FollowBar } from './BskyFollowChart';
 import { CopyButton } from './CopyButton';
 import { CopyField } from './CopyField';
@@ -166,6 +167,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   const [postFile, setPostFile] = useState<File | null>(null);
   const bannerAddInputRef = useRef<HTMLInputElement>(null);
   const picAddInputRef = useRef<HTMLInputElement>(null);
+  const [profilePicCropFile, setProfilePicCropFile] = useState<File | null>(null);
   const profilePushInFlightRef = useRef(0);
   const [assignBanner, setAssignBanner] = useState<ImageAsset | null>(null);
   const [assignBannerEmployees, setAssignBannerEmployees] = useState<Set<string>>(() => new Set());
@@ -1386,6 +1388,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
       hideDownload?: boolean;
       mergeLibraryAdd?: boolean;
       useReelCellLayout?: boolean;
+      libraryCellVariant?: 'banner' | 'profilepic';
       multiAccountSelect?: {
         selected: Set<string>;
         all: boolean;
@@ -1402,6 +1405,11 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     const hideDownload = options?.hideDownload ?? false;
     const mergeLibraryAdd = options?.mergeLibraryAdd ?? false;
     const useReelCellLayout = options?.useReelCellLayout ?? false;
+    const libraryCellVariant = options?.libraryCellVariant ?? 'banner';
+    const libraryGridClass =
+      libraryCellVariant === 'profilepic' ? 'profile-pic-library-grid' : 'banner-library-grid';
+    const libraryCellClass =
+      libraryCellVariant === 'profilepic' ? 'reel-cell reel-cell--profilepic' : 'reel-cell reel-cell--banner';
     const multiAccountSelect = options?.multiAccountSelect;
 
     const canPush =
@@ -1573,9 +1581,9 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
         {items.length === 0 ? (
           <p className="empty-note">Nothing here yet.</p>
         ) : useReelCellLayout ? (
-          <div className="banner-library-grid">
+          <div className={libraryGridClass}>
             {items.map((item) => (
-              <div key={item.id} className="reel-cell reel-cell--banner">
+              <div key={item.id} className={libraryCellClass}>
                 <img className="reel-cell__media" src={item.url} alt={item.caption ?? ''} loading="lazy" />
                 <div className="reel-cell__overlay">
                   {isAdmin && onAssignItem && (
@@ -2378,9 +2386,12 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                 {
                   hideDirectUpload: true,
                   instantLibraryAdd: true,
-                  onInstantAdd: uploadProfilePic,
+                  onInstantAdd: (file) => setProfilePicCropFile(file),
                   addInputRef: picAddInputRef,
                   mergeLibraryAdd: true,
+                  useReelCellLayout: true,
+                  libraryCellVariant: 'profilepic',
+                  hideDownload: true,
                   multiAccountSelect: {
                     selected: picPushAccountIds,
                     all: picPushAllAccounts,
@@ -3131,6 +3142,17 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
               </section>
             )}
           </>
+        )}
+
+        {profilePicCropFile && (
+          <SquareImageCropModal
+            file={profilePicCropFile}
+            onCancel={() => setProfilePicCropFile(null)}
+            onConfirm={(blob) => {
+              setProfilePicCropFile(null);
+              void uploadProfilePic(new File([blob], 'profile-pic.jpg', { type: 'image/jpeg' }));
+            }}
+          />
         )}
 
         {assignBanner && (
