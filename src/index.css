@@ -803,6 +803,38 @@ code {
   transform: translateY(0);
 }
 
+.bio-cell__progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 3;
+  padding: 0.55rem 0.65rem 0.65rem;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.82), rgba(0, 0, 0, 0.45));
+}
+
+.bio-cell__progress .publish-progress {
+  margin-top: 0;
+  gap: 0.35rem;
+}
+
+.bio-cell__progress .publish-progress__label {
+  color: #fff;
+  font-size: 0.68rem;
+}
+
+.bio-cell__progress .publish-progress__track {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.profile-push-progress--panel {
+  margin-top: 0.85rem;
+}
+
+.profile-push-progress--panel .publish-progress {
+  margin-top: 0;
+}
+
 .bio-cell__footer .reel-cell__action--primary {
   flex: 1;
   min-width: 0;

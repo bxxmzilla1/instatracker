@@ -69,6 +69,54 @@ import { assignedEmployees } from '../lib/assignment';
 import { parseProxyString } from '../lib/proxy';
 import { formatCount, formatDate } from '../lib/format';
 
+type ProfilePushKind = 'bio' | 'banner' | 'avatar';
+
+interface ProfilePushProgressState {
+  pushKey: string;
+  done: number;
+  total: number;
+  currentHandle?: string;
+  kind: ProfilePushKind;
+}
+
+function profilePushProgressPercent(done: number, total: number, inFlight: boolean): number {
+  if (total <= 0) return inFlight ? 12 : 0;
+  const slice = inFlight ? 0.35 : 0;
+  return Math.min(100, Math.round(((done + slice) / total) * 100));
+}
+
+function profilePushProgressLabel(progress: ProfilePushProgressState): string {
+  const noun =
+    progress.kind === 'bio'
+      ? 'bio'
+      : progress.kind === 'banner'
+        ? 'banner'
+        : 'profile picture';
+  const handle = progress.currentHandle ? ` @${progress.currentHandle}` : '';
+  if (progress.total <= 1) {
+    return `Updating ${noun}…${handle}`;
+  }
+  const step = Math.min(progress.done + (progress.currentHandle ? 1 : 0), progress.total);
+  return `Updating ${noun} ${step} of ${progress.total}…${handle}`;
+}
+
+function ProfilePushProgressBar({ progress }: { progress: ProfilePushProgressState }) {
+  const inFlight = Boolean(progress.currentHandle);
+  return (
+    <div className="publish-progress">
+      <div className="publish-progress__track">
+        <div
+          className="publish-progress__fill"
+          style={{
+            width: `${profilePushProgressPercent(progress.done, progress.total, inFlight)}%`,
+          }}
+        />
+      </div>
+      <span className="publish-progress__label">{profilePushProgressLabel(progress)}</span>
+    </div>
+  );
+}
+
 type View =
   | 'dashboard'
   | 'accounts'
@@ -204,6 +252,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   const [bioPushAllAccounts, setBioPushAllAccounts] = useState(false);
   const [directPicFile, setDirectPicFile] = useState<File | null>(null);
   const [profilePushing, setProfilePushing] = useState<string | null>(null);
+  const [profilePushProgress, setProfilePushProgress] = useState<ProfilePushProgressState | null>(null);
   const [uploading, setUploading] = useState(false);
 
   const [acctId, setAcctId] = useState('');
@@ -983,9 +1032,21 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     profilePushInFlightRef.current = Math.max(0, profilePushInFlightRef.current - 1);
     if (profilePushInFlightRef.current === 0) {
       setProfilePushing(null);
+      setProfilePushProgress(null);
     } else if (pushKey) {
       setProfilePushing((cur) => (cur === pushKey ? null : cur));
+      setProfilePushProgress((cur) => (cur?.pushKey === pushKey ? null : cur));
     }
+  }
+
+  function setProfilePushStep(
+    pushKey: string,
+    kind: ProfilePushKind,
+    done: number,
+    total: number,
+    currentHandle?: string,
+  ) {
+    setProfilePushProgress({ pushKey, done, total, currentHandle, kind });
   }
 
   async function handleDeleteBio(id: string) {
@@ -1022,8 +1083,10 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     const failures: string[] = [];
     let ok = 0;
     try {
-      for (const acct of targets) {
+      for (let i = 0; i < targets.length; i++) {
+        const acct = targets[i]!;
         const handle = acct.handle.replace(/^@/, '');
+        setProfilePushStep(pushKey, 'bio', i, targets.length, handle);
         try {
           await pushProfileBio(credentialsForSavedAccount(acct), text.trim());
           ok += 1;
@@ -1031,6 +1094,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
           const msg = err instanceof Error ? err.message : 'Push failed';
           failures.push(`@${handle}: ${msg}`);
         }
+        setProfilePushStep(pushKey, 'bio', i + 1, targets.length);
       }
       if (failures.length === 0) {
         setSuccessMessage(`Bio updated on ${ok} account${ok === 1 ? '' : 's'}.`);
@@ -1043,6 +1107,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
       }
     } finally {
       activeProfilePushKeysRef.current.delete(pushKey);
+      setProfilePushProgress((cur) => (cur?.pushKey === pushKey ? null : cur));
       endProfilePush(pushKey);
     }
   }
@@ -1088,7 +1153,10 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
       setError('Select a Bluesky account with saved credentials.');
       return;
     }
+    const handle = acct.handle.replace(/^@/, '');
+    const kind: ProfilePushKind = field === 'banner' ? 'banner' : 'avatar';
     beginProfilePush(pushKey);
+    setProfilePushStep(pushKey, kind, 0, 1, handle);
     try {
       const credentials = credentialsForSavedAccount(acct);
       if (typeof imageSource === 'string') {
@@ -1096,6 +1164,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
       } else {
         await pushProfileImageFromFile(credentials, imageSource, field);
       }
+      setProfilePushStep(pushKey, kind, 1, 1);
       setSuccessMessage(
         `${field === 'banner' ? 'Banner' : 'Profile picture'} updated on Bluesky.`,
       );
@@ -1104,6 +1173,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
         err instanceof Error ? err.message : 'Could not update Bluesky profile image.',
       );
     } finally {
+      setProfilePushProgress((cur) => (cur?.pushKey === pushKey ? null : cur));
       endProfilePush(pushKey);
     }
   }
@@ -1122,12 +1192,15 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
       setError('Select at least one Bluesky account with saved credentials.');
       return;
     }
+    const kind: ProfilePushKind = field === 'banner' ? 'banner' : 'avatar';
     beginProfilePush(pushKey);
     const failures: string[] = [];
     let ok = 0;
     try {
-      for (const acct of targets) {
+      for (let i = 0; i < targets.length; i++) {
+        const acct = targets[i]!;
         const handle = acct.handle.replace(/^@/, '');
+        setProfilePushStep(pushKey, kind, i, targets.length, handle);
         try {
           const credentials = credentialsForSavedAccount(acct);
           if (typeof imageSource === 'string') {
@@ -1140,6 +1213,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
           const msg = err instanceof Error ? err.message : 'Push failed';
           failures.push(`@${handle}: ${msg}`);
         }
+        setProfilePushStep(pushKey, kind, i + 1, targets.length);
       }
       const label = field === 'banner' ? 'Banner' : 'Profile picture';
       if (failures.length === 0) {
@@ -1154,6 +1228,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
         setError(failures.join(' · '));
       }
     } finally {
+      setProfilePushProgress((cur) => (cur?.pushKey === pushKey ? null : cur));
       endProfilePush(pushKey);
     }
   }
@@ -1628,25 +1703,33 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
       <section className="panel">
         <h2>Update on Bluesky</h2>
         {hideDirectUpload ? (
-          <div className="bio-form">
-            {multiAccountSelect ? (
-              <SavedAccountMultiPicker
-                accounts={pushableAccounts}
-                selected={multiAccountSelect.selected}
-                all={multiAccountSelect.all}
-                onToggle={multiAccountSelect.onToggle}
-                onAllChange={multiAccountSelect.onAllChange}
-                hint="Choose saved accounts from Accounts, then push a library item below."
-              />
-            ) : (
-              accountSelectField(
-                accountId,
-                setAccountId,
-                undefined,
-                'Choose a saved account from Accounts, then push a library item below.',
-              )
+          <>
+            <div className="bio-form">
+              {multiAccountSelect ? (
+                <SavedAccountMultiPicker
+                  accounts={pushableAccounts}
+                  selected={multiAccountSelect.selected}
+                  all={multiAccountSelect.all}
+                  onToggle={multiAccountSelect.onToggle}
+                  onAllChange={multiAccountSelect.onAllChange}
+                  hint="Choose saved accounts from Accounts, then push a library item below."
+                />
+              ) : (
+                accountSelectField(
+                  accountId,
+                  setAccountId,
+                  undefined,
+                  'Choose a saved account from Accounts, then push a library item below.',
+                )
+              )}
+            </div>
+            {profilePushProgress &&
+              (profilePushProgress.kind === 'banner' || profilePushProgress.kind === 'avatar') && (
+              <div className="profile-push-progress--panel">
+                <ProfilePushProgressBar progress={profilePushProgress} />
+              </div>
             )}
-          </div>
+          </>
         ) : (
         <form
           className="bio-form"
@@ -1673,6 +1756,11 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
           >
             {profilePushing === `direct-${key}` ? 'Updating…' : `Update ${title.toLowerCase()}`}
           </button>
+          {profilePushProgress?.pushKey === `direct-${key}` && (
+            <div className="profile-push-progress--panel">
+              <ProfilePushProgressBar progress={profilePushProgress} />
+            </div>
+          )}
         </form>
         )}
       </section>
@@ -1800,6 +1888,11 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                     </button>
                   )}
                 </div>
+                {profilePushing === item.id && profilePushProgress?.pushKey === item.id ? (
+                  <div className="reel-cell__progress">
+                    <ProfilePushProgressBar progress={profilePushProgress} />
+                  </div>
+                ) : (
                 <div className="reel-cell__footer">
                   <button
                     type="button"
@@ -1810,6 +1903,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                     {profilePushing === item.id ? 'Pushing…' : 'Push to Bluesky'}
                   </button>
                 </div>
+                )}
               </div>
             ))}
           </div>
@@ -1909,6 +2003,11 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                 </button>
               </div>
             )}
+            {profilePushing === item.id && profilePushProgress?.pushKey === item.id ? (
+              <div className="bio-cell__progress">
+                <ProfilePushProgressBar progress={profilePushProgress} />
+              </div>
+            ) : (
             <div className="bio-cell__footer">
               <button
                 type="button"
@@ -1927,6 +2026,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
               </button>
               <CopyButton value={item.text} title="Copy bio" />
             </div>
+            )}
           </div>
         ))}
       </div>
@@ -1946,6 +2046,11 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
             hint="Choose saved accounts from Accounts, then push a library item below."
           />
         </div>
+        {profilePushProgress?.kind === 'bio' && (
+          <div className="profile-push-progress--panel">
+            <ProfilePushProgressBar progress={profilePushProgress} />
+          </div>
+        )}
       </section>
 
       {isAdmin && (
