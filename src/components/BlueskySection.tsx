@@ -165,6 +165,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   const [postText, setPostText] = useState('');
   const [postFile, setPostFile] = useState<File | null>(null);
   const bannerAddInputRef = useRef<HTMLInputElement>(null);
+  const picAddInputRef = useRef<HTMLInputElement>(null);
   const profilePushInFlightRef = useRef(0);
   const [assignBanner, setAssignBanner] = useState<ImageAsset | null>(null);
   const [assignBannerEmployees, setAssignBannerEmployees] = useState<Set<string>>(() => new Set());
@@ -535,6 +536,21 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
       await loadAll();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not add banner.');
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function uploadProfilePic(file: File) {
+    setUploading(true);
+    try {
+      await addProfilePic(
+        { id: crypto.randomUUID(), url: '', createdAt: Date.now(), employees: [], allEmployees: false },
+        file,
+      );
+      await loadAll();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not add profile picture.');
     } finally {
       setUploading(false);
     }
@@ -2347,6 +2363,12 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                 setPicPushAccountId,
                 directPicFile,
                 setDirectPicFile,
+                {
+                  instantLibraryAdd: true,
+                  onInstantAdd: uploadProfilePic,
+                  addInputRef: picAddInputRef,
+                  mergeLibraryAdd: true,
+                },
               )}
 
             {view === 'bio' && bioSection(bios, bioText, setBioText, submitBio, deleteBio)}
