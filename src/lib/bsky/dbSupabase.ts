@@ -269,6 +269,9 @@ interface PostRow {
   id: string;
   text: string | null;
   image_url: string | null;
+  video_url: string | null;
+  media_type: string | null;
+  publishes: unknown;
   employees: unknown;
   all_employees: boolean | null;
   scheduled_at: number | null;
@@ -280,6 +283,9 @@ function toPost(row: PostRow): BskyPost {
     id: row.id,
     text: row.text ?? '',
     imageUrl: row.image_url ?? undefined,
+    videoUrl: row.video_url ?? undefined,
+    mediaType: row.media_type === 'video' ? 'video' : row.media_type === 'image' ? 'image' : undefined,
+    publishes: Array.isArray(row.publishes) ? (row.publishes as BskyPost['publishes']) : [],
     employees: Array.isArray(row.employees) ? (row.employees as string[]) : [],
     allEmployees: row.all_employees ?? false,
     scheduledAt: row.scheduled_at ?? undefined,
@@ -300,16 +306,43 @@ export async function getPosts(employee?: string): Promise<BskyPost[]> {
 
 export async function addPost(post: BskyPost, file?: Blob): Promise<void> {
   let imageUrl = post.imageUrl;
-  if (file) imageUrl = await uploadMedia('posts', post.id, file);
+  let videoUrl = post.videoUrl;
+  if (file) {
+    if (post.mediaType === 'video') {
+      videoUrl = await uploadMedia('posts', `${post.id}-video`, file);
+    } else {
+      imageUrl = await uploadMedia('posts', post.id, file);
+    }
+  }
   const { error } = await client().from('bsky_posts').upsert({
     id: post.id,
     text: post.text,
     image_url: imageUrl ?? null,
+    video_url: videoUrl ?? null,
+    media_type: post.mediaType ?? null,
+    publishes: post.publishes ?? [],
     employees: post.employees,
     all_employees: post.allEmployees,
     scheduled_at: post.scheduledAt ?? null,
     created_at: post.createdAt,
   });
+  if (error) throw new Error(error.message);
+}
+
+export async function updatePost(post: BskyPost): Promise<void> {
+  const { error } = await client()
+    .from('bsky_posts')
+    .update({
+      text: post.text,
+      image_url: post.imageUrl ?? null,
+      video_url: post.videoUrl ?? null,
+      media_type: post.mediaType ?? null,
+      publishes: post.publishes ?? [],
+      employees: post.employees,
+      all_employees: post.allEmployees,
+      scheduled_at: post.scheduledAt ?? null,
+    })
+    .eq('id', post.id);
   if (error) throw new Error(error.message);
 }
 

@@ -835,6 +835,104 @@ code {
   margin-top: 0;
 }
 
+.bsky-image--post-preview {
+  max-width: 280px;
+  max-height: 200px;
+  border-radius: 10px;
+  object-fit: cover;
+}
+
+.bsky-video--post-preview,
+.bsky-video {
+  max-width: 100%;
+  max-height: 240px;
+  border-radius: 10px;
+  background: #000;
+}
+
+.post-engagement-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.post-engagement-card {
+  display: grid;
+  grid-template-columns: minmax(120px, 180px) 1fr;
+  gap: 1rem;
+  padding: 1rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.post-engagement-card__media .bsky-image--post {
+  width: 100%;
+  height: 140px;
+  object-fit: cover;
+  border-radius: 10px;
+}
+
+.post-engagement-card__totals {
+  display: flex;
+  gap: 1rem;
+  margin: 0.5rem 0 0.75rem;
+}
+
+.post-engagement-stat {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.post-engagement-card__accounts {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.post-engagement-row {
+  padding: 0.5rem 0.65rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.post-engagement-row__main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.post-engagement-row__handle {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.post-engagement-row__stats {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.post-engagement-row__error {
+  font-size: 0.78rem;
+  color: var(--red);
+}
+
+.post-engagement-card__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 0.75rem;
+}
+
+@media (max-width: 640px) {
+  .post-engagement-card {
+    grid-template-columns: 1fr;
+  }
+}
+
 .bio-cell__footer .reel-cell__action--primary {
   flex: 1;
   min-width: 0;

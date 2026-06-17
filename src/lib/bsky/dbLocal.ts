@@ -15,7 +15,12 @@ import type {
 } from '../../types';
 
 type ImageRecord = Omit<ImageAsset, 'url'> & { url?: string; blob?: Blob };
-type PostRecord = Omit<BskyPost, 'imageUrl'> & { imageUrl?: string; blob?: Blob };
+type PostRecord = Omit<BskyPost, 'imageUrl' | 'videoUrl'> & {
+  imageUrl?: string;
+  videoUrl?: string;
+  blob?: Blob;
+  videoBlob?: Blob;
+};
 
 interface BskyDB extends DBSchema {
   employees: { key: string; value: Employee };
@@ -220,7 +225,10 @@ export async function getPosts(employee?: string): Promise<BskyPost[]> {
     .map((r) => ({
       id: r.id,
       text: r.text,
-      imageUrl: r.blob ? URL.createObjectURL(r.blob) : r.imageUrl,
+      imageUrl: r.blob && r.mediaType !== 'video' ? URL.createObjectURL(r.blob) : r.imageUrl,
+      videoUrl: r.videoBlob ? URL.createObjectURL(r.videoBlob) : r.videoUrl,
+      mediaType: r.mediaType,
+      publishes: r.publishes ?? [],
       employees: r.employees,
       allEmployees: r.allEmployees,
       scheduledAt: r.scheduledAt,
@@ -233,13 +241,40 @@ export async function addPost(post: BskyPost, file?: Blob): Promise<void> {
   const record: PostRecord = {
     id: post.id,
     text: post.text,
+    mediaType: post.mediaType,
+    publishes: post.publishes ?? [],
     employees: post.employees,
     allEmployees: post.allEmployees,
     scheduledAt: post.scheduledAt,
     createdAt: post.createdAt,
   };
-  if (file) record.blob = file;
-  else record.imageUrl = post.imageUrl;
+  if (file) {
+    if (post.mediaType === 'video') record.videoBlob = file;
+    else record.blob = file;
+  } else {
+    record.imageUrl = post.imageUrl;
+    record.videoUrl = post.videoUrl;
+  }
+  await db.put('posts', record);
+}
+
+export async function updatePost(post: BskyPost): Promise<void> {
+  const db = await getDb();
+  const existing = (await db.get('posts', post.id)) as PostRecord | undefined;
+  const record: PostRecord = {
+    id: post.id,
+    text: post.text,
+    mediaType: post.mediaType ?? existing?.mediaType,
+    publishes: post.publishes ?? [],
+    employees: post.employees,
+    allEmployees: post.allEmployees,
+    scheduledAt: post.scheduledAt,
+    createdAt: post.createdAt,
+    blob: existing?.blob,
+    videoBlob: existing?.videoBlob,
+    imageUrl: post.imageUrl ?? existing?.imageUrl,
+    videoUrl: post.videoUrl ?? existing?.videoUrl,
+  };
   await db.put('posts', record);
 }
 

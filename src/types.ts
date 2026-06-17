@@ -29,15 +29,32 @@ export interface ImageAsset {
   createdAt: number;
 }
 
-/** A Bluesky text post (with optional image) assigned to employees. */
+/** A published Bluesky post on a specific account, with optional engagement stats. */
+export interface BskyPostPublish {
+  accountId: string;
+  handle: string;
+  uri: string;
+  cid: string;
+  publishedAt: number;
+  likeCount?: number;
+  replyCount?: number;
+  repostCount?: number;
+  statsFetchedAt?: number;
+  error?: string;
+}
+
+/** A Bluesky media post (image or video) with captions and publish history. */
 export interface BskyPost {
   id: string;
   text: string;
   imageUrl?: string;
+  videoUrl?: string;
+  mediaType?: 'image' | 'video';
   employees: string[];
   allEmployees: boolean;
   scheduledAt?: number;
   createdAt: number;
+  publishes?: BskyPostPublish[];
 }
 
 /** A saved Bluesky account (added by the admin or an employee). */

@@ -437,3 +437,303 @@ export async function runAccountJob(
     return { ok: false, error: msg, result };
   }
 }
+
+const BSKY_IMAGE_UPLOAD_MAX_BYTES = 2 * 1024 * 1024;
+const BSKY_IMAGE_SOURCE_MAX_BYTES = 50 * 1024 * 1024;
+const BSKY_IMAGE_MAX_DIMENSION = 2000;
+const BSKY_VIDEO_MAX_BYTES = 100 * 1024 * 1024;
+const BSKY_VIDEO_POLL_MS = 1000;
+const BSKY_VIDEO_MAX_POLL_ATTEMPTS = 600;
+
+export interface BskyPublishedPost {
+  uri: string;
+  cid: string;
+}
+
+export interface BskyPostEngagement {
+  likeCount: number;
+  replyCount: number;
+  repostCount: number;
+}
+
+export type BskyPublishProgressCallback = (message: string) => void;
+
+async function mediaAspectRatio(
+  file: Blob,
+  mediaType: 'image' | 'video',
+): Promise<{ width: number; height: number } | undefined> {
+  if (mediaType === 'image') {
+    try {
+      if (typeof createImageBitmap === 'function') {
+        const bitmap = await createImageBitmap(file);
+        const ratio = { width: bitmap.width, height: bitmap.height };
+        bitmap.close();
+        return ratio;
+      }
+      return await new Promise((resolve) => {
+        const url = URL.createObjectURL(file);
+        const img = new Image();
+        img.onload = () => {
+          URL.revokeObjectURL(url);
+          resolve({ width: img.naturalWidth, height: img.naturalHeight });
+        };
+        img.onerror = () => {
+          URL.revokeObjectURL(url);
+          resolve(undefined);
+        };
+        img.src = url;
+      });
+    } catch {
+      return undefined;
+    }
+  }
+  try {
+    const url = URL.createObjectURL(file);
+    const ratio = await new Promise<{ width: number; height: number } | undefined>((resolve) => {
+      const video = document.createElement('video');
+      video.preload = 'metadata';
+      video.onloadedmetadata = () => {
+        URL.revokeObjectURL(url);
+        if (video.videoWidth > 0 && video.videoHeight > 0) {
+          resolve({ width: video.videoWidth, height: video.videoHeight });
+        } else {
+          resolve(undefined);
+        }
+      };
+      video.onerror = () => {
+        URL.revokeObjectURL(url);
+        resolve(undefined);
+      };
+      video.src = url;
+    });
+    return ratio;
+  } catch {
+    return undefined;
+  }
+}
+
+function mediaTypeFromFile(file: Blob): 'image' | 'video' {
+  const mime = file.type?.split(';')[0]?.trim().toLowerCase() ?? '';
+  if (mime.startsWith('video/')) return 'video';
+  return 'image';
+}
+
+async function prepareImageForBskyUpload(file: Blob): Promise<{
+  bytes: Uint8Array;
+  mimeType: string;
+  aspectRatio: { width: number; height: number };
+}> {
+  if (!file.type.startsWith('image/')) {
+    throw new Error('Not an image file.');
+  }
+  if (file.size > BSKY_IMAGE_SOURCE_MAX_BYTES) {
+    throw new Error('Images must be 50MB or smaller.');
+  }
+
+  const bitmap = await createImageBitmap(file);
+  const sourceWidth = bitmap.width;
+  const sourceHeight = bitmap.height;
+  let scale = Math.min(1, BSKY_IMAGE_MAX_DIMENSION / Math.max(sourceWidth, sourceHeight));
+
+  const encode = (width: number, height: number, quality: number) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('Could not process image.');
+    ctx.drawImage(bitmap, 0, 0, width, height);
+    return new Promise<Blob | null>((resolve) => {
+      canvas.toBlob((blob) => resolve(blob), 'image/jpeg', quality);
+    });
+  };
+
+  try {
+    while (scale >= 0.25) {
+      const width = Math.max(1, Math.round(sourceWidth * scale));
+      const height = Math.max(1, Math.round(sourceHeight * scale));
+      for (let quality = 0.92; quality >= 0.45; quality -= 0.07) {
+        const blob = await encode(width, height, quality);
+        if (blob && blob.size <= BSKY_IMAGE_UPLOAD_MAX_BYTES) {
+          return {
+            bytes: new Uint8Array(await blob.arrayBuffer()),
+            mimeType: 'image/jpeg',
+            aspectRatio: { width, height },
+          };
+        }
+      }
+      scale *= 0.75;
+    }
+  } finally {
+    bitmap.close();
+  }
+
+  throw new Error('Could not compress image under 2MB. Try a smaller image.');
+}
+
+async function uploadVideoViaBskyService(
+  agent: AtpAgent,
+  bytes: Uint8Array,
+  fileName: string,
+  onProgress?: BskyPublishProgressCallback,
+): Promise<unknown> {
+  const dispatchHost = agent.dispatchUrl?.host ?? new URL(agent.pdsUrl ?? agent.serviceUrl).host;
+  const { data: serviceAuth } = await agent.com.atproto.server.getServiceAuth({
+    aud: `did:web:${dispatchHost}`,
+    lxm: 'com.atproto.repo.uploadBlob',
+    exp: Math.floor(Date.now() / 1000) + 60 * 30,
+  });
+
+  const did = agent.session?.did;
+  if (!did) throw new Error('Not logged in to Bluesky.');
+
+  const uploadUrl = new URL('https://video.bsky.app/xrpc/app.bsky.video.uploadVideo');
+  uploadUrl.searchParams.set('did', did);
+  uploadUrl.searchParams.set('name', fileName);
+
+  onProgress?.('Uploading video…');
+
+  const uploadResponse = await fetch(uploadUrl.toString(), {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${serviceAuth.token}`,
+      'Content-Type': 'video/mp4',
+      'Content-Length': String(bytes.length),
+    },
+    body: bytes,
+  });
+
+  const uploadBody = (await uploadResponse.json().catch(() => ({}))) as {
+    jobStatus?: {
+      jobId?: string;
+      blob?: unknown;
+      state?: string;
+      progress?: number;
+      message?: string;
+      error?: string;
+    };
+    message?: string;
+    error?: string;
+  };
+
+  if (!uploadResponse.ok) {
+    if (uploadBody.jobStatus?.blob) return uploadBody.jobStatus.blob;
+    throw new Error(
+      uploadBody.message || uploadBody.error || `Video upload failed (${uploadResponse.status})`,
+    );
+  }
+
+  let blob = uploadBody.jobStatus?.blob;
+  const jobId = uploadBody.jobStatus?.jobId;
+  if (blob) return blob;
+  if (!jobId) throw new Error('Video upload did not return a job ID.');
+
+  const videoAgent = new AtpAgent({ service: 'https://video.bsky.app' });
+  for (let attempt = 0; attempt < BSKY_VIDEO_MAX_POLL_ATTEMPTS; attempt++) {
+    try {
+      const { data: status } = await videoAgent.app.bsky.video.getJobStatus({ jobId });
+      const job = status.jobStatus;
+      if (job.blob) return job.blob;
+      if (job.state === 'JOB_STATE_FAILED' && !job.blob) {
+        throw new Error(job.message || job.error || 'Video processing failed.');
+      }
+      const progress =
+        job.progress != null ? `${job.progress}%` : job.state?.replace('JOB_STATE_', '').toLowerCase() ?? '';
+      onProgress?.(`Processing video… ${progress}`.trim());
+    } catch (err) {
+      const msg = parseError(err);
+      if (/already_exists/i.test(msg)) {
+        try {
+          const { data: status } = await videoAgent.app.bsky.video.getJobStatus({ jobId });
+          if (status.jobStatus.blob) return status.jobStatus.blob;
+        } catch {
+          // fall through to retry
+        }
+      } else if (!/fetch|network|timeout/i.test(msg)) {
+        throw err;
+      }
+    }
+    await sleep(BSKY_VIDEO_POLL_MS);
+  }
+
+  throw new Error('Video processing timed out. Try a shorter video.');
+}
+
+export async function publishBskyMediaPost(
+  credentials: BskyCredentials,
+  options: {
+    text: string;
+    file: Blob;
+    mediaType?: 'image' | 'video';
+    fileName?: string;
+    onProgress?: BskyPublishProgressCallback;
+  },
+): Promise<BskyPublishedPost> {
+  const mediaType = options.mediaType ?? mediaTypeFromFile(options.file);
+  const text = options.text.trim();
+  const agent = await loginBskyAgent(credentials);
+
+  if (mediaType === 'image') {
+    options.onProgress?.('Compressing image…');
+    const prepared = await prepareImageForBskyUpload(options.file);
+    options.onProgress?.('Uploading image…');
+    const { data } = await agent.uploadBlob(prepared.bytes, { encoding: prepared.mimeType });
+    const result = await agent.post({
+      text,
+      embed: {
+        $type: 'app.bsky.embed.images',
+        images: [
+          {
+            alt: text || 'Image',
+            image: data.blob,
+            aspectRatio: prepared.aspectRatio,
+          },
+        ],
+      },
+      createdAt: new Date().toISOString(),
+    });
+    return { uri: result.uri, cid: result.cid };
+  }
+
+  const mimeType = options.file.type?.split(';')[0]?.trim() || 'video/mp4';
+  if (!mimeType.includes('mp4')) {
+    throw new Error('Videos must be MP4 format.');
+  }
+  const bytes = new Uint8Array(await options.file.arrayBuffer());
+  if (bytes.length > BSKY_VIDEO_MAX_BYTES) {
+    throw new Error('Videos must be 100MB or smaller.');
+  }
+
+  const fileName =
+    options.fileName ||
+    (options.file instanceof File && options.file.name ? options.file.name : 'video.mp4');
+  const videoBlob = await uploadVideoViaBskyService(agent, bytes, fileName, options.onProgress);
+  const aspectRatio = await mediaAspectRatio(options.file, 'video');
+
+  options.onProgress?.('Publishing post…');
+  const result = await agent.post({
+    text,
+    embed: {
+      $type: 'app.bsky.embed.video',
+      video: videoBlob,
+      ...(aspectRatio ? { aspectRatio } : {}),
+      ...(text ? { alt: text } : {}),
+    },
+    createdAt: new Date().toISOString(),
+  });
+  return { uri: result.uri, cid: result.cid };
+}
+
+export async function getBskyPostEngagement(
+  credentials: BskyCredentials,
+  uri: string,
+): Promise<BskyPostEngagement> {
+  const agent = await loginBskyAgent(credentials);
+  const res = await agent.app.bsky.feed.getPosts({ uris: [uri] });
+  const post = res.data.posts[0];
+  if (!post) throw new Error('Post not found on Bluesky.');
+  return {
+    likeCount: post.likeCount ?? 0,
+    replyCount: post.replyCount ?? 0,
+    repostCount: post.repostCount ?? 0,
+  };
+}

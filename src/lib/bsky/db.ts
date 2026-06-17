@@ -28,6 +28,7 @@ export const {
   deleteProfilePic,
   getPosts,
   addPost,
+  updatePost,
   deletePost,
   getBskyAccounts,
   addBskyAccount,

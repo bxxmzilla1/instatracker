@@ -4,6 +4,7 @@ import type {
   BskyAccount,
   BskyFollowEvent,
   BskyPost,
+  BskyPostPublish,
   BskyRun,
   BskySavedAccount,
   BskyTarget,
@@ -46,12 +47,15 @@ import {
   upsertRun,
   updateBanner,
   updateBio,
+  updatePost,
   updateProfilePic,
 } from '../lib/bsky/db';
 import {
   pushProfileBio,
   pushProfileImageFromFile,
   pushProfileImageFromUrl,
+  publishBskyMediaPost,
+  getBskyPostEngagement,
   runAccountJob,
   type BskyCredentials,
   type JobResult,
@@ -69,7 +73,7 @@ import { assignedEmployees } from '../lib/assignment';
 import { parseProxyString } from '../lib/proxy';
 import { formatCount, formatDate } from '../lib/format';
 
-type ProfilePushKind = 'bio' | 'banner' | 'avatar';
+type ProfilePushKind = 'bio' | 'banner' | 'avatar' | 'post';
 
 interface ProfilePushProgressState {
   pushKey: string;
@@ -91,13 +95,20 @@ function profilePushProgressLabel(progress: ProfilePushProgressState): string {
       ? 'bio'
       : progress.kind === 'banner'
         ? 'banner'
-        : 'profile picture';
-  const handle = progress.currentHandle ? ` @${progress.currentHandle}` : '';
+        : progress.kind === 'post'
+          ? 'post'
+          : 'profile picture';
+  const verb = progress.kind === 'post' ? 'Posting' : 'Updating';
+  const handle = progress.currentHandle
+    ? progress.currentHandle.includes('·')
+      ? ` ${progress.currentHandle}`
+      : ` @${progress.currentHandle}`
+    : '';
   if (progress.total <= 1) {
-    return `Updating ${noun}…${handle}`;
+    return `${verb} ${noun}…${handle}`;
   }
   const step = Math.min(progress.done + (progress.currentHandle ? 1 : 0), progress.total);
-  return `Updating ${noun} ${step} of ${progress.total}…${handle}`;
+  return `${verb} ${noun} ${step} of ${progress.total}…${handle}`;
 }
 
 function ProfilePushProgressBar({ progress }: { progress: ProfilePushProgressState }) {
@@ -215,6 +226,13 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   const [bioText, setBioText] = useState('');
   const [postText, setPostText] = useState('');
   const [postFile, setPostFile] = useState<File | null>(null);
+  const [postPreviewUrl, setPostPreviewUrl] = useState<string | null>(null);
+  const [postTab, setPostTab] = useState<'compose' | 'engagement'>('compose');
+  const [postPushAccountIds, setPostPushAccountIds] = useState<Set<string>>(() => new Set());
+  const [postPushAllAccounts, setPostPushAllAccounts] = useState(false);
+  const [postPublishing, setPostPublishing] = useState(false);
+  const [postPublishProgress, setPostPublishProgress] = useState<ProfilePushProgressState | null>(null);
+  const [refreshingPostStats, setRefreshingPostStats] = useState<string | null>(null);
   const bannerAddInputRef = useRef<HTMLInputElement>(null);
   const picAddInputRef = useRef<HTMLInputElement>(null);
   const [profilePicCropFile, setProfilePicCropFile] = useState<File | null>(null);
@@ -381,6 +399,16 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
       active = false;
     };
   }, [isAdmin, loadAll]);
+
+  useEffect(() => {
+    if (!postFile) {
+      setPostPreviewUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(postFile);
+    setPostPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [postFile]);
 
   // Per-employee counts for the selection grid (accounts assigned to each).
   useEffect(() => {
@@ -592,23 +620,160 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     setBioText('');
   }
 
-  async function submitPost(e: FormEvent) {
-    e.preventDefault();
-    if ((!postText.trim() && !postFile) || !assignValid('post')) return;
-    setUploading(true);
+  async function publishPostToBluesky() {
+    if (!postFile) {
+      setError('Choose an image or video to post.');
+      return;
+    }
+    const mediaType = postFile.type.startsWith('video/') ? 'video' : 'image';
+    if (mediaType === 'video' && !postFile.type.includes('mp4')) {
+      setError('Videos must be MP4 format.');
+      return;
+    }
+    const targets = postPushAllAccounts
+      ? pushableAccounts
+      : pushableAccounts.filter((a) => postPushAccountIds.has(a.id));
+    if (targets.length === 0) {
+      setError('Select at least one Bluesky account with saved credentials.');
+      return;
+    }
+
+    const postId = crypto.randomUUID();
+    const pushKey = `post-${postId}`;
+    setPostPublishing(true);
+    setPostPublishProgress({ pushKey, done: 0, total: targets.length, kind: 'post' });
+    setError(null);
+    setSuccessMessage(null);
+
+    const publishes: BskyPostPublish[] = [];
+    const failures: string[] = [];
+    let ok = 0;
+
     try {
+      for (let i = 0; i < targets.length; i++) {
+        const acct = targets[i]!;
+        const handle = acct.handle.replace(/^@/, '');
+        setPostPublishProgress({ pushKey, done: i, total: targets.length, currentHandle: handle, kind: 'post' });
+        try {
+          const published = await publishBskyMediaPost(credentialsForSavedAccount(acct), {
+            text: postText,
+            file: postFile,
+            mediaType,
+            fileName: postFile.name,
+            onProgress: (message) => {
+              setPostPublishProgress({
+                pushKey,
+                done: i,
+                total: targets.length,
+                currentHandle: `${handle} · ${message}`,
+                kind: 'post',
+              });
+            },
+          });
+          publishes.push({
+            accountId: acct.id,
+            handle,
+            uri: published.uri,
+            cid: published.cid,
+            publishedAt: Date.now(),
+          });
+          ok += 1;
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : 'Post failed';
+          failures.push(`@${handle}: ${msg}`);
+          publishes.push({
+            accountId: acct.id,
+            handle,
+            uri: '',
+            cid: '',
+            publishedAt: Date.now(),
+            error: msg,
+          });
+        }
+        setPostPublishProgress({ pushKey, done: i + 1, total: targets.length, kind: 'post' });
+      }
+
       await addPost(
-        { id: crypto.randomUUID(), text: postText, createdAt: Date.now(), ...assignPayload('post') },
-        postFile ?? undefined,
+        {
+          id: postId,
+          text: postText.trim(),
+          mediaType,
+          employees: [],
+          allEmployees: false,
+          createdAt: Date.now(),
+          publishes,
+        },
+        postFile,
       );
+
       setPostText('');
       setPostFile(null);
-      resetAssign('post');
+      await loadAll();
+
+      if (failures.length === 0) {
+        setSuccessMessage(`Posted to ${ok} account${ok === 1 ? '' : 's'}.`);
+        setPostTab('engagement');
+      } else if (ok > 0) {
+        setError(
+          `Posted to ${ok} account${ok === 1 ? '' : 's'}, but failed on ${failures.length}: ${failures.join(' · ')}`,
+        );
+        setPostTab('engagement');
+      } else {
+        setError(failures.join(' · '));
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not publish post.');
+    } finally {
+      setPostPublishing(false);
+      setPostPublishProgress(null);
+    }
+  }
+
+  function togglePostPushAccount(id: string) {
+    setPostPushAllAccounts(false);
+    setPostPushAccountIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function refreshPostEngagement(post: BskyPost) {
+    const published = (post.publishes ?? []).filter((p) => p.uri && !p.error);
+    if (published.length === 0) return;
+    setRefreshingPostStats(post.id);
+    try {
+      const updated: BskyPostPublish[] = [];
+      for (const pub of post.publishes ?? []) {
+        if (!pub.uri || pub.error) {
+          updated.push(pub);
+          continue;
+        }
+        const acct = pushableAccounts.find((a) => a.id === pub.accountId);
+        if (!acct) {
+          updated.push(pub);
+          continue;
+        }
+        try {
+          const stats = await getBskyPostEngagement(credentialsForSavedAccount(acct), pub.uri);
+          updated.push({
+            ...pub,
+            likeCount: stats.likeCount,
+            replyCount: stats.replyCount,
+            repostCount: stats.repostCount,
+            statsFetchedAt: Date.now(),
+          });
+        } catch (err) {
+          updated.push(pub);
+        }
+      }
+      await updatePost({ ...post, publishes: updated });
       await loadAll();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not add post.');
+      setError(err instanceof Error ? err.message : 'Could not refresh engagement stats.');
     } finally {
-      setUploading(false);
+      setRefreshingPostStats(null);
     }
   }
 
@@ -2713,71 +2878,186 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
 
             {view === 'post' && (
               <>
-                {isAdmin && (
+                <div className="toggle-group content-tabs">
+                  <button
+                    type="button"
+                    className={`toggle ${postTab === 'compose' ? 'toggle--active' : ''}`}
+                    onClick={() => setPostTab('compose')}
+                  >
+                    Post
+                  </button>
+                  <button
+                    type="button"
+                    className={`toggle ${postTab === 'engagement' ? 'toggle--active' : ''}`}
+                    onClick={() => setPostTab('engagement')}
+                  >
+                    Engagement
+                  </button>
+                </div>
+
+                {postTab === 'compose' && (
                   <section className="panel">
-                    <div className="panel-head">
-                      <h2>Add post</h2>
-                      <button
-                        type="button"
-                        className={`panel-add-toggle ${openForms.has('post') ? 'panel-add-toggle--open' : ''}`}
-                        onClick={() => toggleForm('post')}
-                      >
-                        {openForms.has('post') ? 'Hide' : 'Add'}
-                      </button>
-                    </div>
-                    {openForms.has('post') && (
-                      <form className="bio-form" onSubmit={submitPost}>
+                    <h2>Post to Bluesky</h2>
+                    <div className="bio-form">
+                      <SavedAccountMultiPicker
+                        accounts={pushableAccounts}
+                        selected={postPushAccountIds}
+                        all={postPushAllAccounts}
+                        onToggle={togglePostPushAccount}
+                        onAllChange={setPostPushAllAccounts}
+                        hint="Choose saved accounts to publish this post to."
+                      />
+                      <label className="cred-field">
+                        <span className="cred-field__label">Caption</span>
                         <textarea
                           className="bio-form__textarea"
-                          placeholder="Write the post text…"
+                          placeholder="Write a caption…"
                           value={postText}
                           onChange={(e) => setPostText(e.target.value)}
                           rows={4}
                         />
-                        <label className="content-upload">
-                          <input type="file" accept="image/*" onChange={(e) => setPostFile(e.target.files?.[0] ?? null)} />
-                          <span className="content-upload__hint">{postFile ? postFile.name : 'Attach an image (optional)'}</span>
-                        </label>
-                        <AssignmentPicker
-                          employees={employees}
-                          selected={getAssign('post').set}
-                          all={getAssign('post').all}
-                          onToggle={(u) => toggleAssign('post', u)}
-                          onAllChange={(a) => setAssignAll('post', a)}
+                      </label>
+                      <label className="content-upload">
+                        <input
+                          type="file"
+                          accept="image/*,video/mp4"
+                          onChange={(e) => setPostFile(e.target.files?.[0] ?? null)}
                         />
-                        <button type="submit" disabled={uploading || (!postText.trim() && !postFile) || !assignValid('post')}>
-                          {uploading ? 'Uploading…' : 'Add post'}
-                        </button>
-                      </form>
+                        <span className="content-upload__hint">
+                          {postFile
+                            ? `${postFile.name} (${postFile.type.startsWith('video/') ? 'video' : 'image'}${postFile.type.startsWith('image/') && postFile.size > 2 * 1024 * 1024 ? ', will compress' : ''})`
+                            : 'Choose an image (up to 50MB, auto-compressed) or MP4 video (up to 100MB)'}
+                        </span>
+                      </label>
+                      {postPreviewUrl && postFile?.type.startsWith('image/') && (
+                        <img
+                          className="bsky-image bsky-image--post-preview"
+                          src={postPreviewUrl}
+                          alt="Preview"
+                        />
+                      )}
+                      {postPreviewUrl && postFile?.type.startsWith('video/') && (
+                        <video
+                          className="bsky-video bsky-video--post-preview"
+                          src={postPreviewUrl}
+                          controls
+                          playsInline
+                        />
+                      )}
+                      <button
+                        type="button"
+                        disabled={
+                          postPublishing ||
+                          !postFile ||
+                          (!postPushAllAccounts && postPushAccountIds.size === 0)
+                        }
+                        onClick={() => void publishPostToBluesky()}
+                      >
+                        {postPublishing ? 'Posting…' : 'Post to Bluesky'}
+                      </button>
+                      {postPublishProgress && (
+                        <div className="profile-push-progress--panel">
+                          <ProfilePushProgressBar progress={postPublishProgress} />
+                        </div>
+                      )}
+                    </div>
+                  </section>
+                )}
+
+                {postTab === 'engagement' && (
+                  <section className="panel">
+                    <div className="panel-head">
+                      <h2>Engagement ({posts.filter((p) => (p.publishes ?? []).some((pub) => pub.uri && !pub.error)).length})</h2>
+                      <button
+                        type="button"
+                        className="panel-add-toggle"
+                        disabled={refreshingPostStats !== null}
+                        onClick={() => {
+                          const published = posts.filter((p) =>
+                            (p.publishes ?? []).some((pub) => pub.uri && !pub.error),
+                          );
+                          if (published.length === 0) return;
+                          void (async () => {
+                            for (const post of published) {
+                              await refreshPostEngagement(post);
+                            }
+                          })();
+                        }}
+                      >
+                        {refreshingPostStats ? 'Refreshing…' : 'Refresh all'}
+                      </button>
+                    </div>
+                    {posts.filter((p) => (p.publishes ?? []).length > 0).length === 0 ? (
+                      <p className="empty-note">No published posts yet. Post an image or video first.</p>
+                    ) : (
+                      <div className="post-engagement-list">
+                        {posts
+                          .filter((p) => (p.publishes ?? []).length > 0)
+                          .map((post) => {
+                            const successful = (post.publishes ?? []).filter((p) => p.uri && !p.error);
+                            const totalLikes = successful.reduce((sum, p) => sum + (p.likeCount ?? 0), 0);
+                            const totalReplies = successful.reduce((sum, p) => sum + (p.replyCount ?? 0), 0);
+                            const totalReposts = successful.reduce((sum, p) => sum + (p.repostCount ?? 0), 0);
+                            return (
+                              <div key={post.id} className="post-engagement-card">
+                                <div className="post-engagement-card__media">
+                                  {post.mediaType === 'video' && post.videoUrl ? (
+                                    <video className="bsky-video" src={post.videoUrl} controls playsInline />
+                                  ) : post.imageUrl ? (
+                                    <img className="bsky-image bsky-image--post" src={post.imageUrl} alt="" loading="lazy" />
+                                  ) : null}
+                                </div>
+                                <div className="post-engagement-card__body">
+                                  {post.text && <p className="bio-row__text">{post.text}</p>}
+                                  <div className="post-engagement-card__totals">
+                                    <span className="post-engagement-stat">♥ {formatCount(totalLikes)}</span>
+                                    <span className="post-engagement-stat">💬 {formatCount(totalReplies)}</span>
+                                    <span className="post-engagement-stat">↻ {formatCount(totalReposts)}</span>
+                                  </div>
+                                  <div className="post-engagement-card__accounts">
+                                    {(post.publishes ?? []).map((pub) => (
+                                      <div key={`${post.id}-${pub.accountId}`} className="post-engagement-row">
+                                        <div className="post-engagement-row__main">
+                                          <span className="post-engagement-row__handle">@{pub.handle.replace(/^@/, '')}</span>
+                                          {pub.error ? (
+                                            <span className="post-engagement-row__error">{pub.error}</span>
+                                          ) : (
+                                            <span className="post-engagement-row__stats">
+                                              ♥ {pub.likeCount ?? '—'} · 💬 {pub.replyCount ?? '—'} · ↻ {pub.repostCount ?? '—'}
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                  <div className="post-engagement-card__actions">
+                                    <button
+                                      type="button"
+                                      className="btn btn--ghost"
+                                      disabled={refreshingPostStats === post.id || successful.length === 0}
+                                      onClick={() => void refreshPostEngagement(post)}
+                                    >
+                                      {refreshingPostStats === post.id ? 'Refreshing…' : 'Refresh stats'}
+                                    </button>
+                                    {isAdmin && (
+                                      <button
+                                        type="button"
+                                        className="license-row__delete"
+                                        onClick={() => void deletePost(post.id).then(loadAll)}
+                                        title="Delete"
+                                      >
+                                        ✕
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                      </div>
                     )}
                   </section>
                 )}
-                <section className="panel">
-                  <h2>{isAdmin ? `Posts (${posts.length})` : 'Your posts'}</h2>
-                  {posts.length === 0 ? (
-                    <p className="empty-note">Nothing here yet.</p>
-                  ) : (
-                    <div className="bio-list">
-                      {posts.map((post) => (
-                        <div key={post.id} className="bio-row">
-                          <div className="bio-row__body">
-                            {post.imageUrl && <img className="bsky-image bsky-image--post" src={post.imageUrl} alt="" loading="lazy" />}
-                            <p className="bio-row__text">{post.text}</p>
-                            {isAdmin && <div className="bio-row__assign">{renderAssignTags(post)}</div>}
-                          </div>
-                          <div className="row-actions">
-                            {post.text && <CopyButton value={post.text} title="Copy post" />}
-                            {isAdmin && (
-                              <button type="button" className="license-row__delete" onClick={() => deletePost(post.id).then(loadAll)} title="Delete">
-                                ✕
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </section>
               </>
             )}
 

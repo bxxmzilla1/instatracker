@@ -288,11 +288,18 @@ create table if not exists bsky_posts (
   id text primary key,
   text text,
   image_url text,
+  video_url text,
+  media_type text,
+  publishes jsonb default '[]'::jsonb,
   employees jsonb default '[]'::jsonb,
   all_employees boolean default false,
   scheduled_at bigint,
   created_at bigint
 );
+
+alter table bsky_posts add column if not exists video_url text;
+alter table bsky_posts add column if not exists media_type text;
+alter table bsky_posts add column if not exists publishes jsonb default '[]'::jsonb;
 
 create table if not exists bsky_accounts (
   id text primary key,
