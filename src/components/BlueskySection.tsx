@@ -7,7 +7,6 @@ import type {
   BskyRun,
   BskySavedAccount,
   BskyTarget,
-  Cta,
   Employee,
   ImageAsset,
   Proxy,
@@ -17,7 +16,6 @@ import {
   addBanner,
   addBio,
   addBskyAccount,
-  addCta,
   addEmployee,
   addFollowEvents,
   addPost,
@@ -28,7 +26,6 @@ import {
   deleteBanner,
   deleteBio,
   deleteBskyAccount,
-  deleteCta,
   deleteEmployee,
   deletePost,
   deleteProfilePic,
@@ -38,7 +35,6 @@ import {
   getBanners,
   getBios,
   getBskyAccounts,
-  getCtas,
   getEmployees,
   getFollowEvents,
   getPosts,
@@ -49,7 +45,15 @@ import {
   getTargets,
   upsertRun,
 } from '../lib/bsky/db';
-import { runAccountJob, type JobResult, type ProxyConfig } from '../lib/bsky/client';
+import {
+  pushProfileBio,
+  pushProfileImageFromFile,
+  pushProfileImageFromUrl,
+  runAccountJob,
+  type BskyCredentials,
+  type JobResult,
+  type ProxyConfig,
+} from '../lib/bsky/client';
 import { AssignmentPicker } from './AssignmentPicker';
 import { BskyFollowChart, type FollowBar } from './BskyFollowChart';
 import { CopyButton } from './CopyButton';
@@ -68,7 +72,6 @@ type View =
   | 'post'
   | 'follow'
   | 'proxy'
-  | 'cta'
   | 'employees'
   | 'employee';
 
@@ -119,7 +122,6 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   const [banners, setBanners] = useState<ImageAsset[]>([]);
   const [profilePics, setProfilePics] = useState<ImageAsset[]>([]);
   const [bios, setBios] = useState<Bio[]>([]);
-  const [ctas, setCtas] = useState<Cta[]>([]);
   const [posts, setPosts] = useState<BskyPost[]>([]);
   const [proxies, setProxies] = useState<Proxy[]>([]);
   const [accounts, setAccounts] = useState<BskyAccount[]>([]);
@@ -155,7 +157,6 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   }
 
   const [bioText, setBioText] = useState('');
-  const [ctaText, setCtaText] = useState('');
   const [postText, setPostText] = useState('');
   const [postFile, setPostFile] = useState<File | null>(null);
   const [bannerFile, setBannerFile] = useState<File | null>(null);
@@ -165,6 +166,13 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   const [proxyRaw, setProxyRaw] = useState('');
   const [proxyType, setProxyType] = useState('http');
   const [newProxyLabel, setNewProxyLabel] = useState('');
+  const [bannerPushAccountId, setBannerPushAccountId] = useState('');
+  const [picPushAccountId, setPicPushAccountId] = useState('');
+  const [bioPushAccountId, setBioPushAccountId] = useState('');
+  const [directBannerFile, setDirectBannerFile] = useState<File | null>(null);
+  const [directPicFile, setDirectPicFile] = useState<File | null>(null);
+  const [directBioText, setDirectBioText] = useState('');
+  const [profilePushing, setProfilePushing] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
 
   const [acctId, setAcctId] = useState('');
@@ -245,11 +253,10 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   }
 
   const loadAll = useCallback(async () => {
-    const [bn, pp, bi, ct, po, px, ac, sa, tg, fe] = await Promise.all([
+    const [bn, pp, bi, po, px, ac, sa, tg, fe] = await Promise.all([
       getBanners(ownerFilter),
       getProfilePics(ownerFilter),
       getBios(ownerFilter),
-      getCtas(ownerFilter),
       getPosts(ownerFilter),
       getProxies(ownerFilter),
       getBskyAccounts(ownerFilter),
@@ -260,7 +267,6 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     setBanners(bn);
     setProfilePics(pp);
     setBios(bi);
-    setCtas(ct);
     setPosts(po);
     setProxies(px);
     setAccounts(ac);
@@ -489,15 +495,6 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     await loadAll();
   }
 
-  async function submitCta(e: FormEvent) {
-    e.preventDefault();
-    if (!ctaText.trim() || !assignValid('cta')) return;
-    await addCta({ id: crypto.randomUUID(), text: ctaText, createdAt: Date.now(), ...assignPayload('cta') });
-    setCtaText('');
-    resetAssign('cta');
-    await loadAll();
-  }
-
   async function submitPost(e: FormEvent) {
     e.preventDefault();
     if ((!postText.trim() && !postFile) || !assignValid('post')) return;
@@ -692,6 +689,109 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
       };
     }
     return undefined;
+  }
+
+  const pushableAccounts = useMemo(
+    () =>
+      savedAccounts.filter(
+        (a) => !a.banned && a.handle.trim() && (a.password ?? '').trim(),
+      ),
+    [savedAccounts],
+  );
+
+  function credentialsForSavedAccount(acct: BskySavedAccount): BskyCredentials {
+    const handle = acct.handle.trim().replace(/^@/, '');
+    const followAcct = accounts.find(
+      (a) =>
+        a.identifier.trim().replace(/^@/, '').toLowerCase() === handle.toLowerCase(),
+    );
+    return {
+      identifier: acct.email?.trim() || handle,
+      password: acct.password!.trim(),
+      proxy: proxyConfigFor(followAcct?.proxyId),
+    };
+  }
+
+  function accountSelectField(
+    accountId: string,
+    setAccountId: (id: string) => void,
+    label = 'Bluesky account to update',
+  ) {
+    return (
+      <label className="cred-field">
+        <span className="cred-field__label">{label}</span>
+        <select
+          className="cred-form__input"
+          value={accountId}
+          onChange={(e) => setAccountId(e.target.value)}
+        >
+          <option value="">
+            {pushableAccounts.length === 0
+              ? 'No accounts with saved credentials'
+              : 'Select account…'}
+          </option>
+          {pushableAccounts.map((a) => (
+            <option key={a.id} value={a.id}>
+              @{a.handle.replace(/^@/, '')}
+              {a.owner ? ` · ${a.owner}` : ''}
+            </option>
+          ))}
+        </select>
+        <span className="cred-field__hint">
+          Choose a saved account from Accounts, then push a library item or upload below.
+        </span>
+      </label>
+    );
+  }
+
+  async function pushBioToAccount(accountId: string, text: string, pushKey: string) {
+    const acct = pushableAccounts.find((a) => a.id === accountId);
+    if (!acct) {
+      setError('Select a Bluesky account with saved credentials.');
+      return;
+    }
+    if (!text.trim()) {
+      setError('Enter bio text to push.');
+      return;
+    }
+    setProfilePushing(pushKey);
+    setError(null);
+    try {
+      await pushProfileBio(credentialsForSavedAccount(acct), text.trim());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not update Bluesky bio.');
+    } finally {
+      setProfilePushing(null);
+    }
+  }
+
+  async function pushImageToAccount(
+    accountId: string,
+    imageSource: string | File,
+    field: 'banner' | 'avatar',
+    pushKey: string,
+  ) {
+    const acct = pushableAccounts.find((a) => a.id === accountId);
+    if (!acct) {
+      setError('Select a Bluesky account with saved credentials.');
+      return;
+    }
+    setProfilePushing(pushKey);
+    setError(null);
+    try {
+      const credentials = credentialsForSavedAccount(acct);
+      if (typeof imageSource === 'string') {
+        await pushProfileImageFromUrl(credentials, imageSource, field);
+      } else {
+        await pushProfileImageFromFile(credentials, imageSource, field);
+      }
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : 'Could not update Bluesky profile image.',
+      );
+    } finally {
+      setProfilePushing(null);
+    }
   }
 
   async function runOne(account: BskyAccount) {
@@ -1052,15 +1152,6 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
         </svg>
       ),
     },
-    {
-      id: 'cta',
-      label: 'CTA',
-      icon: (
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
-          <path d="M3 11l18-7-7 18-2.5-7.5z" />
-        </svg>
-      ),
-    },
   ];
 
   const topbarTitle =
@@ -1082,9 +1173,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                 ? 'Follow'
                 : view === 'proxy'
                   ? 'Proxy'
-                  : view === 'cta'
-                    ? 'CTA'
-                    : view === 'employee'
+                  : view === 'employee'
                       ? `Employee · ${selectedEmployee ?? ''}`
                       : 'Employees';
 
@@ -1111,12 +1200,47 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     submit: (e: FormEvent) => void,
     onDelete: (id: string) => Promise<void>,
     key: string,
+    profileField: 'banner' | 'avatar',
+    accountId: string,
+    setAccountId: (id: string) => void,
+    directFile: File | null,
+    setDirectFile: (f: File | null) => void,
   ) => (
     <>
+      <section className="panel">
+        <h2>Update on Bluesky</h2>
+        <form
+          className="bio-form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!directFile) return;
+            void pushImageToAccount(accountId, directFile, profileField, `direct-${key}`);
+          }}
+        >
+          {accountSelectField(accountId, setAccountId)}
+          <label className="content-upload">
+            <input
+              type="file"
+              accept="image/*"
+              onChange={(e) => setDirectFile(e.target.files?.[0] ?? null)}
+            />
+            <span className="content-upload__hint">
+              {directFile ? directFile.name : `Choose a new ${title.toLowerCase()} image`}
+            </span>
+          </label>
+          <button
+            type="submit"
+            disabled={profilePushing === `direct-${key}` || !accountId || !directFile}
+          >
+            {profilePushing === `direct-${key}` ? 'Updating…' : `Update ${title.toLowerCase()}`}
+          </button>
+        </form>
+      </section>
+
       {isAdmin && (
         <section className="panel">
           <div className="panel-head">
-            <h2>Add {title.toLowerCase()}</h2>
+            <h2>Add {title.toLowerCase()} to library</h2>
             <button
               type="button"
               className={`panel-add-toggle ${openForms.has(key) ? 'panel-add-toggle--open' : ''}`}
@@ -1152,7 +1276,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
         </section>
       )}
       <section className="panel">
-        <h2>{isAdmin ? `${title}s (${items.length})` : `Your ${title.toLowerCase()}s`}</h2>
+        <h2>{isAdmin ? `${title} library (${items.length})` : `Your ${title.toLowerCase()}s`}</h2>
         {items.length === 0 ? (
           <p className="empty-note">Nothing here yet.</p>
         ) : (
@@ -1164,6 +1288,14 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                 <div className="content-tile__meta">
                   <div className="content-tile__assign">{renderAssignTags(item)}</div>
                   <div className="content-tile__actions">
+                    <button
+                      type="button"
+                      className="content-tile__download"
+                      disabled={profilePushing === item.id || !accountId}
+                      onClick={() => void pushImageToAccount(accountId, item.url, profileField, item.id)}
+                    >
+                      {profilePushing === item.id ? 'Pushing…' : 'Push to Bluesky'}
+                    </button>
                     <a className="content-tile__download" href={item.url} download target="_blank" rel="noreferrer">
                       ↓ Download
                     </a>
@@ -1187,53 +1319,77 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     </>
   );
 
-  const textSection = (
-    title: string,
-    items: (Bio | Cta)[],
+  const bioSection = (
+    items: Bio[],
     text: string,
     setText: (t: string) => void,
     submit: (e: FormEvent) => void,
     onDelete: (id: string) => Promise<void>,
-    key: string,
   ) => (
     <>
+      <section className="panel">
+        <h2>Update on Bluesky</h2>
+        <form
+          className="bio-form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void pushBioToAccount(bioPushAccountId, directBioText, 'direct-bio');
+          }}
+        >
+          {accountSelectField(bioPushAccountId, setBioPushAccountId)}
+          <textarea
+            className="bio-form__textarea"
+            placeholder="Write the account bio…"
+            value={directBioText}
+            onChange={(e) => setDirectBioText(e.target.value)}
+            rows={4}
+          />
+          <button
+            type="submit"
+            disabled={profilePushing === 'direct-bio' || !bioPushAccountId || !directBioText.trim()}
+          >
+            {profilePushing === 'direct-bio' ? 'Updating…' : 'Update bio'}
+          </button>
+        </form>
+      </section>
+
       {isAdmin && (
         <section className="panel">
           <div className="panel-head">
-            <h2>Add {title.toLowerCase()}</h2>
+            <h2>Add bio to library</h2>
             <button
               type="button"
-              className={`panel-add-toggle ${openForms.has(key) ? 'panel-add-toggle--open' : ''}`}
-              onClick={() => toggleForm(key)}
+              className={`panel-add-toggle ${openForms.has('bio') ? 'panel-add-toggle--open' : ''}`}
+              onClick={() => toggleForm('bio')}
             >
-              {openForms.has(key) ? 'Hide' : 'Add'}
+              {openForms.has('bio') ? 'Hide' : 'Add'}
             </button>
           </div>
-          {openForms.has(key) && (
+          {openForms.has('bio') && (
             <form className="bio-form" onSubmit={submit}>
               <textarea
                 className="bio-form__textarea"
-                placeholder={`Write the ${title.toLowerCase()}…`}
+                placeholder="Write the bio…"
                 value={text}
                 onChange={(e) => setText(e.target.value)}
                 rows={4}
               />
               <AssignmentPicker
                 employees={employees}
-                selected={getAssign(key).set}
-                all={getAssign(key).all}
-                onToggle={(u) => toggleAssign(key, u)}
-                onAllChange={(a) => setAssignAll(key, a)}
+                selected={getAssign('bio').set}
+                all={getAssign('bio').all}
+                onToggle={(u) => toggleAssign('bio', u)}
+                onAllChange={(a) => setAssignAll('bio', a)}
               />
-              <button type="submit" disabled={!text.trim() || !assignValid(key)}>
-                Add {title.toLowerCase()}
+              <button type="submit" disabled={!text.trim() || !assignValid('bio')}>
+                Add bio
               </button>
             </form>
           )}
         </section>
       )}
       <section className="panel">
-        <h2>{isAdmin ? `${title}s (${items.length})` : `Your ${title.toLowerCase()}s`}</h2>
+        <h2>{isAdmin ? `Bio library (${items.length})` : 'Your bios'}</h2>
         {items.length === 0 ? (
           <p className="empty-note">Nothing here yet.</p>
         ) : (
@@ -1245,7 +1401,16 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                   {isAdmin && <div className="bio-row__assign">{renderAssignTags(item)}</div>}
                 </div>
                 <div className="row-actions">
-                  <CopyButton value={item.text} title={`Copy ${title.toLowerCase()}`} />
+                  <button
+                    type="button"
+                    className="row-edit bio-row__push"
+                    disabled={profilePushing === item.id || !bioPushAccountId}
+                    onClick={() => void pushBioToAccount(bioPushAccountId, item.text, item.id)}
+                    title="Push to Bluesky"
+                  >
+                    {profilePushing === item.id ? '…' : 'Push'}
+                  </button>
+                  <CopyButton value={item.text} title="Copy bio" />
                   {isAdmin && (
                     <button type="button" className="license-row__delete" onClick={() => onDelete(item.id)} title="Delete">
                       ✕
@@ -1798,14 +1963,42 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
             )}
 
             {view === 'banner' &&
-              imageSection('Banner', banners, bannerFile, setBannerFile, bannerCaption, setBannerCaption, submitBanner, deleteBanner, 'banner')}
+              imageSection(
+                'Banner',
+                banners,
+                bannerFile,
+                setBannerFile,
+                bannerCaption,
+                setBannerCaption,
+                submitBanner,
+                deleteBanner,
+                'banner',
+                'banner',
+                bannerPushAccountId,
+                setBannerPushAccountId,
+                directBannerFile,
+                setDirectBannerFile,
+              )}
 
             {view === 'profilepic' &&
-              imageSection('Profile Picture', profilePics, picFile, setPicFile, picCaption, setPicCaption, submitPic, deleteProfilePic, 'pic')}
+              imageSection(
+                'Profile Picture',
+                profilePics,
+                picFile,
+                setPicFile,
+                picCaption,
+                setPicCaption,
+                submitPic,
+                deleteProfilePic,
+                'pic',
+                'avatar',
+                picPushAccountId,
+                setPicPushAccountId,
+                directPicFile,
+                setDirectPicFile,
+              )}
 
-            {view === 'bio' && textSection('Bio', bios, bioText, setBioText, submitBio, deleteBio, 'bio')}
-
-            {view === 'cta' && textSection('CTA', ctas, ctaText, setCtaText, submitCta, deleteCta, 'cta')}
+            {view === 'bio' && bioSection(bios, bioText, setBioText, submitBio, deleteBio)}
 
             {view === 'post' && (
               <>
@@ -2539,10 +2732,6 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                   <div className="stat-card">
                     <span className="stat-card__label">Bios</span>
                     <strong className="stat-card__value">{formatCount(bios.length)}</strong>
-                  </div>
-                  <div className="stat-card">
-                    <span className="stat-card__label">CTAs</span>
-                    <strong className="stat-card__value">{formatCount(ctas.length)}</strong>
                   </div>
                   <div className="stat-card">
                     <span className="stat-card__label">Proxies</span>

@@ -144,6 +144,80 @@ export interface JobHooks {
   shouldCancel?: () => boolean;
 }
 
+export interface BskyCredentials {
+  identifier: string;
+  password: string;
+  service?: string;
+  proxy?: ProxyConfig;
+}
+
+export async function loginBskyAgent(credentials: BskyCredentials): Promise<AtpAgent> {
+  const { identifier, password, service, proxy } = credentials;
+  if (!identifier?.trim() || !password?.trim()) {
+    throw new Error('Missing handle/email or app password.');
+  }
+  const agent = new AtpAgent({
+    service: (service && service.trim()) || 'https://bsky.social',
+    ...(proxy ? { fetch: makeProxyFetch(proxy) } : {}),
+  });
+  await agent.login({ identifier: identifier.trim(), password: password.trim() });
+  return agent;
+}
+
+async function urlToImageBytes(url: string): Promise<{ bytes: Uint8Array; mimeType: string }> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('Could not fetch image.');
+  const mimeType = res.headers.get('content-type')?.split(';')[0]?.trim() || 'image/jpeg';
+  return { bytes: new Uint8Array(await res.arrayBuffer()), mimeType };
+}
+
+async function blobToImageBytes(file: Blob): Promise<{ bytes: Uint8Array; mimeType: string }> {
+  const mimeType = file.type?.split(';')[0]?.trim() || 'image/jpeg';
+  return { bytes: new Uint8Array(await file.arrayBuffer()), mimeType };
+}
+
+export async function pushProfileBio(
+  credentials: BskyCredentials,
+  description: string,
+): Promise<void> {
+  const agent = await loginBskyAgent(credentials);
+  await agent.upsertProfile((existing) => {
+    const profile = { ...(existing ?? {}) };
+    profile.description = description;
+    return profile;
+  });
+}
+
+export async function pushProfileImageFromUrl(
+  credentials: BskyCredentials,
+  imageUrl: string,
+  field: 'avatar' | 'banner',
+): Promise<void> {
+  const agent = await loginBskyAgent(credentials);
+  const { bytes, mimeType } = await urlToImageBytes(imageUrl);
+  const { data } = await agent.uploadBlob(bytes, { encoding: mimeType });
+  await agent.upsertProfile((existing) => {
+    const profile = { ...(existing ?? {}) };
+    profile[field] = data.blob;
+    return profile;
+  });
+}
+
+export async function pushProfileImageFromFile(
+  credentials: BskyCredentials,
+  file: Blob,
+  field: 'avatar' | 'banner',
+): Promise<void> {
+  const agent = await loginBskyAgent(credentials);
+  const { bytes, mimeType } = await blobToImageBytes(file);
+  const { data } = await agent.uploadBlob(bytes, { encoding: mimeType });
+  await agent.upsertProfile((existing) => {
+    const profile = { ...(existing ?? {}) };
+    profile[field] = data.blob;
+    return profile;
+  });
+}
+
 export async function runAccountJob(
   cfg: JobConfig,
   hooks: JobHooks = {},
@@ -173,11 +247,12 @@ export async function runAccountJob(
     if (!target) throw new Error('Missing target profile.');
 
     onStatus('auth', proxy ? 'Signing in (via proxy)…' : 'Signing in…');
-    const agent = new AtpAgent({
-      service: (service && service.trim()) || 'https://bsky.social',
-      ...(proxy ? { fetch: makeProxyFetch(proxy) } : {}),
+    const agent = await loginBskyAgent({
+      identifier,
+      password,
+      service,
+      proxy,
     });
-    await agent.login({ identifier: identifier.trim(), password: password.trim() });
 
     if (shouldCancel()) {
       result.cancelled = true;
