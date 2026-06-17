@@ -179,6 +179,8 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   const [proxySearch, setProxySearch] = useState('');
   const [bannerPushAccountIds, setBannerPushAccountIds] = useState<Set<string>>(() => new Set());
   const [bannerPushAllAccounts, setBannerPushAllAccounts] = useState(false);
+  const [picPushAccountIds, setPicPushAccountIds] = useState<Set<string>>(() => new Set());
+  const [picPushAllAccounts, setPicPushAllAccounts] = useState(false);
   const [picPushAccountId, setPicPushAccountId] = useState('');
   const [bioPushAccountId, setBioPushAccountId] = useState('');
   const [directPicFile, setDirectPicFile] = useState<File | null>(null);
@@ -864,6 +866,16 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   function toggleBannerPushAccount(id: string) {
     setBannerPushAllAccounts(false);
     setBannerPushAccountIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function togglePicPushAccount(id: string) {
+    setPicPushAllAccounts(false);
+    setPicPushAccountIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
@@ -2364,10 +2376,17 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                 directPicFile,
                 setDirectPicFile,
                 {
+                  hideDirectUpload: true,
                   instantLibraryAdd: true,
                   onInstantAdd: uploadProfilePic,
                   addInputRef: picAddInputRef,
                   mergeLibraryAdd: true,
+                  multiAccountSelect: {
+                    selected: picPushAccountIds,
+                    all: picPushAllAccounts,
+                    onToggle: togglePicPushAccount,
+                    onAllChange: setPicPushAllAccounts,
+                  },
                 },
               )}
 

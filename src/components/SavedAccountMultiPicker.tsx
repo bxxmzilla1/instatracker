@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { BskySavedAccount } from '../types';
 
 interface Props {
@@ -27,15 +27,28 @@ export function SavedAccountMultiPicker({
   hint,
 }: Props) {
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     function onDoc(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+        setSearch('');
+      }
     }
     document.addEventListener('mousedown', onDoc);
     return () => document.removeEventListener('mousedown', onDoc);
   }, []);
+
+  const filtered = useMemo(() => {
+    const words = search.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    if (words.length === 0) return accounts;
+    return accounts.filter((a) => {
+      const haystack = `@${a.handle} ${a.owner ?? ''} ${a.email ?? ''} ${a.notes ?? ''}`.toLowerCase();
+      return words.every((word) => haystack.includes(word));
+    });
+  }, [accounts, search]);
 
   const summary = all
     ? 'All accounts'
@@ -44,7 +57,7 @@ export function SavedAccountMultiPicker({
       : `${selected.size} selected`;
 
   return (
-    <div className="assign-dropdown" ref={ref}>
+    <div className="assign-dropdown saved-account-picker" ref={ref}>
       <span className="cred-field__label">{label}</span>
       <button
         type="button"
@@ -57,17 +70,44 @@ export function SavedAccountMultiPicker({
       {hint && <span className="cred-field__hint">{hint}</span>}
 
       {open && (
-        <div className="assign-dropdown__menu">
+        <div className="assign-dropdown__menu saved-account-picker__menu">
+          <div className="saved-account-picker__search account-search">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="11" cy="11" r="7" />
+              <path d="m20 20-3.5-3.5" />
+            </svg>
+            <input
+              type="text"
+              placeholder="Search accounts…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              autoFocus
+            />
+            {search && (
+              <button
+                type="button"
+                className="account-search__clear"
+                onClick={() => setSearch('')}
+                aria-label="Clear search"
+              >
+                ✕
+              </button>
+            )}
+          </div>
           <label className="assign-dropdown__item">
             <input type="checkbox" checked={all} onChange={(e) => onAllChange(e.target.checked)} />
             Select all
           </label>
 
           {!all &&
-            (accounts.length === 0 ? (
-              <span className="assign-dropdown__empty">No accounts with saved credentials.</span>
+            (filtered.length === 0 ? (
+              <span className="assign-dropdown__empty">
+                {accounts.length === 0
+                  ? 'No accounts with saved credentials.'
+                  : 'No accounts match your search.'}
+              </span>
             ) : (
-              accounts.map((account) => (
+              filtered.map((account) => (
                 <label key={account.id} className="assign-dropdown__item">
                   <input
                     type="checkbox"
