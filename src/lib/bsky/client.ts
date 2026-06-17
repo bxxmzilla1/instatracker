@@ -211,6 +211,22 @@ export async function loginBskyAgent(credentials: BskyCredentials): Promise<AtpA
   return agent;
 }
 
+/**
+ * Attempts a real Bluesky login to confirm the handle + password are valid.
+ * Throws a friendly error if authentication fails.
+ */
+export async function verifyBskyLogin(credentials: BskyCredentials): Promise<void> {
+  try {
+    await loginBskyAgent(credentials);
+  } catch (err) {
+    const msg = parseError(err);
+    if (/invalid|unauthor|auth|password|identifier|token/i.test(msg)) {
+      throw new Error('Invalid handle or password. Use an app password from Bluesky settings.');
+    }
+    throw new Error(msg || 'Could not verify the account credentials.');
+  }
+}
+
 async function urlToImageBytes(url: string): Promise<{ bytes: Uint8Array; mimeType: string }> {
   const res = await fetch(url);
   if (!res.ok) throw new Error('Could not fetch image.');

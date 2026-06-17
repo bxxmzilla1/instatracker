@@ -60,6 +60,7 @@ import {
   pushProfileImageFromUrl,
   publishBskyMediaPost,
   getBskyPostEngagement,
+  verifyBskyLogin,
   deleteBskyPost,
   likeBskyPost,
   unlikeBskyPost,
@@ -1009,7 +1010,9 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     }
     setSavingSlave(true);
     setError(null);
+    setSuccessMessage(null);
     try {
+      await verifyBskyLogin({ identifier: handle, password: newSlavePassword.trim() });
       await addSlaveAccount({
         id: crypto.randomUUID(),
         handle,
@@ -1020,6 +1023,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
       setNewSlavePassword('');
       setShowAddSlave(false);
       await loadAll();
+      setSuccessMessage(`Slave account @${handle} verified and added.`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not add slave account.');
     } finally {
@@ -3251,7 +3255,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                       type="submit"
                       disabled={!newSlaveHandle.trim() || !newSlavePassword.trim() || savingSlave}
                     >
-                      {savingSlave ? 'Adding…' : 'Add slave account'}
+                      {savingSlave ? 'Verifying credentials…' : 'Add slave account'}
                     </button>
                   </form>
                 )}
