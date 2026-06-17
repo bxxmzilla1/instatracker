@@ -1,4 +1,5 @@
 import { AtpAgent } from '@atproto/api';
+import { BlobRef } from '@atproto/lexicon';
 
 // Browser-side AT Protocol client. Bluesky's XRPC endpoints support CORS, so
 // every job runs directly from the browser with its own AtpAgent + session,
@@ -570,12 +571,38 @@ async function prepareImageForBskyUpload(file: Blob): Promise<{
   throw new Error('Could not compress image under 2MB. Try a smaller image.');
 }
 
-function blobFromXrpcError(err: unknown): unknown | undefined {
+function ensureBlobRef(blob: unknown): BlobRef {
+  if (blob instanceof BlobRef) return blob;
+  const ref = BlobRef.asBlobRef(blob);
+  if (!ref) throw new Error('Invalid video blob reference from Bluesky.');
+  return ref;
+}
+
+/** Append a unique MP4 free box so Bluesky treats reposts as new uploads. */
+function uniquifyMp4Bytes(bytes: Uint8Array): Uint8Array {
+  const stamp = new TextEncoder().encode(`drbossing-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  const boxSize = 8 + stamp.length;
+  const freeBox = new Uint8Array(boxSize);
+  const view = new DataView(freeBox.buffer);
+  view.setUint32(0, boxSize);
+  freeBox[4] = 0x66;
+  freeBox[5] = 0x72;
+  freeBox[6] = 0x65;
+  freeBox[7] = 0x65;
+  freeBox.set(stamp, 8);
+  const out = new Uint8Array(bytes.length + boxSize);
+  out.set(bytes);
+  out.set(freeBox, bytes.length);
+  return out;
+}
+
+function blobFromXrpcError(err: unknown): BlobRef | undefined {
   const e = err as {
     body?: { jobStatus?: { blob?: unknown } };
     data?: { jobStatus?: { blob?: unknown } };
   };
-  return e.body?.jobStatus?.blob ?? e.data?.jobStatus?.blob;
+  const ref = e.body?.jobStatus?.blob ?? e.data?.jobStatus?.blob;
+  return ref ? ensureBlobRef(ref) : undefined;
 }
 
 function isDuplicateVideoUpload(
@@ -595,7 +622,8 @@ async function uploadVideoViaBskyService(
   bytes: Uint8Array,
   fileName: string,
   onProgress?: BskyPublishProgressCallback,
-): Promise<unknown> {
+  repostAttempt = false,
+): Promise<BlobRef> {
   const dispatchHost = agent.dispatchUrl?.host ?? new URL(agent.pdsUrl ?? agent.serviceUrl).host;
   const { data: serviceAuth } = await agent.com.atproto.server.getServiceAuth({
     aud: `did:web:${dispatchHost}`,
@@ -638,6 +666,15 @@ async function uploadVideoViaBskyService(
   const uploadJob = uploadBody.jobStatus;
   const duplicate = isDuplicateVideoUpload(uploadResponse.status, uploadJob);
 
+  if (duplicate && !repostAttempt) {
+    onProgress?.('Preparing video for repost…');
+    const uniqueBytes = uniquifyMp4Bytes(bytes);
+    if (uniqueBytes.length > BSKY_VIDEO_MAX_BYTES) {
+      throw new Error('Videos must be 100MB or smaller.');
+    }
+    return uploadVideoViaBskyService(agent, uniqueBytes, fileName, onProgress, true);
+  }
+
   let blob = uploadJob?.blob;
   const jobId = uploadJob?.jobId;
 
@@ -650,19 +687,15 @@ async function uploadVideoViaBskyService(
     );
   }
 
-  if (blob) return blob;
+  if (blob) return ensureBlobRef(blob);
   if (!jobId) throw new Error('Video upload did not return a job ID.');
-
-  if (duplicate) {
-    onProgress?.('Reusing processed video…');
-  }
 
   const videoAgent = new AtpAgent({ service: 'https://video.bsky.app' });
   for (let attempt = 0; attempt < BSKY_VIDEO_MAX_POLL_ATTEMPTS; attempt++) {
     try {
       const { data: status } = await videoAgent.app.bsky.video.getJobStatus({ jobId });
       const job = status.jobStatus;
-      if (job.blob) return job.blob;
+      if (job.blob) return ensureBlobRef(job.blob);
       if (
         job.state === 'JOB_STATE_FAILED' &&
         !job.blob &&
@@ -672,9 +705,7 @@ async function uploadVideoViaBskyService(
       }
       const progress =
         job.progress != null ? `${job.progress}%` : job.state?.replace('JOB_STATE_', '').toLowerCase() ?? '';
-      onProgress?.(
-        duplicate ? 'Reusing processed video…' : `Processing video… ${progress}`.trim(),
-      );
+      onProgress?.(`Processing video… ${progress}`.trim());
     } catch (err) {
       const blobFromErr = blobFromXrpcError(err);
       if (blobFromErr) return blobFromErr;
@@ -683,7 +714,7 @@ async function uploadVideoViaBskyService(
       if (/already_exists|already processed/i.test(msg)) {
         try {
           const { data: status } = await videoAgent.app.bsky.video.getJobStatus({ jobId });
-          if (status.jobStatus.blob) return status.jobStatus.blob;
+          if (status.jobStatus.blob) return ensureBlobRef(status.jobStatus.blob);
         } catch (inner) {
           const innerBlob = blobFromXrpcError(inner);
           if (innerBlob) return innerBlob;

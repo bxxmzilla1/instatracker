@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, useCallback } from 'react';
 
 interface HoverLoopVideoProps {
   src: string;
@@ -9,6 +9,16 @@ interface HoverLoopVideoProps {
 /** Shows the first frame until hovered, then plays muted on loop. */
 export function HoverLoopVideo({ src, className, preload = 'metadata' }: HoverLoopVideoProps) {
   const ref = useRef<HTMLVideoElement>(null);
+
+  const showFirstFrame = useCallback(() => {
+    const el = ref.current;
+    if (!el || el.currentTime > 0) return;
+    try {
+      el.currentTime = 0.001;
+    } catch {
+      // ignore seek errors before metadata is ready
+    }
+  }, []);
 
   function playLoop() {
     const el = ref.current;
@@ -22,7 +32,7 @@ export function HoverLoopVideo({ src, className, preload = 'metadata' }: HoverLo
     const el = ref.current;
     if (!el) return;
     el.pause();
-    el.currentTime = 0;
+    el.currentTime = 0.001;
   }
 
   return (
@@ -33,6 +43,7 @@ export function HoverLoopVideo({ src, className, preload = 'metadata' }: HoverLo
       preload={preload}
       playsInline
       muted
+      onLoadedData={showFirstFrame}
       onMouseEnter={playLoop}
       onMouseLeave={pauseStatic}
     />
