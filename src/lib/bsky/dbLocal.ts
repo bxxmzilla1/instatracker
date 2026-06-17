@@ -7,6 +7,7 @@ import type {
   BskyPost,
   BskyRun,
   BskySavedAccount,
+  BskySlaveAccount,
   BskyTarget,
   Cta,
   Employee,
@@ -32,6 +33,7 @@ interface BskyDB extends DBSchema {
   posts: { key: string; value: PostRecord };
   accounts: { key: string; value: BskyAccount };
   savedAccounts: { key: string; value: BskySavedAccount };
+  slaveAccounts: { key: string; value: BskySlaveAccount };
   targets: { key: string; value: BskyTarget };
   followEvents: { key: string; value: BskyFollowEvent };
   runs: { key: string; value: BskyRun };
@@ -41,7 +43,7 @@ let dbPromise: Promise<IDBPDatabase<BskyDB>> | null = null;
 
 function getDb() {
   if (!dbPromise) {
-    dbPromise = openDB<BskyDB>('drbossing-bsky-v1', 5, {
+    dbPromise = openDB<BskyDB>('drbossing-bsky-v1', 6, {
       upgrade(db) {
         for (const store of [
           'employees',
@@ -53,6 +55,7 @@ function getDb() {
           'posts',
           'accounts',
           'savedAccounts',
+          'slaveAccounts',
           'targets',
           'followEvents',
           'runs',
@@ -316,6 +319,22 @@ export async function addSavedAccount(account: BskySavedAccount): Promise<void> 
 export async function deleteSavedAccount(id: string): Promise<void> {
   const db = await getDb();
   await db.delete('savedAccounts', id);
+}
+
+export async function getSlaveAccounts(): Promise<BskySlaveAccount[]> {
+  const db = await getDb();
+  const rows = await db.getAll('slaveAccounts');
+  return rows.sort((a, b) => a.createdAt - b.createdAt);
+}
+
+export async function addSlaveAccount(account: BskySlaveAccount): Promise<void> {
+  const db = await getDb();
+  await db.put('slaveAccounts', account);
+}
+
+export async function deleteSlaveAccount(id: string): Promise<void> {
+  const db = await getDb();
+  await db.delete('slaveAccounts', id);
 }
 
 export async function getTargets(employee?: string): Promise<BskyTarget[]> {

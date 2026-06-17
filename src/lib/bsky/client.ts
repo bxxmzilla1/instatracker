@@ -817,3 +817,43 @@ export async function deleteBskyPost(
   const agent = await loginBskyAgent(credentials);
   await agent.deletePost(uri);
 }
+
+/** Likes a post and returns the AT URI of the created like record (used to unlike). */
+export async function likeBskyPost(
+  credentials: BskyCredentials,
+  uri: string,
+  cid: string,
+): Promise<string> {
+  const agent = await loginBskyAgent(credentials);
+  const { uri: likeUri } = await agent.like(uri, cid);
+  return likeUri;
+}
+
+/** Removes a like using the like record's AT URI. */
+export async function unlikeBskyPost(
+  credentials: BskyCredentials,
+  likeUri: string,
+): Promise<void> {
+  const agent = await loginBskyAgent(credentials);
+  await agent.deleteLike(likeUri);
+}
+
+/** Reposts a post and returns the AT URI of the created repost record (used to un-repost). */
+export async function repostBskyPost(
+  credentials: BskyCredentials,
+  uri: string,
+  cid: string,
+): Promise<string> {
+  const agent = await loginBskyAgent(credentials);
+  const { uri: repostUri } = await agent.repost(uri, cid);
+  return repostUri;
+}
+
+/** Removes a repost using the repost record's AT URI. */
+export async function unrepostBskyPost(
+  credentials: BskyCredentials,
+  repostUri: string,
+): Promise<void> {
+  const agent = await loginBskyAgent(credentials);
+  await agent.deleteRepost(repostUri);
+}

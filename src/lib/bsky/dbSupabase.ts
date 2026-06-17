@@ -7,6 +7,7 @@ import type {
   BskyPost,
   BskyRun,
   BskySavedAccount,
+  BskySlaveAccount,
   BskyTarget,
   Cta,
   Employee,
@@ -481,6 +482,46 @@ export async function addSavedAccount(account: BskySavedAccount): Promise<void> 
 
 export async function deleteSavedAccount(id: string): Promise<void> {
   const { error } = await client().from('bsky_saved_accounts').delete().eq('id', id);
+  if (error) throw new Error(error.message);
+}
+
+interface SlaveAccountRow {
+  id: string;
+  handle: string | null;
+  password: string | null;
+  created_at: number | null;
+}
+
+function toSlaveAccount(row: SlaveAccountRow): BskySlaveAccount {
+  return {
+    id: row.id,
+    handle: row.handle ?? '',
+    password: row.password ?? '',
+    createdAt: row.created_at ?? 0,
+  };
+}
+
+export async function getSlaveAccounts(): Promise<BskySlaveAccount[]> {
+  const { data, error } = await client()
+    .from('bsky_slave_accounts')
+    .select('*')
+    .order('created_at', { ascending: true });
+  if (error) throw new Error(error.message);
+  return (data as SlaveAccountRow[]).map(toSlaveAccount);
+}
+
+export async function addSlaveAccount(account: BskySlaveAccount): Promise<void> {
+  const { error } = await client().from('bsky_slave_accounts').upsert({
+    id: account.id,
+    handle: account.handle,
+    password: account.password,
+    created_at: account.createdAt,
+  });
+  if (error) throw new Error(error.message);
+}
+
+export async function deleteSlaveAccount(id: string): Promise<void> {
+  const { error } = await client().from('bsky_slave_accounts').delete().eq('id', id);
   if (error) throw new Error(error.message);
 }
 

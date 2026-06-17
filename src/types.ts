@@ -41,6 +41,32 @@ export interface BskyPostPublish {
   repostCount?: number;
   statsFetchedAt?: number;
   error?: string;
+  /** Slave accounts that liked this post (with their like record URIs, for unliking). */
+  slaveLikes?: SlaveEngagement[];
+  /** Slave accounts that reposted this post (with their repost record URIs, for unreposting). */
+  slaveReposts?: SlaveEngagement[];
+}
+
+/** A single mass-engagement action performed by a slave account. */
+export interface SlaveEngagement {
+  /** Slave account id that performed the action. */
+  accountId: string;
+  /** Slave account handle (for display). */
+  handle: string;
+  /** AT URI of the like/repost record, used to undo the action. */
+  recordUri: string;
+}
+
+/**
+ * A throwaway Bluesky account used only for mass liking and reposting.
+ * Kept entirely separate from saved "Accounts" so it never appears in
+ * normal account dropdowns.
+ */
+export interface BskySlaveAccount {
+  id: string;
+  handle: string;
+  password: string;
+  createdAt: number;
 }
 
 /** A Bluesky media post (image or video) with captions and publish history. */

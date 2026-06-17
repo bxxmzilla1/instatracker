@@ -342,6 +342,16 @@ create table if not exists bsky_saved_accounts (
 
 alter table bsky_saved_accounts add column if not exists banned boolean;
 
+-- Throwaway Bluesky accounts used only for mass liking/reposting.
+-- Deliberately separate from bsky_saved_accounts so they never appear in
+-- normal account dropdowns.
+create table if not exists bsky_slave_accounts (
+  id text primary key,
+  handle text,
+  password text,
+  created_at bigint
+);
+
 create table if not exists bsky_targets (
   id text primary key,
   handle text,
@@ -385,6 +395,7 @@ alter table bsky_profile_pics enable row level security;
 alter table bsky_posts enable row level security;
 alter table bsky_accounts enable row level security;
 alter table bsky_saved_accounts enable row level security;
+alter table bsky_slave_accounts enable row level security;
 alter table bsky_targets enable row level security;
 alter table bsky_follow_events enable row level security;
 alter table bsky_account_runs enable row level security;
@@ -398,6 +409,7 @@ drop policy if exists "allow anon all" on bsky_profile_pics;
 drop policy if exists "allow anon all" on bsky_posts;
 drop policy if exists "allow anon all" on bsky_accounts;
 drop policy if exists "allow anon all" on bsky_saved_accounts;
+drop policy if exists "allow anon all" on bsky_slave_accounts;
 drop policy if exists "allow anon all" on bsky_targets;
 drop policy if exists "allow anon all" on bsky_follow_events;
 drop policy if exists "allow anon all" on bsky_account_runs;
@@ -419,6 +431,8 @@ create policy "allow anon all" on bsky_posts
 create policy "allow anon all" on bsky_accounts
   for all to anon using (true) with check (true);
 create policy "allow anon all" on bsky_saved_accounts
+  for all to anon using (true) with check (true);
+create policy "allow anon all" on bsky_slave_accounts
   for all to anon using (true) with check (true);
 create policy "allow anon all" on bsky_targets
   for all to anon using (true) with check (true);

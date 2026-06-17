@@ -7,6 +7,7 @@ import type {
   BskyPostPublish,
   BskyRun,
   BskySavedAccount,
+  BskySlaveAccount,
   BskyTarget,
   Employee,
   ImageAsset,
@@ -23,6 +24,7 @@ import {
   addProfilePic,
   addProxy,
   addSavedAccount,
+  addSlaveAccount,
   addTarget,
   deleteBanner,
   deleteBio,
@@ -32,6 +34,7 @@ import {
   deleteProfilePic,
   deleteProxy,
   deleteSavedAccount,
+  deleteSlaveAccount,
   deleteTarget,
   getBanners,
   getBios,
@@ -43,6 +46,7 @@ import {
   getProxies,
   getRuns,
   getSavedAccounts,
+  getSlaveAccounts,
   getTargets,
   upsertRun,
   updateBanner,
@@ -57,6 +61,10 @@ import {
   publishBskyMediaPost,
   getBskyPostEngagement,
   deleteBskyPost,
+  likeBskyPost,
+  unlikeBskyPost,
+  repostBskyPost,
+  unrepostBskyPost,
   runAccountJob,
   type BskyCredentials,
   type JobResult,
@@ -132,6 +140,7 @@ function ProfilePushProgressBar({ progress }: { progress: ProfilePushProgressSta
 type View =
   | 'dashboard'
   | 'accounts'
+  | 'slaves'
   | 'targets'
   | 'banner'
   | 'profilepic'
@@ -194,6 +203,17 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   const [proxies, setProxies] = useState<Proxy[]>([]);
   const [accounts, setAccounts] = useState<BskyAccount[]>([]);
   const [savedAccounts, setSavedAccounts] = useState<BskySavedAccount[]>([]);
+  const [slaveAccounts, setSlaveAccounts] = useState<BskySlaveAccount[]>([]);
+  const [showAddSlave, setShowAddSlave] = useState(false);
+  const [newSlaveHandle, setNewSlaveHandle] = useState('');
+  const [newSlavePassword, setNewSlavePassword] = useState('');
+  const [savingSlave, setSavingSlave] = useState(false);
+  // Per-engagement-card input for how many slave accounts to like / repost with.
+  const [engagementInputs, setEngagementInputs] = useState<
+    Record<string, { like: string; repost: string }>
+  >({});
+  // Label of the in-flight mass action, keyed by post id (null when idle).
+  const [massActionStatus, setMassActionStatus] = useState<Record<string, string>>({});
   const [targets, setTargets] = useState<BskyTarget[]>([]);
   const [followEvents, setFollowEvents] = useState<BskyFollowEvent[]>([]);
   const [chartMonthOffset, setChartMonthOffset] = useState(0);
@@ -358,7 +378,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   }
 
   const loadAll = useCallback(async () => {
-    const [bn, pp, bi, po, px, ac, sa, tg, fe] = await Promise.all([
+    const [bn, pp, bi, po, px, ac, sa, tg, fe, sl] = await Promise.all([
       getBanners(ownerFilter),
       getProfilePics(ownerFilter),
       getBios(ownerFilter),
@@ -368,6 +388,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
       getSavedAccounts(ownerFilter),
       getTargets(ownerFilter),
       getFollowEvents(),
+      isAdmin ? getSlaveAccounts() : Promise.resolve([] as BskySlaveAccount[]),
     ]);
     setBanners(bn);
     setProfilePics(pp);
@@ -378,7 +399,8 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     setSavedAccounts(sa);
     setTargets(tg);
     setFollowEvents(fe);
-  }, [ownerFilter]);
+    setSlaveAccounts(sl);
+  }, [ownerFilter, isAdmin]);
 
   useEffect(() => {
     let active = true;
@@ -964,6 +986,254 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
       setError(err instanceof Error ? err.message : 'Could not delete post from Bluesky.');
     } finally {
       setDeletingProfilePost(null);
+    }
+  }
+
+  // --- Slave accounts (mass like / repost pool) ---
+
+  function credentialsForSlave(acct: BskySlaveAccount): BskyCredentials {
+    return {
+      identifier: acct.handle.trim().replace(/^@/, ''),
+      password: acct.password.trim(),
+    };
+  }
+
+  async function handleAddSlaveAccount(event: FormEvent) {
+    event.preventDefault();
+    const handle = newSlaveHandle.trim().replace(/^@/, '');
+    if (!handle || !newSlavePassword.trim()) return;
+    if (slaveAccounts.some((a) => a.handle.toLowerCase() === handle.toLowerCase())) {
+      setError(`Slave account "@${handle}" already exists`);
+      return;
+    }
+    setSavingSlave(true);
+    setError(null);
+    try {
+      await addSlaveAccount({
+        id: crypto.randomUUID(),
+        handle,
+        password: newSlavePassword.trim(),
+        createdAt: Date.now(),
+      });
+      setNewSlaveHandle('');
+      setNewSlavePassword('');
+      setShowAddSlave(false);
+      await loadAll();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not add slave account.');
+    } finally {
+      setSavingSlave(false);
+    }
+  }
+
+  async function handleDeleteSlaveAccount(id: string) {
+    try {
+      await deleteSlaveAccount(id);
+      await loadAll();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not delete slave account.');
+    }
+  }
+
+  function engagementInput(postId: string): { like: string; repost: string } {
+    return engagementInputs[postId] ?? { like: '', repost: '' };
+  }
+
+  function setEngagementInput(postId: string, field: 'like' | 'repost', value: string) {
+    const digits = value.replace(/[^0-9]/g, '');
+    const clamped =
+      digits === '' ? '' : String(Math.min(parseInt(digits, 10), slaveAccounts.length));
+    setEngagementInputs((prev) => ({
+      ...prev,
+      [postId]: { ...engagementInput(postId), [field]: clamped },
+    }));
+  }
+
+  function setMassStatus(postId: string, label: string | null) {
+    setMassActionStatus((prev) => {
+      const next = { ...prev };
+      if (label === null) delete next[postId];
+      else next[postId] = label;
+      return next;
+    });
+  }
+
+  // Likes every successful publish of `post` with up to `count` slave accounts
+  // (skipping any that already liked it). Records the like URIs so they can be undone.
+  async function massLikePost(post: BskyPost, count: number) {
+    const n = Math.min(count, slaveAccounts.length);
+    if (n <= 0) return;
+    setMassStatus(post.id, 'Liking…');
+    setError(null);
+    setSuccessMessage(null);
+    const failures: string[] = [];
+    let done = 0;
+    try {
+      const publishes = [...(post.publishes ?? [])];
+      for (let pi = 0; pi < publishes.length; pi++) {
+        const pub = publishes[pi]!;
+        if (!pub.uri || pub.error) continue;
+        const already = new Set((pub.slaveLikes ?? []).map((s) => s.accountId));
+        const candidates = slaveAccounts
+          .filter((s) => !already.has(s.id))
+          .slice(0, Math.max(0, n - already.size));
+        const likes = [...(pub.slaveLikes ?? [])];
+        for (const slave of candidates) {
+          setMassStatus(post.id, `Liking… @${slave.handle.replace(/^@/, '')}`);
+          try {
+            const recordUri = await likeBskyPost(credentialsForSlave(slave), pub.uri, pub.cid);
+            likes.push({ accountId: slave.id, handle: slave.handle, recordUri });
+            done += 1;
+          } catch (err) {
+            failures.push(
+              `@${slave.handle.replace(/^@/, '')}: ${err instanceof Error ? err.message : 'like failed'}`,
+            );
+          }
+        }
+        publishes[pi] = { ...pub, slaveLikes: likes };
+      }
+      await updatePost({ ...post, publishes });
+      await loadAll();
+      if (failures.length > 0) {
+        setError(`Liked with ${done}, failed ${failures.length}: ${failures.slice(0, 5).join(' · ')}`);
+      } else {
+        setSuccessMessage(`Liked from ${done} slave account${done === 1 ? '' : 's'}.`);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Mass like failed.');
+    } finally {
+      setMassStatus(post.id, null);
+    }
+  }
+
+  // Reposts every successful publish of `post` with up to `count` slave accounts.
+  async function massRepostPost(post: BskyPost, count: number) {
+    const n = Math.min(count, slaveAccounts.length);
+    if (n <= 0) return;
+    setMassStatus(post.id, 'Reposting…');
+    setError(null);
+    setSuccessMessage(null);
+    const failures: string[] = [];
+    let done = 0;
+    try {
+      const publishes = [...(post.publishes ?? [])];
+      for (let pi = 0; pi < publishes.length; pi++) {
+        const pub = publishes[pi]!;
+        if (!pub.uri || pub.error) continue;
+        const already = new Set((pub.slaveReposts ?? []).map((s) => s.accountId));
+        const candidates = slaveAccounts
+          .filter((s) => !already.has(s.id))
+          .slice(0, Math.max(0, n - already.size));
+        const reposts = [...(pub.slaveReposts ?? [])];
+        for (const slave of candidates) {
+          setMassStatus(post.id, `Reposting… @${slave.handle.replace(/^@/, '')}`);
+          try {
+            const recordUri = await repostBskyPost(credentialsForSlave(slave), pub.uri, pub.cid);
+            reposts.push({ accountId: slave.id, handle: slave.handle, recordUri });
+            done += 1;
+          } catch (err) {
+            failures.push(
+              `@${slave.handle.replace(/^@/, '')}: ${err instanceof Error ? err.message : 'repost failed'}`,
+            );
+          }
+        }
+        publishes[pi] = { ...pub, slaveReposts: reposts };
+      }
+      await updatePost({ ...post, publishes });
+      await loadAll();
+      if (failures.length > 0) {
+        setError(`Reposted with ${done}, failed ${failures.length}: ${failures.slice(0, 5).join(' · ')}`);
+      } else {
+        setSuccessMessage(`Reposted from ${done} slave account${done === 1 ? '' : 's'}.`);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Mass repost failed.');
+    } finally {
+      setMassStatus(post.id, null);
+    }
+  }
+
+  // Undoes all slave likes recorded on a post.
+  async function massUnlikePost(post: BskyPost) {
+    setMassStatus(post.id, 'Removing likes…');
+    setError(null);
+    setSuccessMessage(null);
+    const failures: string[] = [];
+    let removed = 0;
+    try {
+      const publishes = [...(post.publishes ?? [])];
+      for (let pi = 0; pi < publishes.length; pi++) {
+        const pub = publishes[pi]!;
+        const remaining: typeof pub.slaveLikes = [];
+        for (const like of pub.slaveLikes ?? []) {
+          const slave = slaveAccounts.find((s) => s.id === like.accountId);
+          if (!slave) continue; // account removed — can't undo, drop the record
+          setMassStatus(post.id, `Removing likes… @${slave.handle.replace(/^@/, '')}`);
+          try {
+            await unlikeBskyPost(credentialsForSlave(slave), like.recordUri);
+            removed += 1;
+          } catch (err) {
+            remaining.push(like);
+            failures.push(
+              `@${slave.handle.replace(/^@/, '')}: ${err instanceof Error ? err.message : 'unlike failed'}`,
+            );
+          }
+        }
+        publishes[pi] = { ...pub, slaveLikes: remaining };
+      }
+      await updatePost({ ...post, publishes });
+      await loadAll();
+      if (failures.length > 0) {
+        setError(`Removed ${removed} likes, failed ${failures.length}: ${failures.slice(0, 5).join(' · ')}`);
+      } else {
+        setSuccessMessage(`Removed ${removed} like${removed === 1 ? '' : 's'}.`);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not remove likes.');
+    } finally {
+      setMassStatus(post.id, null);
+    }
+  }
+
+  // Undoes all slave reposts recorded on a post.
+  async function massUnrepostPost(post: BskyPost) {
+    setMassStatus(post.id, 'Removing reposts…');
+    setError(null);
+    setSuccessMessage(null);
+    const failures: string[] = [];
+    let removed = 0;
+    try {
+      const publishes = [...(post.publishes ?? [])];
+      for (let pi = 0; pi < publishes.length; pi++) {
+        const pub = publishes[pi]!;
+        const remaining: typeof pub.slaveReposts = [];
+        for (const repost of pub.slaveReposts ?? []) {
+          const slave = slaveAccounts.find((s) => s.id === repost.accountId);
+          if (!slave) continue;
+          setMassStatus(post.id, `Removing reposts… @${slave.handle.replace(/^@/, '')}`);
+          try {
+            await unrepostBskyPost(credentialsForSlave(slave), repost.recordUri);
+            removed += 1;
+          } catch (err) {
+            remaining.push(repost);
+            failures.push(
+              `@${slave.handle.replace(/^@/, '')}: ${err instanceof Error ? err.message : 'un-repost failed'}`,
+            );
+          }
+        }
+        publishes[pi] = { ...pub, slaveReposts: remaining };
+      }
+      await updatePost({ ...post, publishes });
+      await loadAll();
+      if (failures.length > 0) {
+        setError(`Removed ${removed} reposts, failed ${failures.length}: ${failures.slice(0, 5).join(' · ')}`);
+      } else {
+        setSuccessMessage(`Removed ${removed} repost${removed === 1 ? '' : 's'}.`);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not remove reposts.');
+    } finally {
+      setMassStatus(post.id, null);
     }
   }
 
@@ -1865,7 +2135,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     await loadAll();
   }
 
-  const navItems: { id: View; label: string; icon: ReactNode }[] = [
+  const navItems: { id: View; label: string; icon: ReactNode; adminOnly?: boolean }[] = [
     {
       id: 'dashboard',
       label: 'Dashboard',
@@ -1875,6 +2145,19 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
           <rect x="14" y="3" width="7" height="5" rx="1.5" />
           <rect x="14" y="12" width="7" height="9" rx="1.5" />
           <rect x="3" y="16" width="7" height="5" rx="1.5" />
+        </svg>
+      ),
+    },
+    {
+      id: 'slaves',
+      label: 'Slave Accounts',
+      adminOnly: true,
+      icon: (
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
+          <circle cx="8" cy="8" r="2.6" />
+          <circle cx="16" cy="8" r="2.6" />
+          <path d="M3 18c0-2.4 2.2-4 5-4s5 1.6 5 4" />
+          <path d="M13 18c0-2.4 2.2-4 5-4 1.2 0 2.3.3 3 .9" />
         </svg>
       ),
     },
@@ -1968,6 +2251,8 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
       ? 'Dashboard'
       : view === 'accounts'
       ? 'Accounts'
+      : view === 'slaves'
+      ? 'Slave Accounts'
       : view === 'targets'
       ? 'Target Profiles'
       : view === 'banner'
@@ -2589,20 +2874,22 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
         )}
 
         <nav className="sidebar__nav">
-          {navItems.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              className={view === item.id ? 'nav-item nav-item--active' : 'nav-item'}
-              onClick={() => {
-                setSelectedEmployee(null);
-                setView(item.id);
-              }}
-            >
-              {item.icon}
-              {item.label}
-            </button>
-          ))}
+          {navItems
+            .filter((item) => !item.adminOnly || isAdmin)
+            .map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                className={view === item.id ? 'nav-item nav-item--active' : 'nav-item'}
+                onClick={() => {
+                  setSelectedEmployee(null);
+                  setView(item.id);
+                }}
+              >
+                {item.icon}
+                {item.label}
+              </button>
+            ))}
 
           {isAdmin && (
             <button
@@ -2911,6 +3198,87 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                             className="license-row__delete"
                             onClick={() => handleDeleteSavedAccount(acct.id)}
                             title="Delete account"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+            )}
+
+            {view === 'slaves' && isAdmin && (
+              <section className="panel">
+                <div className="panel-head">
+                  <h2>Slave Accounts ({slaveAccounts.length})</h2>
+                  <button
+                    type="button"
+                    className="btn"
+                    onClick={() => setShowAddSlave((v) => !v)}
+                  >
+                    {showAddSlave ? 'Cancel' : '+ Add slave'}
+                  </button>
+                </div>
+
+                <p className="empty-note">
+                  These accounts are used only for mass liking and reposting from the Post
+                  engagement tab. They are kept separate from your normal accounts and never
+                  appear in account dropdowns.
+                </p>
+
+                {showAddSlave && (
+                  <form className="bio-form" onSubmit={handleAddSlaveAccount}>
+                    <input
+                      className="cred-form__input"
+                      placeholder="Handle (e.g. name.bsky.social)"
+                      value={newSlaveHandle}
+                      onChange={(e) => setNewSlaveHandle(e.target.value)}
+                      autoComplete="off"
+                      spellCheck={false}
+                    />
+                    <input
+                      className="cred-form__input"
+                      type="text"
+                      placeholder="Password / app password"
+                      value={newSlavePassword}
+                      onChange={(e) => setNewSlavePassword(e.target.value)}
+                      autoComplete="off"
+                    />
+                    <button
+                      type="submit"
+                      disabled={!newSlaveHandle.trim() || !newSlavePassword.trim() || savingSlave}
+                    >
+                      {savingSlave ? 'Adding…' : 'Add slave account'}
+                    </button>
+                  </form>
+                )}
+
+                {slaveAccounts.length === 0 ? (
+                  <p className="empty-note">
+                    No slave accounts yet. Add accounts with their handle and password to build
+                    your mass like/repost pool.
+                  </p>
+                ) : (
+                  <div className="proxy-list">
+                    {slaveAccounts.map((acct) => (
+                      <div key={acct.id} className="proxy-row">
+                        <div className="proxy-row__body">
+                          <div className="proxy-row__top">
+                            <strong>@{acct.handle}</strong>
+                          </div>
+                          <div className="proxy-row__fields">
+                            <CopyField label="Handle" value={acct.handle} />
+                            <CopyField label="Password" value={acct.password} />
+                          </div>
+                        </div>
+                        <div className="row-actions">
+                          <button
+                            type="button"
+                            className="license-row__delete"
+                            onClick={() => handleDeleteSlaveAccount(acct.id)}
+                            title="Delete slave account"
                           >
                             ✕
                           </button>
@@ -3284,6 +3652,10 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                           const totalLikes = successful.reduce((sum, p) => sum + (p.likeCount ?? 0), 0);
                           const totalReplies = successful.reduce((sum, p) => sum + (p.replyCount ?? 0), 0);
                           const totalReposts = successful.reduce((sum, p) => sum + (p.repostCount ?? 0), 0);
+                          const slaveLikeCount = successful.reduce((s, p) => s + (p.slaveLikes?.length ?? 0), 0);
+                          const slaveRepostCount = successful.reduce((s, p) => s + (p.slaveReposts?.length ?? 0), 0);
+                          const inputs = engagementInput(post.id);
+                          const massBusy = massActionStatus[post.id];
                           return (
                             <div key={post.id} className="post-engagement-card">
                               <div className="post-engagement-card__media">
@@ -3319,6 +3691,97 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                                     </div>
                                   ))}
                                 </div>
+                                {isAdmin && (
+                                  <div className="mass-engage">
+                                    <div className="mass-engage__head">
+                                      <span className="mass-engage__title">Mass engagement</span>
+                                      <span className="mass-engage__pool">
+                                        {slaveAccounts.length} slave account{slaveAccounts.length === 1 ? '' : 's'}
+                                        {(slaveLikeCount > 0 || slaveRepostCount > 0) &&
+                                          ` · ${slaveLikeCount} liked · ${slaveRepostCount} reposted`}
+                                      </span>
+                                    </div>
+                                    {slaveAccounts.length === 0 ? (
+                                      <p className="mass-engage__hint">
+                                        Add accounts in “Slave Accounts” to enable mass liking and reposting.
+                                      </p>
+                                    ) : (
+                                      <>
+                                        <div className="mass-engage__row">
+                                          <label className="mass-engage__field">
+                                            <span>Likes</span>
+                                            <input
+                                              className="cred-form__input mass-engage__input"
+                                              type="number"
+                                              min={0}
+                                              max={slaveAccounts.length}
+                                              placeholder="0"
+                                              value={inputs.like}
+                                              onChange={(e) => setEngagementInput(post.id, 'like', e.target.value)}
+                                            />
+                                          </label>
+                                          <button
+                                            type="button"
+                                            className="btn"
+                                            disabled={
+                                              Boolean(massBusy) ||
+                                              successful.length === 0 ||
+                                              !inputs.like ||
+                                              parseInt(inputs.like, 10) <= 0
+                                            }
+                                            onClick={() => void massLikePost(post, parseInt(inputs.like || '0', 10))}
+                                          >
+                                            Like
+                                          </button>
+                                          <button
+                                            type="button"
+                                            className="btn btn--ghost"
+                                            disabled={Boolean(massBusy) || slaveLikeCount === 0}
+                                            onClick={() => void massUnlikePost(post)}
+                                          >
+                                            Unlike all
+                                          </button>
+                                        </div>
+                                        <div className="mass-engage__row">
+                                          <label className="mass-engage__field">
+                                            <span>Reposts</span>
+                                            <input
+                                              className="cred-form__input mass-engage__input"
+                                              type="number"
+                                              min={0}
+                                              max={slaveAccounts.length}
+                                              placeholder="0"
+                                              value={inputs.repost}
+                                              onChange={(e) => setEngagementInput(post.id, 'repost', e.target.value)}
+                                            />
+                                          </label>
+                                          <button
+                                            type="button"
+                                            className="btn"
+                                            disabled={
+                                              Boolean(massBusy) ||
+                                              successful.length === 0 ||
+                                              !inputs.repost ||
+                                              parseInt(inputs.repost, 10) <= 0
+                                            }
+                                            onClick={() => void massRepostPost(post, parseInt(inputs.repost || '0', 10))}
+                                          >
+                                            Repost
+                                          </button>
+                                          <button
+                                            type="button"
+                                            className="btn btn--ghost"
+                                            disabled={Boolean(massBusy) || slaveRepostCount === 0}
+                                            onClick={() => void massUnrepostPost(post)}
+                                          >
+                                            Un-repost all
+                                          </button>
+                                        </div>
+                                        {massBusy && <p className="mass-engage__status">{massBusy}</p>}
+                                      </>
+                                    )}
+                                  </div>
+                                )}
                                 <div className="post-engagement-card__actions">
                                   <button
                                     type="button"

@@ -3343,6 +3343,72 @@ button:disabled {
   color: var(--muted);
 }
 
+.mass-engage {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-2);
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.mass-engage__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.mass-engage__title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.mass-engage__pool {
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.mass-engage__hint {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.mass-engage__row {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.mass-engage__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.72rem;
+  color: var(--muted);
+  width: 90px;
+}
+
+.mass-engage__input {
+  width: 90px;
+}
+
+.mass-engage__row .btn {
+  padding: 0.5rem 0.85rem;
+}
+
+.mass-engage__status {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--accent);
+}
+
 .publish-progress--indeterminate .publish-progress__track {
   position: relative;
 }
