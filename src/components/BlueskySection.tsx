@@ -171,6 +171,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   const picAddInputRef = useRef<HTMLInputElement>(null);
   const [profilePicCropFile, setProfilePicCropFile] = useState<File | null>(null);
   const profilePushInFlightRef = useRef(0);
+  const activeProfilePushKeysRef = useRef(new Set<string>());
   const [assignBanner, setAssignBanner] = useState<ImageAsset | null>(null);
   const [assignBannerEmployees, setAssignBannerEmployees] = useState<Set<string>>(() => new Set());
   const [assignBannerAll, setAssignBannerAll] = useState(false);
@@ -978,9 +979,24 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     setSuccessMessage(null);
   }
 
-  function endProfilePush() {
+  function endProfilePush(pushKey?: string) {
     profilePushInFlightRef.current = Math.max(0, profilePushInFlightRef.current - 1);
-    if (profilePushInFlightRef.current === 0) setProfilePushing(null);
+    if (profilePushInFlightRef.current === 0) {
+      setProfilePushing(null);
+    } else if (pushKey) {
+      setProfilePushing((cur) => (cur === pushKey ? null : cur));
+    }
+  }
+
+  async function handleDeleteBio(id: string) {
+    const snapshot = bios;
+    setBios((prev) => prev.filter((bio) => bio.id !== id));
+    try {
+      await deleteBio(id);
+    } catch (err) {
+      setBios(snapshot);
+      setError(err instanceof Error ? err.message : 'Could not delete bio.');
+    }
   }
 
   async function pushBioToSelectedAccounts(
@@ -1000,6 +1016,8 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
       setError('Enter bio text to push.');
       return;
     }
+    if (activeProfilePushKeysRef.current.has(pushKey)) return;
+    activeProfilePushKeysRef.current.add(pushKey);
     beginProfilePush(pushKey);
     const failures: string[] = [];
     let ok = 0;
@@ -1024,7 +1042,8 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
         setError(failures.join(' · '));
       }
     } finally {
-      endProfilePush();
+      activeProfilePushKeysRef.current.delete(pushKey);
+      endProfilePush(pushKey);
     }
   }
 
@@ -1085,7 +1104,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
         err instanceof Error ? err.message : 'Could not update Bluesky profile image.',
       );
     } finally {
-      endProfilePush();
+      endProfilePush(pushKey);
     }
   }
 
@@ -1135,7 +1154,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
         setError(failures.join(' · '));
       }
     } finally {
-      endProfilePush();
+      endProfilePush(pushKey);
     }
   }
 
@@ -1785,7 +1804,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                   <button
                     type="button"
                     className="reel-cell__action reel-cell__action--primary"
-                    disabled={profilePushing !== null || !canPush}
+                    disabled={profilePushing === item.id || !canPush}
                     onClick={() => handlePush(item, item.url)}
                   >
                     {profilePushing === item.id ? 'Pushing…' : 'Push to Bluesky'}
@@ -1806,7 +1825,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                     <button
                       type="button"
                       className="content-tile__download"
-                      disabled={profilePushing !== null || !canPush}
+                      disabled={profilePushing === item.id || !canPush}
                       onClick={() => handlePush(item, item.url)}
                     >
                       {profilePushing === item.id ? 'Pushing…' : 'Push to Bluesky'}
@@ -1847,7 +1866,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     );
   };
 
-  const bioSection = (items: Bio[], onDelete: (id: string) => Promise<void>) => {
+  const bioSection = (items: Bio[]) => {
     const canPushBio = bioPushAllAccounts || bioPushAccountIds.size > 0;
 
     const renderBioLibrary = (libraryItems: Bio[]) => (
@@ -1879,7 +1898,10 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                 <button
                   type="button"
                   className="reel-cell__btn reel-cell__btn--danger"
-                  onClick={() => onDelete(item.id)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void handleDeleteBio(item.id);
+                  }}
                   title="Delete"
                   aria-label="Delete"
                 >
@@ -1891,7 +1913,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
               <button
                 type="button"
                 className="reel-cell__action reel-cell__action--primary"
-                disabled={profilePushing !== null || !canPushBio}
+                disabled={profilePushing === item.id || !canPushBio}
                 onClick={() =>
                   void pushBioToSelectedAccounts(
                     bioPushAccountIds,
@@ -2582,7 +2604,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                 },
               )}
 
-            {view === 'bio' && bioSection(bios, deleteBio)}
+            {view === 'bio' && bioSection(bios)}
 
             {view === 'post' && (
               <>

@@ -771,6 +771,7 @@ code {
   position: absolute;
   top: 6px;
   right: 6px;
+  z-index: 2;
   display: flex;
   gap: 4px;
   opacity: 0;
@@ -786,6 +787,7 @@ code {
   left: 0;
   right: 0;
   bottom: 0;
+  z-index: 1;
   display: flex;
   align-items: center;
   gap: 6px;
