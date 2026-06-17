@@ -56,6 +56,7 @@ import {
   type ProxyConfig,
 } from '../lib/bsky/client';
 import { AssignmentPicker } from './AssignmentPicker';
+import { ProxyPicker } from './ProxyPicker';
 import { SavedAccountPicker } from './SavedAccountPicker';
 import { BskyFollowChart, type FollowBar } from './BskyFollowChart';
 import { CopyButton } from './CopyButton';
@@ -2441,21 +2442,12 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                         </div>
                       )}
 
-                      <label className="cred-field">
-                        <span className="cred-field__label">Proxy for this account</span>
-                        <select
-                          className="cred-form__input"
-                          value={acctProxyId}
-                          onChange={(e) => setAcctProxyId(e.target.value)}
-                        >
-                          <option value="">No proxy (direct)</option>
-                          {proxies.map((p) => (
-                            <option key={p.id} value={p.id}>
-                              {proxyOptionLabel(p)}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
+                      <ProxyPicker
+                        proxies={proxies}
+                        value={acctProxyId}
+                        onChange={setAcctProxyId}
+                        optionLabel={proxyOptionLabel}
+                      />
 
                       <label className="follow-skip">
                         <input
@@ -2644,21 +2636,12 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                                   </div>
                                 )}
 
-                                <label className="cred-field">
-                                  <span className="cred-field__label">Proxy for this account</span>
-                                  <select
-                                    className="cred-form__input"
-                                    value={editDraft!.proxyId ?? ''}
-                                    onChange={(e) => updateDraft('proxyId', e.target.value || undefined)}
-                                  >
-                                    <option value="">No proxy (direct)</option>
-                                    {proxies.map((p) => (
-                                      <option key={p.id} value={p.id}>
-                                        {proxyOptionLabel(p)}
-                                      </option>
-                                    ))}
-                                  </select>
-                                </label>
+                                <ProxyPicker
+                                  proxies={proxies}
+                                  value={editDraft!.proxyId ?? ''}
+                                  onChange={(id) => updateDraft('proxyId', id || undefined)}
+                                  optionLabel={proxyOptionLabel}
+                                />
 
                                 <label className="follow-skip">
                                   <input
