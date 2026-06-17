@@ -183,6 +183,9 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   const [assignBioEmployees, setAssignBioEmployees] = useState<Set<string>>(() => new Set());
   const [assignBioAll, setAssignBioAll] = useState(false);
   const [savingBioAssign, setSavingBioAssign] = useState(false);
+  const [editBioItem, setEditBioItem] = useState<Bio | null>(null);
+  const [editBioText, setEditBioText] = useState('');
+  const [savingBioEdit, setSavingBioEdit] = useState(false);
   const [picFile, setPicFile] = useState<File | null>(null);
   const [picCaption, setPicCaption] = useState('');
   const [proxyRaw, setProxyRaw] = useState('');
@@ -688,6 +691,35 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
       setError(err instanceof Error ? err.message : 'Could not assign bio.');
     } finally {
       setSavingBioAssign(false);
+    }
+  }
+
+  function openEditBioModal(bio: Bio) {
+    setEditBioItem(bio);
+    setEditBioText(bio.text);
+  }
+
+  function closeEditBioModal() {
+    setEditBioItem(null);
+    setEditBioText('');
+  }
+
+  async function saveBioEdit() {
+    if (!editBioItem) return;
+    const text = editBioText.trim();
+    if (!text) return;
+    setSavingBioEdit(true);
+    try {
+      await updateBio({
+        ...editBioItem,
+        text,
+      });
+      await loadAll();
+      closeEditBioModal();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not update bio.');
+    } finally {
+      setSavingBioEdit(false);
     }
   }
 
@@ -1792,6 +1824,15 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                 </button>
                 <button
                   type="button"
+                  className="reel-cell__btn"
+                  onClick={() => openEditBioModal(item)}
+                  title="Edit bio"
+                  aria-label="Edit bio"
+                >
+                  ✎
+                </button>
+                <button
+                  type="button"
                   className="reel-cell__btn reel-cell__btn--danger"
                   onClick={() => onDelete(item.id)}
                   title="Delete"
@@ -1822,12 +1863,15 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
       <section className="panel">
         <h2>Update on Bluesky</h2>
         <div className="bio-form">
-          {accountSelectField(
-            bioPushAccountId,
-            setBioPushAccountId,
-            undefined,
-            'Choose a saved account from Accounts, then push a library item below.',
-          )}
+          <SavedAccountPicker
+            accounts={pushableAccounts}
+            value={bioPushAccountId}
+            onChange={setBioPushAccountId}
+            label="Bluesky account to update"
+          />
+          <span className="cred-field__hint">
+            Choose a saved account from Accounts, then push a library item below.
+          </span>
         </div>
       </section>
 
@@ -3298,6 +3342,51 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                   disabled={savingBioAssign || (!assignBioAll && assignBioEmployees.size === 0)}
                 >
                   {savingBioAssign ? 'Saving…' : 'Assign'}
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
+
+        {editBioItem && (
+          <div className="modal" onClick={closeEditBioModal}>
+            <form
+              className="modal__card"
+              onClick={(e) => e.stopPropagation()}
+              onSubmit={(e) => {
+                e.preventDefault();
+                void saveBioEdit();
+              }}
+            >
+              <div className="modal__head">
+                <h3>Edit bio</h3>
+                <button
+                  type="button"
+                  className="modal__close"
+                  onClick={closeEditBioModal}
+                  aria-label="Close"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="schedule-modal__body">
+                <textarea
+                  className="bio-form__textarea"
+                  placeholder="Write the bio…"
+                  value={editBioText}
+                  onChange={(e) => setEditBioText(e.target.value)}
+                  rows={6}
+                  autoFocus
+                />
+              </div>
+
+              <div className="schedule-modal__actions">
+                <button type="button" className="btn btn--ghost" onClick={closeEditBioModal}>
+                  Cancel
+                </button>
+                <button type="submit" disabled={savingBioEdit || !editBioText.trim()}>
+                  {savingBioEdit ? 'Saving…' : 'Save'}
                 </button>
               </div>
             </form>
