@@ -7,6 +7,13 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
+  const body = req.body;
+  if (!body || typeof body !== 'object') {
+    return res.status(400).json({
+      error: 'Invalid request body. For large images, pass imageUrl instead of imageBase64.',
+    });
+  }
+
   try {
     const {
       identifier,
@@ -17,7 +24,7 @@ export default async function handler(req, res) {
       imageBase64,
       mimeType,
       field,
-    } = req.body ?? {};
+    } = body;
 
     await pushProfileImageToBsky({
       identifier,
@@ -32,6 +39,8 @@ export default async function handler(req, res) {
 
     res.status(200).json({ ok: true });
   } catch (err) {
-    res.status(502).json({ error: err?.message || 'Bluesky profile push failed' });
+    const message = err?.message || 'Bluesky profile push failed';
+    const status = /too large/i.test(message) ? 413 : 502;
+    res.status(status).json({ error: message });
   }
 }

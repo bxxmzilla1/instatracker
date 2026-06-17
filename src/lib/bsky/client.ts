@@ -224,24 +224,33 @@ export async function pushProfileBio(
   });
 }
 
+type ProfileImagePayload =
+  | { imageUrl: string }
+  | { bytes: Uint8Array; mimeType: string };
+
 async function pushProfileImageViaServer(
   credentials: BskyCredentials,
-  bytes: Uint8Array,
-  mimeType: string,
+  payload: ProfileImagePayload,
   field: 'avatar' | 'banner',
 ): Promise<void> {
+  const body: Record<string, unknown> = {
+    identifier: credentials.identifier,
+    password: credentials.password,
+    service: credentials.service,
+    proxy: credentials.proxy,
+    field,
+  };
+  if ('imageUrl' in payload) {
+    body.imageUrl = payload.imageUrl;
+  } else {
+    body.imageBase64 = bytesToBase64(payload.bytes);
+    body.mimeType = payload.mimeType;
+  }
+
   const res = await fetch('/api/bsky-profile-image', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      identifier: credentials.identifier,
-      password: credentials.password,
-      service: credentials.service,
-      proxy: credentials.proxy,
-      imageBase64: bytesToBase64(bytes),
-      mimeType,
-      field,
-    }),
+    body: JSON.stringify(body),
   });
   if (!res.ok) {
     const e = (await res.json().catch(() => ({}))) as { error?: string };
@@ -256,7 +265,7 @@ async function pushProfileImageBytes(
   field: 'avatar' | 'banner',
 ): Promise<void> {
   if (credentials.proxy) {
-    await pushProfileImageViaServer(credentials, bytes, mimeType, field);
+    await pushProfileImageViaServer(credentials, { bytes, mimeType }, field);
     return;
   }
   const agent = await loginBskyAgent(credentials);
@@ -273,6 +282,10 @@ export async function pushProfileImageFromUrl(
   imageUrl: string,
   field: 'avatar' | 'banner',
 ): Promise<void> {
+  if (credentials.proxy) {
+    await pushProfileImageViaServer(credentials, { imageUrl }, field);
+    return;
+  }
   const { bytes, mimeType } = await urlToImageBytes(imageUrl);
   await pushProfileImageBytes(credentials, bytes, mimeType, field);
 }

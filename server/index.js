@@ -95,11 +95,19 @@ app.post('/api/bsky-proxy', async (req, res) => {
 });
 
 app.post('/api/bsky-profile-image', async (req, res) => {
+  const body = req.body;
+  if (!body || typeof body !== 'object') {
+    return res.status(400).json({
+      error: 'Invalid request body. For large images, pass imageUrl instead of imageBase64.',
+    });
+  }
   try {
-    await pushProfileImageToBsky(req.body ?? {});
+    await pushProfileImageToBsky(body);
     res.status(200).json({ ok: true });
   } catch (err) {
-    res.status(502).json({ error: err.message });
+    const message = err.message || 'Bluesky profile push failed';
+    const status = /too large/i.test(message) ? 413 : 502;
+    res.status(status).json({ error: message });
   }
 });
 
