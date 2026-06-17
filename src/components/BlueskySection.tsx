@@ -171,6 +171,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   const [proxyRaw, setProxyRaw] = useState('');
   const [proxyType, setProxyType] = useState('http');
   const [newProxyLabel, setNewProxyLabel] = useState('');
+  const [proxySearch, setProxySearch] = useState('');
   const [bannerPushAccountId, setBannerPushAccountId] = useState('');
   const [picPushAccountId, setPicPushAccountId] = useState('');
   const [bioPushAccountId, setBioPushAccountId] = useState('');
@@ -692,6 +693,31 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
       .filter((a) => a.proxyId === p.id)
       .map((a) => a.identifier.replace(/^@/, ''));
   }
+
+  const filteredProxies = useMemo(() => {
+    const words = proxySearch.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    if (words.length === 0) return proxies;
+    return proxies.filter((p) => {
+      const linked = proxyLinkedAccounts(p);
+      const haystack = [
+        p.label,
+        p.type,
+        p.raw,
+        p.host,
+        p.port,
+        p.username,
+        p.password,
+        p.allEmployees ? 'all employees' : '',
+        ...assignedEmployees(p),
+        ...linked,
+        ...linked.map((h) => `@${h}`),
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      return words.every((word) => haystack.includes(word));
+    });
+  }, [proxies, proxySearch, accounts]);
 
   function proxyOptionLabel(p: Proxy) {
     const owners = p.allEmployees
@@ -2191,11 +2217,34 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                 )}
                 <section className="panel">
                   <h2>{isAdmin ? `Proxies (${proxies.length})` : 'Your proxies'}</h2>
+                  {proxies.length > 0 && (
+                    <div className="account-search">
+                      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2">
+                        <circle cx="11" cy="11" r="7" />
+                        <path d="m20 20-3.5-3.5" />
+                      </svg>
+                      <input
+                        type="text"
+                        placeholder="Search proxies…"
+                        value={proxySearch}
+                        onChange={(e) => setProxySearch(e.target.value)}
+                        autoComplete="off"
+                        spellCheck={false}
+                      />
+                      {proxySearch && (
+                        <button type="button" className="account-search__clear" onClick={() => setProxySearch('')}>
+                          ✕
+                        </button>
+                      )}
+                    </div>
+                  )}
                   {proxies.length === 0 ? (
                     <p className="empty-note">Nothing here yet.</p>
+                  ) : filteredProxies.length === 0 ? (
+                    <p className="empty-note">No proxies match “{proxySearch}”.</p>
                   ) : (
                     <div className="proxy-list">
-                      {proxies.map((proxy) => (
+                      {filteredProxies.map((proxy) => (
                         <div key={proxy.id} className="proxy-row">
                           <div className="proxy-row__body">
                             <div className="proxy-row__top">
