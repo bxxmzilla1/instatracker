@@ -21,13 +21,11 @@ function clampOffsets(
   const totalScale = coverScale * zoom;
   const drawW = imgW * totalScale;
   const drawH = imgH * totalScale;
-  const minX = VIEWPORT_SIZE - drawW;
-  const minY = VIEWPORT_SIZE - drawH;
-  const maxX = 0;
-  const maxY = 0;
+  const minX = Math.min(0, VIEWPORT_SIZE - drawW);
+  const minY = Math.min(0, VIEWPORT_SIZE - drawH);
   return {
-    x: Math.min(maxX, Math.max(minX, offsetX)),
-    y: Math.min(maxY, Math.max(minY, offsetY)),
+    x: Math.min(0, Math.max(minX, offsetX)),
+    y: Math.min(0, Math.max(minY, offsetY)),
   };
 }
 
@@ -108,12 +106,8 @@ export function SquareImageCropModal({
     setSaving(true);
     try {
       const totalScale = coverScale * zoom;
-      const drawW = imgSize.w * totalScale;
-      const drawH = imgSize.h * totalScale;
-      const drawX = (VIEWPORT_SIZE - drawW) / 2 + offset.x;
-      const drawY = (VIEWPORT_SIZE - drawH) / 2 + offset.y;
-      const srcX = -drawX / totalScale;
-      const srcY = -drawY / totalScale;
+      const srcX = -offset.x / totalScale;
+      const srcY = -offset.y / totalScale;
       const srcSize = VIEWPORT_SIZE / totalScale;
 
       const canvas = document.createElement('canvas');
@@ -139,8 +133,8 @@ export function SquareImageCropModal({
   const totalScale = coverScale * zoom;
   const drawW = imgSize.w * totalScale;
   const drawH = imgSize.h * totalScale;
-  const drawX = (VIEWPORT_SIZE - drawW) / 2 + offset.x;
-  const drawY = (VIEWPORT_SIZE - drawH) / 2 + offset.y;
+  const drawX = offset.x;
+  const drawY = offset.y;
 
   return (
     <div className="modal" onClick={onCancel}>

@@ -2810,9 +2810,8 @@ button:disabled {
 
 .profile-pic-library-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  grid-template-columns: repeat(5, 1fr);
   gap: 1rem;
-  max-width: 720px;
 }
 
 .profile-pic-library-grid .reel-cell--profilepic {
@@ -3428,11 +3427,19 @@ button:disabled {
   .banner-library-grid {
     grid-template-columns: repeat(2, 1fr);
   }
+
+  .profile-pic-library-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
 }
 
 @media (max-width: 640px) {
   .banner-library-grid {
     grid-template-columns: 1fr;
+  }
+
+  .profile-pic-library-grid {
+    grid-template-columns: repeat(2, 1fr);
   }
 }
 
