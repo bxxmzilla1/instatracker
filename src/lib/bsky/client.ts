@@ -1,4 +1,4 @@
-import { AtpAgent } from '@atproto/api';
+import { AtpAgent, RichText } from '@atproto/api';
 import { BlobRef } from '@atproto/lexicon';
 
 // Browser-side AT Protocol client. Bluesky's XRPC endpoints support CORS, so
@@ -759,13 +759,20 @@ export async function publishBskyMediaPost(
   const text = options.text.trim();
   const agent = await loginBskyAgent(credentials);
 
+  // Build rich-text facets so hashtags (and links/mentions) render blue and are
+  // clickable / appear in their hashtag feed on Bluesky.
+  const rt = new RichText({ text });
+  await rt.detectFacets(agent);
+  const facets = rt.facets;
+
   if (mediaType === 'image') {
     options.onProgress?.('Compressing image…');
     const prepared = await prepareImageForBskyUpload(options.file);
     options.onProgress?.('Uploading image…');
     const { data } = await agent.uploadBlob(prepared.bytes, { encoding: prepared.mimeType });
     const result = await agent.post({
-      text,
+      text: rt.text,
+      ...(facets && facets.length ? { facets } : {}),
       embed: {
         $type: 'app.bsky.embed.images',
         images: [
@@ -798,7 +805,8 @@ export async function publishBskyMediaPost(
 
   options.onProgress?.('Publishing post…');
   const result = await agent.post({
-    text,
+    text: rt.text,
+    ...(facets && facets.length ? { facets } : {}),
     embed: {
       $type: 'app.bsky.embed.video',
       video: videoBlob,

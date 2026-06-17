@@ -257,6 +257,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   const [deletingProfilePost, setDeletingProfilePost] = useState<string | null>(null);
   const [postCaptionModal, setPostCaptionModal] = useState<{ post: BskyPost } | null>(null);
   const [postCaptionText, setPostCaptionText] = useState('');
+  const [postHashtagsText, setPostHashtagsText] = useState('');
   const [assignPost, setAssignPost] = useState<BskyPost | null>(null);
   const [assignPostEmployees, setAssignPostEmployees] = useState<Set<string>>(() => new Set());
   const [assignPostAll, setAssignPostAll] = useState(false);
@@ -741,6 +742,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     const availableProxies = proxiesForPost(post);
     setPostCaptionModal({ post });
     setPostCaptionText(post.text);
+    setPostHashtagsText('');
     setPostPublishAccountIds(new Set());
     setPostPublishAllAccounts(false);
     setPostPublishProxyId(availableProxies.length === 1 ? availableProxies[0]!.id : '');
@@ -749,9 +751,23 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   function closePostCaptionModal() {
     setPostCaptionModal(null);
     setPostCaptionText('');
+    setPostHashtagsText('');
     setPostPublishAccountIds(new Set());
     setPostPublishAllAccounts(false);
     setPostPublishProxyId('');
+  }
+
+  // Combines the caption and the hashtags input into the final post text.
+  // Hashtags may be entered with or without '#', separated by spaces or commas.
+  function buildPostText(caption: string, hashtags: string): string {
+    const tags = hashtags
+      .split(/[\s,]+/)
+      .map((t) => t.trim().replace(/^#+/, ''))
+      .filter(Boolean)
+      .map((t) => `#${t}`);
+    const base = caption.trim();
+    if (tags.length === 0) return base;
+    return base ? `${base}\n\n${tags.join(' ')}` : tags.join(' ');
   }
 
   function openAssignPostModal(post: BskyPost) {
@@ -796,10 +812,12 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   async function publishLibraryPost(
     post: BskyPost,
     caption: string,
+    hashtags: string,
     proxyId: string,
     selectedAccountIds: Set<string>,
     allAccounts: boolean,
   ) {
+    const finalText = buildPostText(caption, hashtags);
     const postable = postableAccountsForPost(post);
     const targets = allAccounts
       ? postable
@@ -829,7 +847,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
         setPostPublishProgress({ pushKey, done: i, total: targets.length, currentHandle: handle, kind: 'post' });
         try {
           const published = await publishBskyMediaPost(credentialsForPublish(acct, proxyId || undefined), {
-            text: caption,
+            text: finalText,
             file: mediaBlob,
             mediaType,
             fileName: mediaType === 'video' ? 'video.mp4' : 'image.jpg',
@@ -868,7 +886,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
 
       await updatePost({
         ...post,
-        text: caption.trim(),
+        text: finalText,
         publishes: [...(post.publishes ?? []), ...newPublishes],
       });
       await loadAll();
@@ -4802,6 +4820,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                 void publishLibraryPost(
                   postCaptionModal.post,
                   postCaptionText,
+                  postHashtagsText,
                   postPublishProxyId,
                   postPublishAccountIds,
                   postPublishAllAccounts,
@@ -4832,6 +4851,22 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                     onChange={(e) => setPostCaptionText(e.target.value)}
                     rows={4}
                   />
+                </label>
+
+                <label className="cred-field">
+                  <span className="cred-field__label">Hashtags</span>
+                  <input
+                    className="cred-form__input"
+                    placeholder="e.g. blonde, travel, fyp"
+                    value={postHashtagsText}
+                    onChange={(e) => setPostHashtagsText(e.target.value)}
+                    autoComplete="off"
+                    spellCheck={false}
+                  />
+                  <span className="cred-field__hint">
+                    Separate with spaces or commas. The “#” is added automatically and they’ll
+                    appear blue and clickable on Bluesky.
+                  </span>
                 </label>
 
                 {activePostAssignedOwners && (
