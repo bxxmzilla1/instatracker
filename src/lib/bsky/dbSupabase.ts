@@ -219,6 +219,17 @@ async function addImage(table: string, folder: string, asset: ImageAsset, file?:
 
 export const getBanners = (employee?: string) => getImages('bsky_banners', employee);
 export const addBanner = (asset: ImageAsset, file?: Blob) => addImage('bsky_banners', 'banners', asset, file);
+export async function updateBanner(asset: ImageAsset): Promise<void> {
+  const { error } = await client()
+    .from('bsky_banners')
+    .update({
+      employees: asset.employees,
+      all_employees: asset.allEmployees,
+      caption: asset.caption ?? null,
+    })
+    .eq('id', asset.id);
+  if (error) throw new Error(error.message);
+}
 export async function deleteBanner(id: string): Promise<void> {
   const { error } = await client().from('bsky_banners').delete().eq('id', id);
   if (error) throw new Error(error.message);

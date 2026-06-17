@@ -19,6 +19,7 @@ export const {
   deleteCta,
   getBanners,
   addBanner,
+  updateBanner,
   deleteBanner,
   getProfilePics,
   addProfilePic,

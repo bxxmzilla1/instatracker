@@ -44,6 +44,7 @@ import {
   getSavedAccounts,
   getTargets,
   upsertRun,
+  updateBanner,
 } from '../lib/bsky/db';
 import {
   pushProfileBio,
@@ -161,7 +162,10 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   const [postText, setPostText] = useState('');
   const [postFile, setPostFile] = useState<File | null>(null);
   const [bannerFile, setBannerFile] = useState<File | null>(null);
-  const [bannerCaption, setBannerCaption] = useState('');
+  const [assignBanner, setAssignBanner] = useState<ImageAsset | null>(null);
+  const [assignBannerEmployees, setAssignBannerEmployees] = useState<Set<string>>(() => new Set());
+  const [assignBannerAll, setAssignBannerAll] = useState(false);
+  const [savingBannerAssign, setSavingBannerAssign] = useState(false);
   const [picFile, setPicFile] = useState<File | null>(null);
   const [picCaption, setPicCaption] = useState('');
   const [proxyRaw, setProxyRaw] = useState('');
@@ -518,21 +522,58 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
 
   async function submitBanner(e: FormEvent) {
     e.preventDefault();
-    if (!bannerFile || !assignValid('banner')) return;
+    if (!bannerFile) return;
     setUploading(true);
     try {
       await addBanner(
-        { id: crypto.randomUUID(), url: '', caption: bannerCaption, createdAt: Date.now(), ...assignPayload('banner') },
+        { id: crypto.randomUUID(), url: '', createdAt: Date.now(), employees: [], allEmployees: false },
         bannerFile,
       );
       setBannerFile(null);
-      setBannerCaption('');
-      resetAssign('banner');
       await loadAll();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not add banner.');
     } finally {
       setUploading(false);
+    }
+  }
+
+  function openAssignBannerModal(banner: ImageAsset) {
+    setAssignBanner(banner);
+    setAssignBannerEmployees(new Set(banner.employees ?? []));
+    setAssignBannerAll(Boolean(banner.allEmployees));
+  }
+
+  function closeAssignBannerModal() {
+    setAssignBanner(null);
+    setAssignBannerEmployees(new Set());
+    setAssignBannerAll(false);
+  }
+
+  function toggleAssignBannerEmployee(username: string) {
+    setAssignBannerEmployees((prev) => {
+      const next = new Set(prev);
+      if (next.has(username)) next.delete(username);
+      else next.add(username);
+      return next;
+    });
+  }
+
+  async function saveBannerAssign() {
+    if (!assignBanner) return;
+    setSavingBannerAssign(true);
+    try {
+      await updateBanner({
+        ...assignBanner,
+        employees: assignBannerAll ? [] : [...assignBannerEmployees],
+        allEmployees: assignBannerAll,
+      });
+      await loadAll();
+      closeAssignBannerModal();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not assign banner.');
+    } finally {
+      setSavingBannerAssign(false);
     }
   }
 
@@ -1206,7 +1247,13 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     setAccountId: (id: string) => void,
     directFile: File | null,
     setDirectFile: (f: File | null) => void,
-  ) => (
+    options?: { showCaption?: boolean; assignInForm?: boolean; onAssignItem?: (item: ImageAsset) => void },
+  ) => {
+    const showCaption = options?.showCaption ?? true;
+    const assignInForm = options?.assignInForm ?? true;
+    const onAssignItem = options?.onAssignItem;
+
+    return (
     <>
       <section className="panel">
         <h2>Update on Bluesky</h2>
@@ -1256,20 +1303,24 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                 <input type="file" accept="image/*" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
                 <span className="content-upload__hint">{file ? file.name : `Choose a ${title.toLowerCase()} image`}</span>
               </label>
-              <input
-                className="cred-form__input"
-                placeholder="Caption (optional)"
-                value={caption}
-                onChange={(e) => setCaption(e.target.value)}
-              />
-              <AssignmentPicker
-                employees={employees}
-                selected={getAssign(key).set}
-                all={getAssign(key).all}
-                onToggle={(u) => toggleAssign(key, u)}
-                onAllChange={(a) => setAssignAll(key, a)}
-              />
-              <button type="submit" disabled={uploading || !file || !assignValid(key)}>
+              {showCaption && (
+                <input
+                  className="cred-form__input"
+                  placeholder="Caption (optional)"
+                  value={caption}
+                  onChange={(e) => setCaption(e.target.value)}
+                />
+              )}
+              {assignInForm && (
+                <AssignmentPicker
+                  employees={employees}
+                  selected={getAssign(key).set}
+                  all={getAssign(key).all}
+                  onToggle={(u) => toggleAssign(key, u)}
+                  onAllChange={(a) => setAssignAll(key, a)}
+                />
+              )}
+              <button type="submit" disabled={uploading || !file || (assignInForm && !assignValid(key))}>
                 {uploading ? 'Uploading…' : `Add ${title.toLowerCase()}`}
               </button>
             </form>
@@ -1300,6 +1351,16 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                     <a className="content-tile__download" href={item.url} download target="_blank" rel="noreferrer">
                       ↓ Download
                     </a>
+                    {isAdmin && onAssignItem && (
+                      <button
+                        type="button"
+                        className="content-tile__download"
+                        onClick={() => onAssignItem(item)}
+                        title="Assign to employees"
+                      >
+                        Assign
+                      </button>
+                    )}
                     {isAdmin && (
                       <button
                         type="button"
@@ -1318,7 +1379,8 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
         )}
       </section>
     </>
-  );
+    );
+  };
 
   const bioSection = (
     items: Bio[],
@@ -1969,8 +2031,8 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                 banners,
                 bannerFile,
                 setBannerFile,
-                bannerCaption,
-                setBannerCaption,
+                '',
+                () => {},
                 submitBanner,
                 deleteBanner,
                 'banner',
@@ -1979,6 +2041,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                 setBannerPushAccountId,
                 directBannerFile,
                 setDirectBannerFile,
+                { showCaption: false, assignInForm: false, onAssignItem: openAssignBannerModal },
               )}
 
             {view === 'profilepic' &&
@@ -2735,6 +2798,55 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
               </section>
             )}
           </>
+        )}
+
+        {assignBanner && (
+          <div className="modal" onClick={closeAssignBannerModal}>
+            <form
+              className="modal__card"
+              onClick={(e) => e.stopPropagation()}
+              onSubmit={(e) => {
+                e.preventDefault();
+                void saveBannerAssign();
+              }}
+            >
+              <div className="modal__head">
+                <h3>Assign banner</h3>
+                <button
+                  type="button"
+                  className="modal__close"
+                  onClick={closeAssignBannerModal}
+                  aria-label="Close"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <p className="cred-note">Select which employees will see this banner in their library.</p>
+
+              <div className="schedule-modal__body">
+                <AssignmentPicker
+                  employees={employees}
+                  selected={assignBannerEmployees}
+                  all={assignBannerAll}
+                  onToggle={toggleAssignBannerEmployee}
+                  onAllChange={setAssignBannerAll}
+                />
+              </div>
+
+              <div className="schedule-modal__actions">
+                <button type="button" className="btn btn--ghost" onClick={closeAssignBannerModal}>
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingBannerAssign || (!assignBannerAll && assignBannerEmployees.size === 0)}
+                >
+                  {savingBannerAssign ? 'Saving…' : 'Assign'}
+                </button>
+              </div>
+            </form>
+          </div>
         )}
 
         {showAddEmployee && (

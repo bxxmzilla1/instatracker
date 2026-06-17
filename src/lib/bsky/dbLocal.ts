@@ -165,6 +165,17 @@ async function addImage(store: 'banners' | 'profilePics', asset: ImageAsset, fil
 
 export const getBanners = (employee?: string) => getImages('banners', employee);
 export const addBanner = (asset: ImageAsset, file?: Blob) => addImage('banners', asset, file);
+export async function updateBanner(asset: ImageAsset): Promise<void> {
+  const db = await getDb();
+  const existing = await db.get('banners', asset.id);
+  if (!existing) throw new Error('Banner not found');
+  await db.put('banners', {
+    ...existing,
+    employees: asset.employees,
+    allEmployees: asset.allEmployees,
+    caption: asset.caption,
+  });
+}
 export async function deleteBanner(id: string): Promise<void> {
   const db = await getDb();
   await db.delete('banners', id);
