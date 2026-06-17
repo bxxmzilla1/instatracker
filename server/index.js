@@ -11,6 +11,7 @@ import {
 } from './instagram.js';
 import { fetchImage } from './image.js';
 import { relayThroughProxy } from './bskyProxy.js';
+import { pushProfileImageToBsky } from './bskyProfilePush.js';
 import { relayGraphRequest } from './graph.js';
 import { runScheduledPublisher } from './scheduledPublisher.js';
 
@@ -88,6 +89,15 @@ app.post('/api/bsky-proxy', async (req, res) => {
   try {
     const data = await relayThroughProxy(req.body ?? {});
     res.status(200).json(data);
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  }
+});
+
+app.post('/api/bsky-profile-image', async (req, res) => {
+  try {
+    await pushProfileImageToBsky(req.body ?? {});
+    res.status(200).json({ ok: true });
   } catch (err) {
     res.status(502).json({ error: err.message });
   }

@@ -12,8 +12,16 @@ const HOP_BY_HOP = new Set(['host', 'content-length', 'accept-encoding', 'connec
 /**
  * Relays a single HTTPS request to a Bluesky/AT Protocol endpoint through a proxy.
  * Returns a plain object the browser can rebuild into a Response.
+ * Request/response bodies use base64 when bodyEncoding is set (binary-safe).
  */
-export async function relayThroughProxy({ url, method = 'GET', headers = {}, body = null, proxy }) {
+export async function relayThroughProxy({
+  url,
+  method = 'GET',
+  headers = {},
+  body = null,
+  bodyEncoding,
+  proxy,
+}) {
   if (!url || !/^https:\/\//i.test(url)) throw new Error('Only https targets are allowed.');
   if (!proxy) throw new Error('Missing proxy configuration.');
 
@@ -25,7 +33,7 @@ export async function relayThroughProxy({ url, method = 'GET', headers = {}, bod
     if (HOP_BY_HOP.has(k.toLowerCase())) continue;
     outHeaders[k] = v;
   }
-  // Force an uncompressed response so we can hand the body back as text.
+  // Force an uncompressed response so we can hand the body back reliably.
   outHeaders['accept-encoding'] = 'identity';
 
   return await new Promise((resolve, reject) => {
@@ -36,17 +44,27 @@ export async function relayThroughProxy({ url, method = 'GET', headers = {}, bod
         const chunks = [];
         resp.on('data', (c) => chunks.push(c));
         resp.on('end', () => {
+          const buf = Buffer.concat(chunks);
+          const contentType = resp.headers['content-type'] || '';
+          const isText =
+            !contentType ||
+            contentType.includes('json') ||
+            contentType.startsWith('text/');
           resolve({
             status: resp.statusCode || 502,
-            headers: { 'content-type': resp.headers['content-type'] || 'application/json' },
-            body: Buffer.concat(chunks).toString('utf8'),
+            headers: { 'content-type': contentType || 'application/json' },
+            body: isText ? buf.toString('utf8') : buf.toString('base64'),
+            bodyEncoding: isText ? 'text' : 'base64',
           });
         });
       },
     );
     req.on('timeout', () => req.destroy(new Error('Proxy request timed out.')));
     req.on('error', reject);
-    if (body) req.write(typeof body === 'string' ? body : Buffer.from(body));
+    if (body) {
+      const payload = bodyEncoding === 'base64' ? Buffer.from(body, 'base64') : body;
+      req.write(payload);
+    }
     req.end();
   });
 }

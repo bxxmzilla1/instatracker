@@ -10,6 +10,22 @@ import { AtpAgent } from '@atproto/api';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}
+
+function base64ToBytes(b64: string): Uint8Array {
+  const binary = atob(b64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
 export interface ProxyConfig {
   type: string;
   host: string;
@@ -31,26 +47,46 @@ function makeProxyFetch(proxy: ProxyConfig): typeof fetch {
     req.headers.forEach((v, k) => {
       headers[k] = v;
     });
-    const body = method === 'GET' || method === 'HEAD' ? null : await req.text();
+
+    let body: string | null = null;
+    let bodyEncoding: 'base64' | undefined;
+    if (method !== 'GET' && method !== 'HEAD') {
+      const bytes = new Uint8Array(await req.arrayBuffer());
+      if (bytes.length > 0) {
+        body = bytesToBase64(bytes);
+        bodyEncoding = 'base64';
+      }
+    }
 
     const relay = await fetch('/api/bsky-proxy', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url, method, headers, body: body || null, proxy }),
+      body: JSON.stringify({ url, method, headers, body, bodyEncoding, proxy }),
     });
     if (!relay.ok) {
       const e = (await relay.json().catch(() => ({}))) as { error?: string };
       throw new Error(e.error || `Proxy relay failed (${relay.status})`);
     }
-    const data = (await relay.json()) as { status: number; headers: Record<string, string>; body: string };
-    return new Response(data.body, { status: data.status, headers: data.headers });
+    const data = (await relay.json()) as {
+      status: number;
+      headers: Record<string, string>;
+      body: string;
+      bodyEncoding?: 'text' | 'base64';
+    };
+    const responseBody =
+      data.bodyEncoding === 'base64' ? base64ToBytes(data.body) : data.body ?? '';
+    return new Response(responseBody, { status: data.status, headers: data.headers });
   };
 }
 
 export function parseError(err: unknown): string {
   if (!err) return 'Unknown error';
   if (typeof err === 'string') return err;
-  const e = err as { error?: string; message?: string };
+  const e = err as { error?: string; message?: string; cause?: unknown };
+  if (e.cause) {
+    const inner = parseError(e.cause);
+    if (inner && inner !== 'Unknown error') return inner;
+  }
   if (e.error && e.message) return `${e.error}: ${e.message}`;
   return e.message || String(err);
 }
@@ -188,13 +224,42 @@ export async function pushProfileBio(
   });
 }
 
-export async function pushProfileImageFromUrl(
+async function pushProfileImageViaServer(
   credentials: BskyCredentials,
-  imageUrl: string,
+  bytes: Uint8Array,
+  mimeType: string,
   field: 'avatar' | 'banner',
 ): Promise<void> {
+  const res = await fetch('/api/bsky-profile-image', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      identifier: credentials.identifier,
+      password: credentials.password,
+      service: credentials.service,
+      proxy: credentials.proxy,
+      imageBase64: bytesToBase64(bytes),
+      mimeType,
+      field,
+    }),
+  });
+  if (!res.ok) {
+    const e = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(e.error || `Server push failed (${res.status})`);
+  }
+}
+
+async function pushProfileImageBytes(
+  credentials: BskyCredentials,
+  bytes: Uint8Array,
+  mimeType: string,
+  field: 'avatar' | 'banner',
+): Promise<void> {
+  if (credentials.proxy) {
+    await pushProfileImageViaServer(credentials, bytes, mimeType, field);
+    return;
+  }
   const agent = await loginBskyAgent(credentials);
-  const { bytes, mimeType } = await urlToImageBytes(imageUrl);
   const { data } = await agent.uploadBlob(bytes, { encoding: mimeType });
   await agent.upsertProfile((existing) => {
     const profile = { ...(existing ?? {}) };
@@ -203,19 +268,22 @@ export async function pushProfileImageFromUrl(
   });
 }
 
+export async function pushProfileImageFromUrl(
+  credentials: BskyCredentials,
+  imageUrl: string,
+  field: 'avatar' | 'banner',
+): Promise<void> {
+  const { bytes, mimeType } = await urlToImageBytes(imageUrl);
+  await pushProfileImageBytes(credentials, bytes, mimeType, field);
+}
+
 export async function pushProfileImageFromFile(
   credentials: BskyCredentials,
   file: Blob,
   field: 'avatar' | 'banner',
 ): Promise<void> {
-  const agent = await loginBskyAgent(credentials);
   const { bytes, mimeType } = await blobToImageBytes(file);
-  const { data } = await agent.uploadBlob(bytes, { encoding: mimeType });
-  await agent.upsertProfile((existing) => {
-    const profile = { ...(existing ?? {}) };
-    profile[field] = data.blob;
-    return profile;
-  });
+  await pushProfileImageBytes(credentials, bytes, mimeType, field);
 }
 
 export async function runAccountJob(
