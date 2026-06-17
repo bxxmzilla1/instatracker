@@ -77,6 +77,7 @@ import { SavedAccountPicker } from './SavedAccountPicker';
 import { SquareImageCropModal } from './SquareImageCropModal';
 import { BskyFollowChart, type FollowBar } from './BskyFollowChart';
 import { CopyButton } from './CopyButton';
+import { CopyField } from './CopyField';
 import { HoverLoopVideo } from './HoverLoopVideo';
 import { assignedEmployees, matchesEmployee } from '../lib/assignment';
 import { parseProxyString } from '../lib/proxy';
