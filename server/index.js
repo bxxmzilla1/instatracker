@@ -15,6 +15,7 @@ import { pushProfileImageToBsky } from './bskyProfilePush.js';
 import { relayGraphRequest } from './graph.js';
 import { runScheduledPublisher } from './scheduledPublisher.js';
 import { lookupExitIp, lookupIp } from './ipinfo.js';
+import { getSupabaseAdmin, collectUsedIps, findUniqueProxy } from './autoUnique.js';
 
 dotenv.config();
 
@@ -93,6 +94,33 @@ app.post('/api/proxy-ip', async (req, res) => {
     res.status(200).json({ ...info, checkedAt: Date.now() });
   } catch (err) {
     res.status(502).json({ error: err.message || 'IP lookup failed' });
+  }
+});
+
+app.post('/api/auto-unique-proxy', async (req, res) => {
+  try {
+    const { proxies: bodyProxies, usedIps: bodyUsedIps } = req.body ?? {};
+    const db = getSupabaseAdmin();
+    let proxyRows = Array.isArray(bodyProxies) ? bodyProxies : [];
+    if (proxyRows.length === 0 && db) {
+      const { data } = await db.from('proxies').select('*').order('created_at', { ascending: true });
+      proxyRows = data ?? [];
+    }
+    const used = new Set(Array.isArray(bodyUsedIps) ? bodyUsedIps : []);
+    for (const ip of await collectUsedIps(db)) used.add(ip);
+    const result = await findUniqueProxy(proxyRows, used);
+    if (!result.relay) {
+      return res.status(200).json({ proxy: null, checked: result.checked ?? [] });
+    }
+    res.status(200).json({
+      proxy: result.relay,
+      ip: result.ip,
+      ipInfo: result.ipInfo,
+      proxyId: result.proxyId,
+      checked: result.checked ?? [],
+    });
+  } catch (err) {
+    res.status(502).json({ error: err.message || 'Auto Unique lookup failed' });
   }
 });
 

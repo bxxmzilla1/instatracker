@@ -5,6 +5,12 @@ import { createClient } from '@supabase/supabase-js';
 import { collectDueScheduledItems, normalizeScheduledPosts } from './contentSchedule.js';
 import { publishContent, proxyRowToRelay } from './publish.js';
 import { lookupExitIp } from './ipinfo.js';
+import {
+  AUTO_UNIQUE_PROXY_ID,
+  collectUsedIps,
+  findUniqueProxy,
+  registerUsedIp,
+} from './autoUnique.js';
 
 const STALE_PUBLISH_MS = 15 * 60 * 1000;
 const LOCK_KEY = 'scheduled-publisher';
@@ -132,6 +138,21 @@ async function claimScheduledPost(db, rowId, postId) {
   if (!claimed?.publishingAt || claimed.postedAt) return null;
 
   return { row: data, post: claimed };
+}
+
+// Releases a claimed post back to "due" (used when Auto Unique can't find a
+// fresh IP this pass, so the next cron tick retries ~1 minute later).
+async function unclaimScheduledPost(db, rowId, postId) {
+  const { data: row, error } = await db.from('content').select('*').eq('id', rowId).maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!row) return;
+  const posts = normalizeScheduledPosts(row);
+  const updated = posts.map((post) =>
+    post.id === postId
+      ? { ...post, publishingAt: undefined, publishStage: undefined }
+      : post,
+  );
+  await db.from('content').update({ scheduled_posts: updated }).eq('id', rowId);
 }
 
 async function setScheduledPostStage(db, rowId, postId, stage) {
@@ -303,13 +324,38 @@ export async function runScheduledPublisher() {
           Array.isArray(claimedRow.media_urls) && claimedRow.media_urls.length > 0
             ? claimedRow.media_urls
             : [claimedRow.video_url];
-        const proxy = await getProxyRelay(db, claimedPost.proxyId ?? claimedRow.proxy_id);
-        // Capture the exit IP this post is published through (best-effort).
+        const proxyId = claimedPost.proxyId ?? claimedRow.proxy_id;
+        let proxy;
         let ipInfo;
-        try {
-          ipInfo = await lookupExitIp(proxy);
-        } catch {
-          ipInfo = undefined;
+        if (proxyId === AUTO_UNIQUE_PROXY_ID) {
+          // Rotate each proxy until we find a brand-new exit IP.
+          const { data: proxyRows } = await db
+            .from('proxies')
+            .select('*')
+            .order('created_at', { ascending: true });
+          const usedIps = await collectUsedIps(db);
+          const found = await findUniqueProxy(proxyRows ?? [], usedIps);
+          if (!found.relay) {
+            // No unused IP this pass — release the claim and retry next tick.
+            await unclaimScheduledPost(db, claimedRow.id, claimedPost.id);
+            results.push({
+              id: claimedRow.id,
+              scheduledPostId: claimedPost.id,
+              ok: false,
+              skipped: 'no_unique_ip',
+            });
+            break;
+          }
+          proxy = found.relay;
+          ipInfo = found.ipInfo;
+        } else {
+          proxy = await getProxyRelay(db, proxyId);
+          // Capture the exit IP this post is published through (best-effort).
+          try {
+            ipInfo = await lookupExitIp(proxy);
+          } catch {
+            ipInfo = undefined;
+          }
         }
         const result = await publishContent(
           igUserId,
@@ -329,6 +375,7 @@ export async function runScheduledPublisher() {
           },
         );
         await markScheduledPosted(db, claimedRow.id, claimedPost.id, result, ipInfo);
+        if (ipInfo?.ip) await registerUsedIp(db, ipInfo.ip, claimedPost.account);
         processed += 1;
         results.push({
           id: claimedRow.id,

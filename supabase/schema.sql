@@ -70,6 +70,13 @@ alter table proxies add column if not exists current_ip text;
 alter table proxies add column if not exists ip_info jsonb;
 alter table proxies add column if not exists ip_checked_at bigint;
 
+-- Registry of every exit IP a post has been published on (for "Auto Unique").
+create table if not exists posted_ips (
+  ip text primary key,
+  last_account text,
+  used_at bigint
+);
+
 -- Account bios assigned to employees (or all).
 create table if not exists bios (
   id text primary key,
@@ -180,6 +187,7 @@ alter table reel_snapshots enable row level security;
 alter table employees enable row level security;
 alter table licenses enable row level security;
 alter table proxies enable row level security;
+alter table posted_ips enable row level security;
 alter table bios enable row level security;
 alter table ctas enable row level security;
 alter table stories enable row level security;
@@ -193,6 +201,7 @@ drop policy if exists "allow anon all" on reel_snapshots;
 drop policy if exists "allow anon all" on employees;
 drop policy if exists "allow anon all" on licenses;
 drop policy if exists "allow anon all" on proxies;
+drop policy if exists "allow anon all" on posted_ips;
 drop policy if exists "allow anon all" on bios;
 drop policy if exists "allow anon all" on ctas;
 drop policy if exists "allow anon all" on stories;
@@ -211,6 +220,8 @@ create policy "allow anon all" on employees
 create policy "allow anon all" on licenses
   for all to anon using (true) with check (true);
 create policy "allow anon all" on proxies
+  for all to anon using (true) with check (true);
+create policy "allow anon all" on posted_ips
   for all to anon using (true) with check (true);
 create policy "allow anon all" on bios
   for all to anon using (true) with check (true);

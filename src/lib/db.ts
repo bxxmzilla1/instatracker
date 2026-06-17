@@ -24,6 +24,7 @@ export const {
   getProxies,
   addProxy,
   deleteProxy,
+  registerPostedIp,
   getBios,
   addBio,
   deleteBio,

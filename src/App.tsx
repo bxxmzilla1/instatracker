@@ -35,6 +35,7 @@ import {
   getProxies,
   getReelHistories,
   getStories,
+  registerPostedIp,
   addStory,
   deleteStory,
   getContent,
@@ -51,8 +52,10 @@ import {
 import { assignedEmployees } from './lib/assignment';
 import { getScheduledPostsForDate, normalizeScheduledPosts } from './lib/contentSchedule';
 import { parseProxyString } from './lib/proxy';
-import { proxyOptionLabel, proxyToRelayConfig } from './lib/proxyRelay';
-import { fetchProxyIp, formatIpInfo } from './lib/ipinfo';
+import { AUTO_UNIQUE_PROXY_ID, proxyOptionLabel, proxyToRelayConfig } from './lib/proxyRelay';
+import type { GraphRelayProxy } from './lib/proxyRelay';
+import { fetchProxyIp, fetchAutoUniqueProxy, formatIpInfo } from './lib/ipinfo';
+import type { AutoUniqueProxyInput } from './lib/ipinfo';
 import { publishContent } from './lib/igGraph';
 import type { PublishProgress } from './lib/igGraph';
 import {
@@ -363,6 +366,8 @@ export default function App() {
   const [assignReel, setAssignReel] = useState<ContentReel | null>(null);
   const [savingAssign, setSavingAssign] = useState(false);
   const [publishProgress, setPublishProgress] = useState<PublishProgress | null>(null);
+  // Live status text while the Auto Unique proxy resolver is running.
+  const [autoUniqueStatus, setAutoUniqueStatus] = useState<string | null>(null);
   const [historyReel, setHistoryReel] = useState<ContentReel | null>(null);
   const [metaSessionsLink, setMetaSessionsLink] = useState<ApiLink | null>(null);
   const [editingMetaSessionsLink, setEditingMetaSessionsLink] = useState(false);
@@ -1249,6 +1254,65 @@ export default function App() {
     setNewContentProxyId('');
     setNewContentScheduledAt('');
     setPublishProgress(null);
+    setAutoUniqueStatus(null);
+  }
+
+  // Used IPs already recorded anywhere in the content library (for Auto Unique).
+  function collectUsedIpsFromContent(): string[] {
+    const ips = new Set<string>();
+    for (const c of content) {
+      for (const h of c.postHistory ?? []) if (h.publishedIp) ips.add(h.publishedIp);
+      for (const s of c.scheduledPosts ?? []) if (s.publishedIp) ips.add(s.publishedIp);
+    }
+    return [...ips];
+  }
+
+  function autoUniqueCandidates(): AutoUniqueProxyInput[] {
+    return availableProxies.map((p) => ({
+      id: p.id,
+      type: p.type,
+      host: p.host,
+      port: p.port,
+      username: p.username,
+      password: p.password,
+      rotating_link: p.rotatingLink,
+    }));
+  }
+
+  // Repeatedly rotates proxies until a brand-new IP is found, waiting 1 minute
+  // between passes (mirrors the cron behaviour for immediate posts).
+  async function resolveAutoUniqueProxy(): Promise<{
+    relay: GraphRelayProxy;
+    ip?: string;
+    country?: string;
+  }> {
+    const candidates = autoUniqueCandidates();
+    if (candidates.length === 0) {
+      throw new Error('Add at least one proxy (with a rotating link) to use Auto Unique.');
+    }
+    const maxAttempts = 10;
+    const waitMs = 60_000;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      setAutoUniqueStatus(`Auto Unique: rotating proxies for a fresh IP… (attempt ${attempt})`);
+      const result = await fetchAutoUniqueProxy(candidates, collectUsedIpsFromContent());
+      if (result.proxy) {
+        setAutoUniqueStatus(
+          `Auto Unique: using new IP ${result.ip ?? ''}${
+            result.ipInfo?.countryName ? ` (${result.ipInfo.countryName})` : ''
+          }`,
+        );
+        return {
+          relay: result.proxy,
+          ip: result.ip,
+          country: result.ipInfo?.countryName || result.ipInfo?.country,
+        };
+      }
+      if (attempt < maxAttempts) {
+        setAutoUniqueStatus('Auto Unique: no new IP yet — waiting 1 minute, then retrying…');
+        await new Promise((r) => setTimeout(r, waitMs));
+      }
+    }
+    throw new Error('Auto Unique could not find a brand-new IP. Try again later.');
   }
 
   async function publishReelToAccount(
@@ -1257,6 +1321,7 @@ export default function App() {
     targetUsername: string,
     proxyId: string | undefined,
     onProgress?: (progress: PublishProgress) => void,
+    relayOverride?: GraphRelayProxy,
   ) {
     const account = accounts.find((a) => a.username === targetUsername);
     if (!account?.igUserId || !account?.igAccessToken) {
@@ -1266,10 +1331,13 @@ export default function App() {
     if (!mediaUrls.length) {
       throw new Error('This item has no uploaded media to publish.');
     }
-    const proxyRecord = proxyId ? proxies.find((p) => p.id === proxyId) : undefined;
-    const relayProxy = proxyRecord ? proxyToRelayConfig(proxyRecord) : undefined;
-    if (proxyId && !relayProxy) {
-      throw new Error('The selected proxy could not be parsed. Check host, port, and credentials.');
+    let relayProxy = relayOverride;
+    if (!relayProxy && proxyId && proxyId !== AUTO_UNIQUE_PROXY_ID) {
+      const proxyRecord = proxies.find((p) => p.id === proxyId);
+      relayProxy = proxyRecord ? proxyToRelayConfig(proxyRecord) : undefined;
+      if (!relayProxy) {
+        throw new Error('The selected proxy could not be parsed. Check host, port, and credentials.');
+      }
     }
     return publishContent(
       account.igUserId,
@@ -1329,6 +1397,18 @@ export default function App() {
         await updateContent(publishingReel);
         await loadContent();
 
+        // Auto Unique: rotate proxies until a brand-new IP is found, then post
+        // through it. We already know the IP, so reuse it as the published IP.
+        let autoRelay: GraphRelayProxy | undefined;
+        let autoIp: string | undefined;
+        let autoCountry: string | undefined;
+        if (newContentProxyId === AUTO_UNIQUE_PROXY_ID) {
+          const resolved = await resolveAutoUniqueProxy();
+          autoRelay = resolved.relay;
+          autoIp = resolved.ip;
+          autoCountry = resolved.country;
+        }
+
         const result = await publishReelToAccount(
           publishingReel,
           newContentCaption,
@@ -1339,21 +1419,32 @@ export default function App() {
             await persistPublishProgress(publishingReel, progress);
             await loadContent();
           },
+          autoRelay,
         );
         const now = Date.now();
         // Record the exit IP this post was published through (best-effort).
-        let publishedIp: string | undefined;
-        let publishedIpCountry: string | undefined;
-        try {
-          const proxyRecord = newContentProxyId
-            ? proxies.find((p) => p.id === newContentProxyId)
-            : undefined;
-          const relay = proxyRecord ? proxyToRelayConfig(proxyRecord) : undefined;
-          const info = await fetchProxyIp(relay);
-          publishedIp = info.ip;
-          publishedIpCountry = info.countryName || info.country;
-        } catch {
-          // IP lookup is non-fatal; the post already succeeded.
+        let publishedIp: string | undefined = autoIp;
+        let publishedIpCountry: string | undefined = autoCountry;
+        if (!publishedIp) {
+          try {
+            const proxyRecord =
+              newContentProxyId && newContentProxyId !== AUTO_UNIQUE_PROXY_ID
+                ? proxies.find((p) => p.id === newContentProxyId)
+                : undefined;
+            const relay = proxyRecord ? proxyToRelayConfig(proxyRecord) : undefined;
+            const info = await fetchProxyIp(relay);
+            publishedIp = info.ip;
+            publishedIpCountry = info.countryName || info.country;
+          } catch {
+            // IP lookup is non-fatal; the post already succeeded.
+          }
+        }
+        if (publishedIp) {
+          try {
+            await registerPostedIp(publishedIp, newContentTarget);
+          } catch {
+            // registry write is best-effort
+          }
         }
         await updateContent({
           ...publishingReel,
@@ -1395,6 +1486,7 @@ export default function App() {
       } finally {
         setSavingSchedule(false);
         setPublishProgress(null);
+        setAutoUniqueStatus(null);
       }
       return;
     }
@@ -2872,14 +2964,16 @@ export default function App() {
                               </p>
                             )}
                             <p className="schedule-card__target">📲 Post on @{scheduledPost.account}</p>
-                            {scheduledPost.proxyId && (() => {
+                            {scheduledPost.proxyId === AUTO_UNIQUE_PROXY_ID ? (
+                              <p className="schedule-card__target">🎲 Proxy: Auto Unique (new IP)</p>
+                            ) : scheduledPost.proxyId ? (() => {
                               const proxy = proxies.find((p) => p.id === scheduledPost.proxyId);
                               return proxy ? (
                                 <p className="schedule-card__target">
                                   🌐 Proxy: {proxyOptionLabel(proxy)}
                                 </p>
                               ) : null;
-                            })()}
+                            })() : null}
                             {scheduledPost.postedAt && scheduledPost.publishedIp && (
                               <p className="schedule-card__target">
                                 📍 Posted from IP: {scheduledPost.publishedIp}
@@ -3595,6 +3689,11 @@ export default function App() {
                     <option value="">
                       {availableProxies.length === 0 ? 'No proxies available' : 'No proxy'}
                     </option>
+                    {availableProxies.length > 0 && (
+                      <option value={AUTO_UNIQUE_PROXY_ID}>
+                        🎲 Auto Unique (rotate to a brand-new IP)
+                      </option>
+                    )}
                     {availableProxies.map((p) => (
                       <option key={p.id} value={p.id}>
                         {proxyOptionLabel(p)}
@@ -3602,10 +3701,16 @@ export default function App() {
                     ))}
                   </select>
                   <span className="cred-field__hint">
-                    Route this publish through a proxy from your Proxy library.
+                    {newContentProxyId === AUTO_UNIQUE_PROXY_ID
+                      ? 'Rotates each proxy one-by-one until it gets an IP never used before, then posts. Retries every minute until a fresh IP is found.'
+                      : 'Route this publish through a proxy from your Proxy library.'}
                   </span>
                 </label>
               </div>
+
+              {scheduleMode === 'post' && autoUniqueStatus && (
+                <p className="cred-field__hint schedule-modal__auto-status">{autoUniqueStatus}</p>
+              )}
 
               {scheduleMode === 'post' && modalPublishProgress && (
                 <PublishProgressBar stage={modalPublishProgress.stage} />

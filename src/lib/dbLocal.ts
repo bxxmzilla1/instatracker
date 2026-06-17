@@ -204,6 +204,12 @@ export async function addProxy(proxy: Proxy): Promise<void> {
   await db.put('proxies', proxy);
 }
 
+// Local mode derives used IPs from content history, so this is a no-op.
+export async function registerPostedIp(_ip: string, _account?: string): Promise<void> {
+  void _ip;
+  void _account;
+}
+
 export async function deleteProxy(id: string): Promise<void> {
   const db = await getDb();
   await db.delete('proxies', id);

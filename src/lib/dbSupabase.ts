@@ -315,6 +315,15 @@ export async function deleteProxy(id: string): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
+/** Records an exit IP as used so "Auto Unique" never reuses it. */
+export async function registerPostedIp(ip: string, account?: string): Promise<void> {
+  if (!ip) return;
+  const { error } = await client()
+    .from('posted_ips')
+    .upsert({ ip, last_account: account ?? null, used_at: Date.now() }, { onConflict: 'ip' });
+  if (error) throw new Error(error.message);
+}
+
 interface BioRow {
   id: string;
   text: string | null;
