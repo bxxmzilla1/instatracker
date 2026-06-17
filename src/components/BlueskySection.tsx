@@ -162,7 +162,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   const [bioText, setBioText] = useState('');
   const [postText, setPostText] = useState('');
   const [postFile, setPostFile] = useState<File | null>(null);
-  const [bannerFile, setBannerFile] = useState<File | null>(null);
+  const bannerAddInputRef = useRef<HTMLInputElement>(null);
   const [assignBanner, setAssignBanner] = useState<ImageAsset | null>(null);
   const [assignBannerEmployees, setAssignBannerEmployees] = useState<Set<string>>(() => new Set());
   const [assignBannerAll, setAssignBannerAll] = useState(false);
@@ -176,7 +176,6 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   const [bannerPushAccountId, setBannerPushAccountId] = useState('');
   const [picPushAccountId, setPicPushAccountId] = useState('');
   const [bioPushAccountId, setBioPushAccountId] = useState('');
-  const [directBannerFile, setDirectBannerFile] = useState<File | null>(null);
   const [directPicFile, setDirectPicFile] = useState<File | null>(null);
   const [directBioText, setDirectBioText] = useState('');
   const [profilePushing, setProfilePushing] = useState<string | null>(null);
@@ -522,16 +521,13 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     }
   }
 
-  async function submitBanner(e: FormEvent) {
-    e.preventDefault();
-    if (!bannerFile) return;
+  async function uploadBanner(file: File) {
     setUploading(true);
     try {
       await addBanner(
         { id: crypto.randomUUID(), url: '', createdAt: Date.now(), employees: [], allEmployees: false },
-        bannerFile,
+        file,
       );
-      setBannerFile(null);
       await loadAll();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not add banner.');
@@ -785,6 +781,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     accountId: string,
     setAccountId: (id: string) => void,
     label = 'Bluesky account to update',
+    hint = 'Choose a saved account from Accounts, then push a library item or upload below.',
   ) {
     return (
       <label className="cred-field">
@@ -806,9 +803,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
             </option>
           ))}
         </select>
-        <span className="cred-field__hint">
-          Choose a saved account from Accounts, then push a library item or upload below.
-        </span>
+        <span className="cred-field__hint">{hint}</span>
       </label>
     );
   }
@@ -1274,16 +1269,38 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     setAccountId: (id: string) => void,
     directFile: File | null,
     setDirectFile: (f: File | null) => void,
-    options?: { showCaption?: boolean; assignInForm?: boolean; onAssignItem?: (item: ImageAsset) => void },
+    options?: {
+      showCaption?: boolean;
+      assignInForm?: boolean;
+      onAssignItem?: (item: ImageAsset) => void;
+      hideDirectUpload?: boolean;
+      instantLibraryAdd?: boolean;
+      onInstantAdd?: (file: File) => void;
+      addInputRef?: React.RefObject<HTMLInputElement | null>;
+      hideDownload?: boolean;
+    },
   ) => {
     const showCaption = options?.showCaption ?? true;
     const assignInForm = options?.assignInForm ?? true;
     const onAssignItem = options?.onAssignItem;
+    const hideDirectUpload = options?.hideDirectUpload ?? false;
+    const instantLibraryAdd = options?.instantLibraryAdd ?? false;
+    const hideDownload = options?.hideDownload ?? false;
 
     return (
     <>
       <section className="panel">
         <h2>Update on Bluesky</h2>
+        {hideDirectUpload ? (
+          <div className="bio-form">
+            {accountSelectField(
+              accountId,
+              setAccountId,
+              undefined,
+              'Choose a saved account from Accounts, then push a library item below.',
+            )}
+          </div>
+        ) : (
         <form
           className="bio-form"
           onSubmit={(e) => {
@@ -1310,12 +1327,36 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
             {profilePushing === `direct-${key}` ? 'Updating…' : `Update ${title.toLowerCase()}`}
           </button>
         </form>
+        )}
       </section>
 
       {isAdmin && (
         <section className="panel">
           <div className="panel-head">
             <h2>Add {title.toLowerCase()} to library</h2>
+            {instantLibraryAdd ? (
+              <>
+                <button
+                  type="button"
+                  className="panel-add-toggle"
+                  disabled={uploading}
+                  onClick={() => options?.addInputRef?.current?.click()}
+                >
+                  {uploading ? 'Uploading…' : 'ADD'}
+                </button>
+                <input
+                  ref={options?.addInputRef}
+                  type="file"
+                  accept="image/*"
+                  hidden
+                  onChange={(e) => {
+                    const picked = e.target.files?.[0];
+                    e.target.value = '';
+                    if (picked) options?.onInstantAdd?.(picked);
+                  }}
+                />
+              </>
+            ) : (
             <button
               type="button"
               className={`panel-add-toggle ${openForms.has(key) ? 'panel-add-toggle--open' : ''}`}
@@ -1323,8 +1364,9 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
             >
               {openForms.has(key) ? 'Hide' : 'Add'}
             </button>
+            )}
           </div>
-          {openForms.has(key) && (
+          {!instantLibraryAdd && openForms.has(key) && (
             <form className="bio-form" onSubmit={submit}>
               <label className="content-upload">
                 <input type="file" accept="image/*" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
@@ -1375,9 +1417,11 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                     >
                       {profilePushing === item.id ? 'Pushing…' : 'Push to Bluesky'}
                     </button>
+                    {!hideDownload && (
                     <a className="content-tile__download" href={item.url} download target="_blank" rel="noreferrer">
                       ↓ Download
                     </a>
+                    )}
                     {isAdmin && onAssignItem && (
                       <button
                         type="button"
@@ -2056,19 +2100,19 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
               imageSection(
                 'Banner',
                 banners,
-                bannerFile,
-                setBannerFile,
+                null,
+                () => {},
                 '',
                 () => {},
-                submitBanner,
+                async () => {},
                 deleteBanner,
                 'banner',
                 'banner',
                 bannerPushAccountId,
                 setBannerPushAccountId,
-                directBannerFile,
-                setDirectBannerFile,
-                { showCaption: false, assignInForm: false, onAssignItem: openAssignBannerModal },
+                null,
+                () => {},
+                { showCaption: false, assignInForm: false, onAssignItem: openAssignBannerModal, hideDirectUpload: true, instantLibraryAdd: true, onInstantAdd: uploadBanner, addInputRef: bannerAddInputRef, hideDownload: true },
               )}
 
             {view === 'profilepic' &&
