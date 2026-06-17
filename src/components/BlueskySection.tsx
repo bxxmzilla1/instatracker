@@ -3275,6 +3275,16 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                     >
                       {savingSlave ? 'Verifying credentials…' : 'Add slave account'}
                     </button>
+                    {savingSlave && (
+                      <div className="publish-progress publish-progress--indeterminate">
+                        <div className="publish-progress__track">
+                          <div className="publish-progress__fill" />
+                        </div>
+                        <span className="publish-progress__label">
+                          Verifying @{newSlaveHandle.trim().replace(/^@/, '')} with Bluesky…
+                        </span>
+                      </div>
+                    )}
                   </form>
                 )}
 
