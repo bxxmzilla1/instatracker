@@ -1982,7 +1982,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
         )}
 
         {successMessage && (
-          <div className="banner banner--publish banner--dismissible">
+          <div className="banner banner--success">
             <span>{successMessage}</span>
             <button
               type="button"
