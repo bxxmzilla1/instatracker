@@ -69,7 +69,7 @@ import { SquareImageCropModal } from './SquareImageCropModal';
 import { BskyFollowChart, type FollowBar } from './BskyFollowChart';
 import { CopyButton } from './CopyButton';
 import { CopyField } from './CopyField';
-import { assignedEmployees } from '../lib/assignment';
+import { assignedEmployees, matchesEmployee } from '../lib/assignment';
 import { parseProxyString } from '../lib/proxy';
 import { formatCount, formatDate } from '../lib/format';
 
@@ -225,17 +225,18 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
 
   const [bioText, setBioText] = useState('');
   const [postMediaTab, setPostMediaTab] = useState<'image' | 'video' | 'engagement'>('image');
-  const [postPushAccountIds, setPostPushAccountIds] = useState<Set<string>>(() => new Set());
-  const [postPushAllAccounts, setPostPushAllAccounts] = useState(false);
+  const [postPublishAccountIds, setPostPublishAccountIds] = useState<Set<string>>(() => new Set());
+  const [postPublishAllAccounts, setPostPublishAllAccounts] = useState(false);
+  const [postPublishProxyId, setPostPublishProxyId] = useState('');
   const [postPublishingId, setPostPublishingId] = useState<string | null>(null);
   const [postPublishProgress, setPostPublishProgress] = useState<ProfilePushProgressState | null>(null);
   const [refreshingPostStats, setRefreshingPostStats] = useState<string | null>(null);
-  const [postCaptionModal, setPostCaptionModal] = useState<{
-    post: BskyPost;
-    mode: 'publish' | 'edit';
-  } | null>(null);
+  const [postCaptionModal, setPostCaptionModal] = useState<{ post: BskyPost } | null>(null);
   const [postCaptionText, setPostCaptionText] = useState('');
-  const [savingPostCaption, setSavingPostCaption] = useState(false);
+  const [assignPost, setAssignPost] = useState<BskyPost | null>(null);
+  const [assignPostEmployees, setAssignPostEmployees] = useState<Set<string>>(() => new Set());
+  const [assignPostAll, setAssignPostAll] = useState(false);
+  const [savingPostAssign, setSavingPostAssign] = useState(false);
   const postFileInputRef = useRef<HTMLInputElement>(null);
   const bannerAddInputRef = useRef<HTMLInputElement>(null);
   const picAddInputRef = useRef<HTMLInputElement>(null);
@@ -667,34 +668,116 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     return await res.blob();
   }
 
-  function openPostCaptionModal(post: BskyPost, mode: 'publish' | 'edit') {
-    setPostCaptionModal({ post, mode });
+  function getAssignedOwnersForPost(post: BskyPost): string[] | null {
+    const named = (post.employees ?? [])
+      .map((u) => u.trim().toLowerCase())
+      .filter(Boolean);
+    if (named.length > 0) return named;
+    if (post.allEmployees) {
+      const all = employees.map((e) => e.username.trim().toLowerCase()).filter(Boolean);
+      return all.length > 0 ? all : null;
+    }
+    return null;
+  }
+
+  function postableAccountsForPost(post: BskyPost): BskySavedAccount[] {
+    const assignees = getAssignedOwnersForPost(post);
+    if (!assignees) return pushableAccounts;
+    const allowed = new Set(assignees);
+    return pushableAccounts.filter((acct) => {
+      const owner = (acct.owner ?? 'admin').trim().toLowerCase();
+      return allowed.has(owner);
+    });
+  }
+
+  function proxiesForPost(post: BskyPost): Proxy[] {
+    const assignees = getAssignedOwnersForPost(post);
+    if (!assignees) {
+      if (isAdmin) return proxies;
+      return proxies.filter((p) => session && matchesEmployee(p, session.username));
+    }
+    const allowed = new Set(assignees);
+    return proxies.filter((p) => {
+      if (p.allEmployees) return true;
+      return assignedEmployees(p).some((u) => allowed.has(u.trim().toLowerCase()));
+    });
+  }
+
+  function credentialsForPublish(acct: BskySavedAccount, proxyId?: string): BskyCredentials {
+    const base = credentialsForSavedAccount(acct);
+    if (proxyId) {
+      return { ...base, proxy: proxyConfigFor(proxyId) };
+    }
+    return base;
+  }
+
+  function openPostPublishModal(post: BskyPost) {
+    const availableProxies = proxiesForPost(post);
+    setPostCaptionModal({ post });
     setPostCaptionText(post.text);
+    setPostPublishAccountIds(new Set());
+    setPostPublishAllAccounts(false);
+    setPostPublishProxyId(availableProxies.length === 1 ? availableProxies[0]!.id : '');
   }
 
   function closePostCaptionModal() {
     setPostCaptionModal(null);
     setPostCaptionText('');
+    setPostPublishAccountIds(new Set());
+    setPostPublishAllAccounts(false);
+    setPostPublishProxyId('');
   }
 
-  async function savePostCaptionOnly() {
-    if (!postCaptionModal) return;
-    setSavingPostCaption(true);
+  function openAssignPostModal(post: BskyPost) {
+    setAssignPost(post);
+    setAssignPostEmployees(new Set(post.employees ?? []));
+    setAssignPostAll(Boolean(post.allEmployees));
+  }
+
+  function closeAssignPostModal() {
+    setAssignPost(null);
+    setAssignPostEmployees(new Set());
+    setAssignPostAll(false);
+  }
+
+  function toggleAssignPostEmployee(username: string) {
+    setAssignPostEmployees((prev) => {
+      const next = new Set(prev);
+      if (next.has(username)) next.delete(username);
+      else next.add(username);
+      return next;
+    });
+  }
+
+  async function savePostAssign() {
+    if (!assignPost) return;
+    setSavingPostAssign(true);
     try {
-      await updatePost({ ...postCaptionModal.post, text: postCaptionText.trim() });
+      await updatePost({
+        ...assignPost,
+        employees: assignPostAll ? [] : [...assignPostEmployees],
+        allEmployees: assignPostAll,
+      });
       await loadAll();
-      closePostCaptionModal();
+      closeAssignPostModal();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save caption.');
+      setError(err instanceof Error ? err.message : 'Could not assign post.');
     } finally {
-      setSavingPostCaption(false);
+      setSavingPostAssign(false);
     }
   }
 
-  async function publishLibraryPost(post: BskyPost, caption: string) {
-    const targets = postPushAllAccounts
-      ? pushableAccounts
-      : pushableAccounts.filter((a) => postPushAccountIds.has(a.id));
+  async function publishLibraryPost(
+    post: BskyPost,
+    caption: string,
+    proxyId: string,
+    selectedAccountIds: Set<string>,
+    allAccounts: boolean,
+  ) {
+    const postable = postableAccountsForPost(post);
+    const targets = allAccounts
+      ? postable
+      : postable.filter((a) => selectedAccountIds.has(a.id));
     if (targets.length === 0) {
       setError('Select at least one Bluesky account with saved credentials.');
       return;
@@ -719,7 +802,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
         const handle = acct.handle.replace(/^@/, '');
         setPostPublishProgress({ pushKey, done: i, total: targets.length, currentHandle: handle, kind: 'post' });
         try {
-          const published = await publishBskyMediaPost(credentialsForSavedAccount(acct), {
+          const published = await publishBskyMediaPost(credentialsForPublish(acct, proxyId || undefined), {
             text: caption,
             file: mediaBlob,
             mediaType,
@@ -794,9 +877,9 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     link.click();
   }
 
-  function togglePostPushAccount(id: string) {
-    setPostPushAllAccounts(false);
-    setPostPushAccountIds((prev) => {
+  function togglePostPublishAccount(id: string) {
+    setPostPublishAllAccounts(false);
+    setPostPublishAccountIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
@@ -1206,6 +1289,21 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
       ),
     [savedAccounts],
   );
+
+  const activePostPublishAccounts = useMemo(
+    () => (postCaptionModal ? postableAccountsForPost(postCaptionModal.post) : []),
+    [postCaptionModal, pushableAccounts, employees, posts],
+  );
+
+  const activePostProxies = useMemo(
+    () => (postCaptionModal ? proxiesForPost(postCaptionModal.post) : []),
+    [postCaptionModal, proxies, employees, isAdmin, session],
+  );
+
+  const activePostAssignedOwners = useMemo(() => {
+    if (!postCaptionModal) return null;
+    return getAssignedOwnersForPost(postCaptionModal.post);
+  }, [postCaptionModal, employees, posts]);
 
   function credentialsForSavedAccount(acct: BskySavedAccount): BskyCredentials {
     const handle = acct.handle.trim().replace(/^@/, '');
@@ -2988,22 +3086,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                 )}
 
                 {postMediaTab !== 'engagement' && (
-                  <>
-                    <section className="panel">
-                      <h2>Post to Bluesky</h2>
-                      <div className="bio-form">
-                        <SavedAccountMultiPicker
-                          accounts={pushableAccounts}
-                          selected={postPushAccountIds}
-                          all={postPushAllAccounts}
-                          onToggle={togglePostPushAccount}
-                          onAllChange={setPostPushAllAccounts}
-                          hint="Choose saved accounts to publish library posts to."
-                        />
-                      </div>
-                    </section>
-
-                    <section className="panel">
+                  <section className="panel">
                       <div className="panel-head">
                         <h2>
                           {isAdmin
@@ -3028,23 +3111,24 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                       {displayedPosts.length === 0 ? (
                         <p className="empty-note">
                           {isAdmin
-                            ? `No ${postMediaTab === 'image' ? 'images' : 'videos'} yet. Upload one above, then post to selected accounts.`
+                            ? `No ${postMediaTab === 'image' ? 'images' : 'videos'} yet. Upload one, assign an employee, then post to Bluesky.`
                             : `No ${postMediaTab === 'image' ? 'images' : 'videos'} assigned to you yet.`}
                         </p>
                       ) : (
-                        <div className="reels-grid">
+                        <div className="post-library-grid">
                           {displayedPosts.map((post) => {
                             const hasPublished = (post.publishes ?? []).some((p) => p.uri && !p.error);
-                            const canPush =
-                              postPushAllAccounts || postPushAccountIds.size > 0;
+                            const postable = postableAccountsForPost(post);
                             const isPublishing = postPublishingId === post.id;
                             return (
-                              <div key={post.id} className="reel-cell">
+                              <div key={post.id} className="reel-cell reel-cell--post">
                                 {post.mediaType === 'video' && post.videoUrl ? (
                                   <video
                                     className="reel-cell__media"
                                     src={post.videoUrl}
-                                    controls
+                                    autoPlay
+                                    loop
+                                    muted
                                     playsInline
                                   />
                                 ) : post.imageUrl ? (
@@ -3078,10 +3162,10 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                                     <button
                                       type="button"
                                       className="reel-cell__btn reel-cell__btn--wide"
-                                      onClick={() => openPostCaptionModal(post, 'edit')}
-                                      title="Edit caption"
+                                      onClick={() => openAssignPostModal(post)}
+                                      title="Assign to employees"
                                     >
-                                      Edit caption
+                                      Assign
                                     </button>
                                   )}
                                   {isAdmin && (
@@ -3105,8 +3189,8 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                                     <button
                                       type="button"
                                       className="reel-cell__action reel-cell__action--primary"
-                                      disabled={isPublishing || !canPush}
-                                      onClick={() => openPostCaptionModal(post, 'publish')}
+                                      disabled={isPublishing || postable.length === 0}
+                                      onClick={() => openPostPublishModal(post)}
                                     >
                                       Post to Bluesky
                                     </button>
@@ -3118,7 +3202,6 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                         </div>
                       )}
                     </section>
-                  </>
                 )}
 
                 {postMediaTab === 'engagement' && (
@@ -3157,7 +3240,14 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                             <div key={post.id} className="post-engagement-card">
                               <div className="post-engagement-card__media">
                                 {post.mediaType === 'video' && post.videoUrl ? (
-                                  <video className="bsky-video" src={post.videoUrl} controls playsInline />
+                                  <video
+                                    className="bsky-video"
+                                    src={post.videoUrl}
+                                    autoPlay
+                                    loop
+                                    muted
+                                    playsInline
+                                  />
                                 ) : post.imageUrl ? (
                                   <img className="bsky-image bsky-image--post" src={post.imageUrl} alt="" loading="lazy" />
                                 ) : null}
@@ -4140,6 +4230,55 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
           </div>
         )}
 
+        {assignPost && (
+          <div className="modal" onClick={closeAssignPostModal}>
+            <form
+              className="modal__card"
+              onClick={(e) => e.stopPropagation()}
+              onSubmit={(e) => {
+                e.preventDefault();
+                void savePostAssign();
+              }}
+            >
+              <div className="modal__head">
+                <h3>Assign post</h3>
+                <button
+                  type="button"
+                  className="modal__close"
+                  onClick={closeAssignPostModal}
+                  aria-label="Close"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <p className="cred-note">Select which employees can post this item to their Bluesky accounts.</p>
+
+              <div className="schedule-modal__body">
+                <AssignmentPicker
+                  employees={employees}
+                  selected={assignPostEmployees}
+                  all={assignPostAll}
+                  onToggle={toggleAssignPostEmployee}
+                  onAllChange={setAssignPostAll}
+                />
+              </div>
+
+              <div className="schedule-modal__actions">
+                <button type="button" className="btn btn--ghost" onClick={closeAssignPostModal}>
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingPostAssign || (!assignPostAll && assignPostEmployees.size === 0)}
+                >
+                  {savingPostAssign ? 'Saving…' : 'Assign'}
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
+
         {postCaptionModal && (
           <div className="modal" onClick={closePostCaptionModal}>
             <form
@@ -4147,18 +4286,18 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
               onClick={(e) => e.stopPropagation()}
               onSubmit={(e) => {
                 e.preventDefault();
-                if (postCaptionModal.mode === 'edit') {
-                  void savePostCaptionOnly();
-                } else {
-                  void publishLibraryPost(postCaptionModal.post, postCaptionText);
-                }
+                void publishLibraryPost(
+                  postCaptionModal.post,
+                  postCaptionText,
+                  postPublishProxyId,
+                  postPublishAccountIds,
+                  postPublishAllAccounts,
+                );
               }}
             >
               <div className="modal__head">
                 <h3>
-                  {postCaptionModal.mode === 'edit'
-                    ? 'Edit caption'
-                    : `Post ${postCaptionModal.post.mediaType === 'video' ? 'video' : 'image'} to Bluesky`}
+                  Post {postCaptionModal.post.mediaType === 'video' ? 'video' : 'image'} to Bluesky
                 </h3>
                 <button
                   type="button"
@@ -4171,14 +4310,67 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
               </div>
 
               <div className="schedule-modal__body">
-                <textarea
-                  className="bio-form__textarea"
-                  placeholder="Write a caption…"
-                  value={postCaptionText}
-                  onChange={(e) => setPostCaptionText(e.target.value)}
-                  rows={4}
+                <label className="cred-field">
+                  <span className="cred-field__label">Caption</span>
+                  <textarea
+                    className="bio-form__textarea"
+                    placeholder="Write a caption…"
+                    value={postCaptionText}
+                    onChange={(e) => setPostCaptionText(e.target.value)}
+                    rows={4}
+                  />
+                </label>
+
+                {activePostAssignedOwners && (
+                  <p className="cred-field__hint">
+                    Assigned to:{' '}
+                    {postCaptionModal.post.allEmployees && (postCaptionModal.post.employees?.length ?? 0) === 0
+                      ? 'All employees'
+                      : activePostAssignedOwners.join(', ')}
+                  </p>
+                )}
+
+                <SavedAccountMultiPicker
+                  accounts={activePostPublishAccounts}
+                  selected={postPublishAccountIds}
+                  all={postPublishAllAccounts}
+                  onToggle={togglePostPublishAccount}
+                  onAllChange={setPostPublishAllAccounts}
+                  label="Bluesky accounts"
+                  hint={
+                    activePostAssignedOwners
+                      ? 'Showing accounts added by the assigned employee(s) only.'
+                      : 'Showing all accounts with saved credentials. Assign an employee to limit this list.'
+                  }
                 />
+
+                <label className="cred-field">
+                  <span className="cred-field__label">Proxy (optional)</span>
+                  <select
+                    className="cred-form__input"
+                    value={postPublishProxyId}
+                    onChange={(e) => setPostPublishProxyId(e.target.value)}
+                  >
+                    <option value="">
+                      {activePostProxies.length === 0 ? 'No proxies available' : 'No proxy'}
+                    </option>
+                    {activePostProxies.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {proxyOptionLabel(p)}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="cred-field__hint">
+                    Route this publish through a proxy assigned to the selected employee(s).
+                  </span>
+                </label>
               </div>
+
+              {postPublishingId === postCaptionModal.post.id && postPublishProgress && (
+                <div className="profile-push-progress--panel">
+                  <ProfilePushProgressBar progress={postPublishProgress} />
+                </div>
+              )}
 
               <div className="schedule-modal__actions">
                 <button type="button" className="btn btn--ghost" onClick={closePostCaptionModal}>
@@ -4187,20 +4379,12 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                 <button
                   type="submit"
                   disabled={
-                    savingPostCaption ||
                     postPublishingId === postCaptionModal.post.id ||
-                    (postCaptionModal.mode === 'publish' &&
-                      !postPushAllAccounts &&
-                      postPushAccountIds.size === 0)
+                    activePostPublishAccounts.length === 0 ||
+                    (!postPublishAllAccounts && postPublishAccountIds.size === 0)
                   }
                 >
-                  {postCaptionModal.mode === 'edit'
-                    ? savingPostCaption
-                      ? 'Saving…'
-                      : 'Save caption'
-                    : postPublishingId === postCaptionModal.post.id
-                      ? 'Posting…'
-                      : 'Post to Bluesky'}
+                  {postPublishingId === postCaptionModal.post.id ? 'Posting…' : 'Post to Bluesky'}
                 </button>
               </div>
             </form>

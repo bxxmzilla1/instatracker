@@ -3044,6 +3044,23 @@ button:disabled {
   object-fit: cover;
 }
 
+/* Bluesky post library: no grid chrome, transparent cells */
+.post-library-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 1rem;
+}
+
+.post-library-grid .reel-cell--post {
+  background: transparent;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.post-library-grid .reel-cell__media {
+  border-radius: 10px;
+}
+
 .image-crop-modal {
   width: min(420px, 100%);
 }
