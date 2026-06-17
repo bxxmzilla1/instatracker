@@ -9,6 +9,7 @@ import { CopyButton } from './components/CopyButton';
 import { CopyField } from './components/CopyField';
 import { Dashboard } from './components/Dashboard';
 import { HoverLoopVideo } from './components/HoverLoopVideo';
+import { Login } from './components/Login';
 import { ReelCard } from './components/ReelCard';
 import { checkHealth, fetchProfile, fetchReels } from './lib/api';
 import {
