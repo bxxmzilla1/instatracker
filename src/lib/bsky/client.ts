@@ -833,66 +833,6 @@ export async function getBskyPostEngagement(
   };
 }
 
-export interface PostSearchRank {
-  /** The query that was searched (as typed, e.g. "#blonde" or "blonde girls"). */
-  query: string;
-  /** Ranking order requested from Bluesky ("top" mirrors the app's Top tab). */
-  sort: 'top' | 'latest';
-  /** 1-based position of the post among the search results, or null if not found. */
-  position: number | null;
-  /** How many results were scanned before stopping. */
-  scanned: number;
-  /** True when the entire result set was scanned (Bluesky returned no further cursor). */
-  exhausted: boolean;
-  /** Bluesky's reported total hit count for the query, when available. */
-  hitsTotal?: number;
-}
-
-/**
- * Finds the current position of a published post in Bluesky's search results
- * for a given query, mirroring the "Top" tab of the search screen.
- *
- * Bluesky paginates search results (max 100 per page); we scan pages until the
- * post is found or `maxResults` is reached. Returns a 1-based position or null.
- */
-export async function getPostSearchRank(
-  credentials: BskyCredentials,
-  uri: string,
-  query: string,
-  options?: { sort?: 'top' | 'latest'; maxResults?: number },
-): Promise<PostSearchRank> {
-  const sort = options?.sort ?? 'top';
-  const maxResults = Math.max(1, options?.maxResults ?? 200);
-  const q = query.trim();
-  if (!q) throw new Error('Enter a hashtag or keyword to search.');
-  const agent = await loginBskyAgent(credentials);
-
-  let cursor: string | undefined;
-  let scanned = 0;
-  let hitsTotal: number | undefined;
-
-  while (scanned < maxResults) {
-    const limit = Math.min(100, maxResults - scanned);
-    const res = await agent.app.bsky.feed.searchPosts({ q, sort, limit, cursor });
-    const posts = res.data.posts ?? [];
-    if (typeof res.data.hitsTotal === 'number') hitsTotal = res.data.hitsTotal;
-
-    for (let i = 0; i < posts.length; i++) {
-      if (posts[i].uri === uri) {
-        return { query: q, sort, position: scanned + i + 1, scanned: scanned + posts.length, exhausted: false, hitsTotal };
-      }
-    }
-
-    scanned += posts.length;
-    cursor = res.data.cursor;
-    if (!cursor || posts.length === 0) {
-      return { query: q, sort, position: null, scanned, exhausted: true, hitsTotal };
-    }
-  }
-
-  return { query: q, sort, position: null, scanned, exhausted: false, hitsTotal };
-}
-
 /** Deletes a single published post from a Bluesky profile by its AT URI. */
 export async function deleteBskyPost(
   credentials: BskyCredentials,

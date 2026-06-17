@@ -66,12 +66,10 @@ import {
   unlikeBskyPost,
   repostBskyPost,
   unrepostBskyPost,
-  getPostSearchRank,
   runAccountJob,
   type BskyCredentials,
   type JobResult,
   type ProxyConfig,
-  type PostSearchRank,
 } from '../lib/bsky/client';
 import { AssignmentPicker } from './AssignmentPicker';
 import { ProxyPicker } from './ProxyPicker';
@@ -218,12 +216,6 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   >({});
   // Label of the in-flight mass action, keyed by post id (null when idle).
   const [massActionStatus, setMassActionStatus] = useState<Record<string, string>>({});
-  // Search-position results keyed by post id (most recent query first).
-  const [rankResults, setRankResults] = useState<Record<string, PostSearchRank[]>>({});
-  // Post ids with an in-flight search-position lookup.
-  const [rankBusy, setRankBusy] = useState<Record<string, boolean>>({});
-  // Manual keyword input for the search-position checker, keyed by post id.
-  const [rankQueryInput, setRankQueryInput] = useState<Record<string, string>>({});
   const [targets, setTargets] = useState<BskyTarget[]>([]);
   const [followEvents, setFollowEvents] = useState<BskyFollowEvent[]>([]);
   const [chartMonthOffset, setChartMonthOffset] = useState(0);
@@ -974,50 +966,6 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
       setError(err instanceof Error ? err.message : 'Could not refresh engagement stats.');
     } finally {
       setRefreshingPostStats(null);
-    }
-  }
-
-  // Extracts unique hashtags (with the leading #) from a post's text.
-  function hashtagsInText(text?: string): string[] {
-    if (!text) return [];
-    const matches = text.match(/#[\p{L}\p{N}_]+/gu) ?? [];
-    return Array.from(new Set(matches.map((t) => t.trim()))).filter(Boolean);
-  }
-
-  // Looks up the post's current position in Bluesky's "Top" search results for
-  // the given hashtag/keyword and stores it for display in the engagement card.
-  // The leading '#' is stripped so the lookup mirrors typing the plain word in
-  // the app's search bar (a tag-scoped query returns a different, smaller set).
-  async function checkPostRank(post: BskyPost, query: string) {
-    const q = query.trim().replace(/^#+/, '').trim();
-    if (!q) return;
-    const pub = (post.publishes ?? []).find((p) => p.uri && !p.error);
-    if (!pub) {
-      setError('No published post to rank for this card.');
-      return;
-    }
-    const acct = pushableAccounts.find((a) => a.id === pub.accountId);
-    if (!acct) {
-      setError('Account not found for this post.');
-      return;
-    }
-    setRankBusy((prev) => ({ ...prev, [post.id]: true }));
-    setError(null);
-    try {
-      const result = await getPostSearchRank(credentialsForSavedAccount(acct), pub.uri, q, {
-        sort: 'top',
-        maxResults: 300,
-      });
-      setRankResults((prev) => {
-        const existing = (prev[post.id] ?? []).filter(
-          (r) => r.query.toLowerCase() !== result.query.toLowerCase(),
-        );
-        return { ...prev, [post.id]: [result, ...existing] };
-      });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not check search position.');
-    } finally {
-      setRankBusy((prev) => ({ ...prev, [post.id]: false }));
     }
   }
 
@@ -3749,10 +3697,6 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                           const slaveRepostCount = successful.reduce((s, p) => s + (p.slaveReposts?.length ?? 0), 0);
                           const inputs = engagementInput(post.id);
                           const massBusy = massActionStatus[post.id];
-                          const postHashtags = hashtagsInText(post.text);
-                          const ranks = rankResults[post.id] ?? [];
-                          const rankIsBusy = Boolean(rankBusy[post.id]);
-                          const rankInput = rankQueryInput[post.id] ?? '';
                           return (
                             <div key={post.id} className="post-engagement-card">
                               <div className="post-engagement-card__media">
@@ -3899,72 +3843,6 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                                     )}
                                   </div>
                                 )}
-                                <div className="search-rank">
-                                  <div className="search-rank__head">
-                                    <span className="search-rank__title">Search position · Top</span>
-                                    {rankIsBusy && <span className="search-rank__status">Checking…</span>}
-                                  </div>
-                                  {postHashtags.length > 0 && (
-                                    <div className="search-rank__tags">
-                                      {postHashtags.map((tag) => (
-                                        <button
-                                          key={`${post.id}-rank-${tag}`}
-                                          type="button"
-                                          className="search-rank__chip"
-                                          disabled={rankIsBusy || successful.length === 0}
-                                          onClick={() => void checkPostRank(post, tag)}
-                                        >
-                                          {tag}
-                                        </button>
-                                      ))}
-                                    </div>
-                                  )}
-                                  <div className="search-rank__form">
-                                    <input
-                                      className="cred-form__input search-rank__input"
-                                      type="text"
-                                      placeholder="Search a keyword (e.g. blonde)…"
-                                      value={rankInput}
-                                      onChange={(e) =>
-                                        setRankQueryInput((prev) => ({ ...prev, [post.id]: e.target.value }))
-                                      }
-                                      onKeyDown={(e) => {
-                                        if (e.key === 'Enter') {
-                                          e.preventDefault();
-                                          if (rankInput.trim()) void checkPostRank(post, rankInput);
-                                        }
-                                      }}
-                                    />
-                                    <button
-                                      type="button"
-                                      className="btn"
-                                      disabled={rankIsBusy || successful.length === 0 || !rankInput.trim()}
-                                      onClick={() => void checkPostRank(post, rankInput)}
-                                    >
-                                      Check
-                                    </button>
-                                  </div>
-                                  {ranks.length > 0 && (
-                                    <ul className="search-rank__results">
-                                      {ranks.map((r) => (
-                                        <li key={`${post.id}-result-${r.query}`} className="search-rank__result">
-                                          <span className="search-rank__query">{r.query}</span>
-                                          {r.position != null ? (
-                                            <span className="search-rank__pos search-rank__pos--found">
-                                              #{r.position}
-                                            </span>
-                                          ) : (
-                                            <span className="search-rank__pos search-rank__pos--miss">
-                                              {r.exhausted
-                                                ? `Not in ${r.scanned} results`
-                                                : `Not in top ${r.scanned}`}
-                                            </span>
-                                          )}
-                                        </li>
-                                      ))}
-                                    </ul>
-                                  )}
-                                </div>
                                 <div className="post-engagement-card__actions">
                                   <button
                                     type="button"
