@@ -1513,7 +1513,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
         {items.length === 0 ? (
           <p className="empty-note">Nothing here yet.</p>
         ) : useReelCellLayout ? (
-          <div className="reels-grid">
+          <div className="banner-library-grid">
             {items.map((item) => (
               <div key={item.id} className="reel-cell reel-cell--banner">
                 <img className="reel-cell__media" src={item.url} alt={item.caption ?? ''} loading="lazy" />
