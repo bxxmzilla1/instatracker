@@ -186,7 +186,6 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   const [picPushAccountId, setPicPushAccountId] = useState('');
   const [bioPushAccountId, setBioPushAccountId] = useState('');
   const [directPicFile, setDirectPicFile] = useState<File | null>(null);
-  const [directBioText, setDirectBioText] = useState('');
   const [profilePushing, setProfilePushing] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
 
@@ -1684,40 +1683,26 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     <>
       <section className="panel">
         <h2>Update on Bluesky</h2>
-        <form
-          className="bio-form"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void pushBioToAccount(bioPushAccountId, directBioText, 'direct-bio');
-          }}
-        >
-          {accountSelectField(bioPushAccountId, setBioPushAccountId)}
-          <textarea
-            className="bio-form__textarea"
-            placeholder="Write the account bio…"
-            value={directBioText}
-            onChange={(e) => setDirectBioText(e.target.value)}
-            rows={4}
-          />
-          <button
-            type="submit"
-            disabled={profilePushing === 'direct-bio' || !bioPushAccountId || !directBioText.trim()}
-          >
-            {profilePushing === 'direct-bio' ? 'Updating…' : 'Update bio'}
-          </button>
-        </form>
+        <div className="bio-form">
+          {accountSelectField(
+            bioPushAccountId,
+            setBioPushAccountId,
+            undefined,
+            'Choose a saved account from Accounts, then push a library item below.',
+          )}
+        </div>
       </section>
 
       {isAdmin && (
         <section className="panel">
           <div className="panel-head">
-            <h2>Add bio to library</h2>
+            <h2>Bio library ({items.length})</h2>
             <button
               type="button"
               className={`panel-add-toggle ${openForms.has('bio') ? 'panel-add-toggle--open' : ''}`}
               onClick={() => toggleForm('bio')}
             >
-              {openForms.has('bio') ? 'Hide' : 'Add'}
+              {openForms.has('bio') ? 'Hide' : 'ADD'}
             </button>
           </div>
           {openForms.has('bio') && (
@@ -1741,10 +1726,45 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
               </button>
             </form>
           )}
+          {items.length === 0 ? (
+            <p className="empty-note">Nothing here yet.</p>
+          ) : (
+            <div className="bio-list">
+              {items.map((item) => (
+                <div key={item.id} className="bio-row">
+                  <div className="bio-row__body">
+                    <p className="bio-row__text">{item.text}</p>
+                    <div className="bio-row__assign">{renderAssignTags(item)}</div>
+                  </div>
+                  <div className="row-actions">
+                    <button
+                      type="button"
+                      className="row-edit bio-row__push"
+                      disabled={profilePushing === item.id || !bioPushAccountId}
+                      onClick={() => void pushBioToAccount(bioPushAccountId, item.text, item.id)}
+                      title="Push to Bluesky"
+                    >
+                      {profilePushing === item.id ? '…' : 'Push'}
+                    </button>
+                    <CopyButton value={item.text} title="Copy bio" />
+                    <button
+                      type="button"
+                      className="license-row__delete"
+                      onClick={() => onDelete(item.id)}
+                      title="Delete"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </section>
       )}
+      {!isAdmin && (
       <section className="panel">
-        <h2>{isAdmin ? `Bio library (${items.length})` : 'Your bios'}</h2>
+        <h2>Your bios</h2>
         {items.length === 0 ? (
           <p className="empty-note">Nothing here yet.</p>
         ) : (
@@ -1753,7 +1773,6 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
               <div key={item.id} className="bio-row">
                 <div className="bio-row__body">
                   <p className="bio-row__text">{item.text}</p>
-                  {isAdmin && <div className="bio-row__assign">{renderAssignTags(item)}</div>}
                 </div>
                 <div className="row-actions">
                   <button
@@ -1766,17 +1785,13 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                     {profilePushing === item.id ? '…' : 'Push'}
                   </button>
                   <CopyButton value={item.text} title="Copy bio" />
-                  {isAdmin && (
-                    <button type="button" className="license-row__delete" onClick={() => onDelete(item.id)} title="Delete">
-                      ✕
-                    </button>
-                  )}
                 </div>
               </div>
             ))}
           </div>
         )}
       </section>
+      )}
     </>
   );
 
