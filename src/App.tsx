@@ -106,20 +106,32 @@ function externalHref(url: string): string {
   return url.trim();
 }
 
+function getAssignedOwnersForContent(
+  reel: ContentReel,
+  knownEmployees: string[],
+): string[] | null {
+  const named = (reel.employees ?? [])
+    .map((u) => u.trim().toLowerCase())
+    .filter(Boolean);
+  if (named.length > 0) return named;
+  if (reel.allEmployees) {
+    const all = knownEmployees.map((u) => u.trim().toLowerCase()).filter(Boolean);
+    return all.length > 0 ? all : null;
+  }
+  return null;
+}
+
 function filterPostableAccountsForContent(
   reel: ContentReel,
   postable: TrackedAccount[],
+  knownEmployees: string[],
 ): TrackedAccount[] {
-  const assigned = reel.employees ?? [];
-  if (!reel.allEmployees && assigned.length === 0) {
-    return postable;
-  }
+  const assignees = getAssignedOwnersForContent(reel, knownEmployees);
+  if (!assignees) return postable;
+  const allowed = new Set(assignees);
   return postable.filter((account) => {
     const owner = (account.owner ?? 'admin').trim().toLowerCase();
-    if (reel.allEmployees) {
-      return owner !== 'admin';
-    }
-    return assigned.some((employee) => employee.trim().toLowerCase() === owner);
+    return allowed.has(owner);
   });
 }
 
@@ -568,7 +580,9 @@ export default function App() {
       fresh.publishingAt !== scheduleReel.publishingAt ||
       fresh.publishStage !== scheduleReel.publishStage ||
       fresh.postedAt !== scheduleReel.postedAt ||
-      fresh.postError !== scheduleReel.postError
+      fresh.postError !== scheduleReel.postError ||
+      fresh.allEmployees !== scheduleReel.allEmployees ||
+      JSON.stringify(fresh.employees ?? []) !== JSON.stringify(scheduleReel.employees ?? [])
     ) {
       setScheduleReel(fresh);
     }
@@ -1132,6 +1146,7 @@ export default function App() {
   }
 
   function toggleContentEmployee(username: string) {
+    setNewContentAll(false);
     setNewContentEmployees((prev) => {
       const next = new Set(prev);
       if (next.has(username)) next.delete(username);
@@ -1160,18 +1175,19 @@ export default function App() {
   }
 
   function openScheduleModal(reel: ContentReel, mode: 'post' | 'schedule') {
-    setScheduleReel(reel);
+    const fresh = content.find((c) => c.id === reel.id) ?? reel;
+    setScheduleReel(fresh);
     setScheduleMode(mode);
-    setNewContentCaption(reel.caption ?? '');
+    setNewContentCaption(fresh.caption ?? '');
     setNewContentTarget('');
     setNewContentProxyId('');
     setNewContentScheduledAt(mode === 'schedule' ? nowDatetimeLocal() : '');
     setPublishProgress(
-      isContentPublishing(reel)
+      isContentPublishing(fresh)
         ? {
             stage:
-              reel.publishStage ??
-              reel.scheduledPosts?.find((post) => post.publishingAt)?.publishStage ??
+              fresh.publishStage ??
+              fresh.scheduledPosts?.find((post) => post.publishingAt)?.publishStage ??
               'creating',
           }
         : null,
@@ -1233,9 +1249,12 @@ export default function App() {
   async function saveSchedule() {
     if (!scheduleReel) return;
 
+    const activeReel = content.find((c) => c.id === scheduleReel.id) ?? scheduleReel;
+    const knownEmployeeUsernames = employees.map((e) => e.username);
     const allowedAccounts = filterPostableAccountsForContent(
-      scheduleReel,
+      activeReel,
       accounts.filter((a) => a.igUserId && a.igAccessToken),
+      knownEmployeeUsernames,
     );
 
     if (scheduleMode === 'post') {
@@ -1709,12 +1728,21 @@ export default function App() {
   const showAddForm = view === 'accounts';
 
   const postableAccounts = accounts.filter((a) => a.igUserId && a.igAccessToken);
-  const schedulePostableAccounts = scheduleReel
-    ? filterPostableAccountsForContent(scheduleReel, postableAccounts)
+  const knownEmployeeUsernames = employees.map((e) => e.username);
+  const activeScheduleReel = scheduleReel
+    ? content.find((c) => c.id === scheduleReel.id) ?? scheduleReel
+    : null;
+  const schedulePostableAccounts = activeScheduleReel
+    ? filterPostableAccountsForContent(
+        activeScheduleReel,
+        postableAccounts,
+        knownEmployeeUsernames,
+      )
     : postableAccounts;
-  const scheduleReelHasEmployeeAssignment = Boolean(
-    scheduleReel && (scheduleReel.allEmployees || (scheduleReel.employees?.length ?? 0) > 0),
-  );
+  const scheduleAssignedOwners = activeScheduleReel
+    ? getAssignedOwnersForContent(activeScheduleReel, knownEmployeeUsernames)
+    : null;
+  const scheduleReelHasEmployeeAssignment = scheduleAssignedOwners !== null;
 
   const displayedContent = (() => {
     let list = content.filter((reel) => (reel.mediaType ?? 'reel') === contentTab);
@@ -3390,6 +3418,15 @@ export default function App() {
                       onChange={(e) => setNewContentScheduledAt(e.target.value)}
                     />
                   </label>
+                )}
+
+                {scheduleReelHasEmployeeAssignment && scheduleAssignedOwners && (
+                  <p className="cred-field__hint">
+                    Assigned to:{' '}
+                    {activeScheduleReel?.allEmployees && (activeScheduleReel.employees?.length ?? 0) === 0
+                      ? 'All employees'
+                      : scheduleAssignedOwners.join(', ')}
+                  </p>
                 )}
 
                 <label className="cred-field">
