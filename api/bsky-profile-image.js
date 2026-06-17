@@ -1,6 +1,6 @@
 import { pushProfileImageToBsky } from '../server/bskyProfilePush.js';
 
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {

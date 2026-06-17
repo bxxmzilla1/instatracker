@@ -62,15 +62,25 @@ export async function pushProfileImageToBsky({
     ...(proxy ? { fetch: makeRelayFetch(proxy) } : {}),
   });
 
-  try {
-    await agent.login({ identifier: identifier.trim(), password: password.trim() });
-    const { data } = await agent.uploadBlob(bytes, { encoding: type });
-    await agent.upsertProfile((existing) => {
-      const profile = { ...(existing ?? {}) };
-      profile[field] = data.blob;
-      return profile;
-    });
-  } catch (err) {
-    throw new Error(parseError(err));
+  let lastErr;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 1000 * attempt));
+    try {
+      await agent.login({ identifier: identifier.trim(), password: password.trim() });
+      const { data } = await agent.uploadBlob(bytes, { encoding: type });
+      await agent.upsertProfile((existing) => {
+        const profile = { ...(existing ?? {}) };
+        profile[field] = data.blob;
+        return profile;
+      });
+      return;
+    } catch (err) {
+      lastErr = err;
+      const msg = parseError(err);
+      if (!/timeout|timed out|econnreset|fetch failed|502|503|504|socket/i.test(msg) || attempt === 2) {
+        break;
+      }
+    }
   }
+  throw new Error(parseError(lastErr));
 }

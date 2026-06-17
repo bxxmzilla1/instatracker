@@ -112,6 +112,7 @@ const DEFAULT_DELAY_MAX = 2500;
 export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagram, onLock }: Props) {
   const [view, setView] = useState<View>('dashboard');
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const hasLoadedOnceRef = useRef(false);
@@ -164,6 +165,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   const [postText, setPostText] = useState('');
   const [postFile, setPostFile] = useState<File | null>(null);
   const bannerAddInputRef = useRef<HTMLInputElement>(null);
+  const profilePushInFlightRef = useRef(0);
   const [assignBanner, setAssignBanner] = useState<ImageAsset | null>(null);
   const [assignBannerEmployees, setAssignBannerEmployees] = useState<Set<string>>(() => new Set());
   const [assignBannerAll, setAssignBannerAll] = useState(false);
@@ -810,6 +812,18 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     );
   }
 
+  function beginProfilePush(pushKey: string) {
+    profilePushInFlightRef.current += 1;
+    setProfilePushing(pushKey);
+    setError(null);
+    setSuccessMessage(null);
+  }
+
+  function endProfilePush() {
+    profilePushInFlightRef.current = Math.max(0, profilePushInFlightRef.current - 1);
+    if (profilePushInFlightRef.current === 0) setProfilePushing(null);
+  }
+
   async function pushBioToAccount(accountId: string, text: string, pushKey: string) {
     const acct = pushableAccounts.find((a) => a.id === accountId);
     if (!acct) {
@@ -820,14 +834,14 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
       setError('Enter bio text to push.');
       return;
     }
-    setProfilePushing(pushKey);
-    setError(null);
+    beginProfilePush(pushKey);
     try {
       await pushProfileBio(credentialsForSavedAccount(acct), text.trim());
+      setSuccessMessage('Bio updated on Bluesky.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not update Bluesky bio.');
     } finally {
-      setProfilePushing(null);
+      endProfilePush();
     }
   }
 
@@ -852,8 +866,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
       setError('Select a Bluesky account with saved credentials.');
       return;
     }
-    setProfilePushing(pushKey);
-    setError(null);
+    beginProfilePush(pushKey);
     try {
       const credentials = credentialsForSavedAccount(acct);
       if (typeof imageSource === 'string') {
@@ -861,12 +874,15 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
       } else {
         await pushProfileImageFromFile(credentials, imageSource, field);
       }
+      setSuccessMessage(
+        `${field === 'banner' ? 'Banner' : 'Profile picture'} updated on Bluesky.`,
+      );
     } catch (err) {
       setError(
         err instanceof Error ? err.message : 'Could not update Bluesky profile image.',
       );
     } finally {
-      setProfilePushing(null);
+      endProfilePush();
     }
   }
 
@@ -884,23 +900,39 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
       setError('Select at least one Bluesky account with saved credentials.');
       return;
     }
-    setProfilePushing(pushKey);
-    setError(null);
+    beginProfilePush(pushKey);
+    const failures: string[] = [];
+    let ok = 0;
     try {
       for (const acct of targets) {
-        const credentials = credentialsForSavedAccount(acct);
-        if (typeof imageSource === 'string') {
-          await pushProfileImageFromUrl(credentials, imageSource, field);
-        } else {
-          await pushProfileImageFromFile(credentials, imageSource, field);
+        const handle = acct.handle.replace(/^@/, '');
+        try {
+          const credentials = credentialsForSavedAccount(acct);
+          if (typeof imageSource === 'string') {
+            await pushProfileImageFromUrl(credentials, imageSource, field);
+          } else {
+            await pushProfileImageFromFile(credentials, imageSource, field);
+          }
+          ok += 1;
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : 'Push failed';
+          failures.push(`@${handle}: ${msg}`);
         }
       }
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : 'Could not update Bluesky profile image.',
-      );
+      const label = field === 'banner' ? 'Banner' : 'Profile picture';
+      if (failures.length === 0) {
+        setSuccessMessage(
+          `${label} updated on ${ok} account${ok === 1 ? '' : 's'}.`,
+        );
+      } else if (ok > 0) {
+        setError(
+          `${label} updated on ${ok} account${ok === 1 ? '' : 's'}, but failed on ${failures.length}: ${failures.join(' · ')}`,
+        );
+      } else {
+        setError(failures.join(' · '));
+      }
     } finally {
-      setProfilePushing(null);
+      endProfilePush();
     }
   }
 
@@ -1544,7 +1576,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                   <button
                     type="button"
                     className="reel-cell__action reel-cell__action--primary"
-                    disabled={profilePushing === item.id || !canPush}
+                    disabled={profilePushing !== null || !canPush}
                     onClick={() => handlePush(item, item.url)}
                   >
                     {profilePushing === item.id ? 'Pushing…' : 'Push to Bluesky'}
@@ -1565,7 +1597,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                     <button
                       type="button"
                       className="content-tile__download"
-                      disabled={profilePushing === item.id || !canPush}
+                      disabled={profilePushing !== null || !canPush}
                       onClick={() => handlePush(item, item.url)}
                     >
                       {profilePushing === item.id ? 'Pushing…' : 'Push to Bluesky'}
@@ -1944,6 +1976,20 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
           <div className="banner banner--error banner--dismissible">
             <span>{error}</span>
             <button type="button" className="banner__close" onClick={() => setError(null)} aria-label="Dismiss">
+              ✕
+            </button>
+          </div>
+        )}
+
+        {successMessage && (
+          <div className="banner banner--publish banner--dismissible">
+            <span>{successMessage}</span>
+            <button
+              type="button"
+              className="banner__close"
+              onClick={() => setSuccessMessage(null)}
+              aria-label="Dismiss"
+            >
               ✕
             </button>
           </div>

@@ -10,6 +10,16 @@ import { AtpAgent } from '@atproto/api';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/** Above this size, proxied uploads use the server path (avoids huge JSON to /api/bsky-proxy). */
+const PROXY_SERVER_THRESHOLD_BYTES = 2.5 * 1024 * 1024;
+const PROFILE_PUSH_MAX_ATTEMPTS = 3;
+
+function isTransientPushError(message: string): boolean {
+  return /timeout|timed out|econnreset|econnrefused|fetch failed|network|proxy relay failed|502|503|504|socket/i.test(
+    message,
+  );
+}
+
 function bytesToBase64(bytes: Uint8Array): string {
   let binary = '';
   const chunk = 0x8000;
@@ -247,15 +257,27 @@ async function pushProfileImageViaServer(
     body.mimeType = payload.mimeType;
   }
 
-  const res = await fetch('/api/bsky-profile-image', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    const e = (await res.json().catch(() => ({}))) as { error?: string };
-    throw new Error(e.error || `Server push failed (${res.status})`);
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < PROFILE_PUSH_MAX_ATTEMPTS; attempt++) {
+    if (attempt > 0) await sleep(1000 * attempt);
+    try {
+      const res = await fetch('/api/bsky-profile-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const e = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(e.error || `Server push failed (${res.status})`);
+      }
+      return;
+    } catch (err) {
+      lastErr = err;
+      const msg = parseError(err);
+      if (!isTransientPushError(msg) || attempt === PROFILE_PUSH_MAX_ATTEMPTS - 1) break;
+    }
   }
+  throw new Error(parseError(lastErr));
 }
 
 async function pushProfileImageBytes(
@@ -264,17 +286,30 @@ async function pushProfileImageBytes(
   mimeType: string,
   field: 'avatar' | 'banner',
 ): Promise<void> {
-  if (credentials.proxy) {
+  if (credentials.proxy && bytes.length > PROXY_SERVER_THRESHOLD_BYTES) {
     await pushProfileImageViaServer(credentials, { bytes, mimeType }, field);
     return;
   }
-  const agent = await loginBskyAgent(credentials);
-  const { data } = await agent.uploadBlob(bytes, { encoding: mimeType });
-  await agent.upsertProfile((existing) => {
-    const profile = { ...(existing ?? {}) };
-    profile[field] = data.blob;
-    return profile;
-  });
+
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < PROFILE_PUSH_MAX_ATTEMPTS; attempt++) {
+    if (attempt > 0) await sleep(1000 * attempt);
+    try {
+      const agent = await loginBskyAgent(credentials);
+      const { data } = await agent.uploadBlob(bytes, { encoding: mimeType });
+      await agent.upsertProfile((existing) => {
+        const profile = { ...(existing ?? {}) };
+        profile[field] = data.blob;
+        return profile;
+      });
+      return;
+    } catch (err) {
+      lastErr = err;
+      const msg = parseError(err);
+      if (!isTransientPushError(msg) || attempt === PROFILE_PUSH_MAX_ATTEMPTS - 1) break;
+    }
+  }
+  throw new Error(parseError(lastErr));
 }
 
 export async function pushProfileImageFromUrl(
@@ -282,11 +317,11 @@ export async function pushProfileImageFromUrl(
   imageUrl: string,
   field: 'avatar' | 'banner',
 ): Promise<void> {
-  if (credentials.proxy) {
+  const { bytes, mimeType } = await urlToImageBytes(imageUrl);
+  if (credentials.proxy && bytes.length > PROXY_SERVER_THRESHOLD_BYTES) {
     await pushProfileImageViaServer(credentials, { imageUrl }, field);
     return;
   }
-  const { bytes, mimeType } = await urlToImageBytes(imageUrl);
   await pushProfileImageBytes(credentials, bytes, mimeType, field);
 }
 

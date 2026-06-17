@@ -39,7 +39,7 @@ export async function relayThroughProxy({
   return await new Promise((resolve, reject) => {
     const req = https.request(
       target,
-      { method, headers: outHeaders, agent, timeout: 45000 },
+      { method, headers: outHeaders, agent, timeout: 90000 },
       (resp) => {
         const chunks = [];
         resp.on('data', (c) => chunks.push(c));
