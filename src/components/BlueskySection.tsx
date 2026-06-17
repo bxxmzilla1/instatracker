@@ -1115,8 +1115,10 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
         }
         publishes[pi] = { ...pub, slaveLikes: likes };
       }
-      await updatePost({ ...post, publishes });
+      const updatedPost = { ...post, publishes };
+      await updatePost(updatedPost);
       await loadAll();
+      await refreshPostEngagement(updatedPost);
       if (failures.length > 0) {
         setError(`Liked with ${done}, failed ${failures.length}: ${failures.slice(0, 5).join(' · ')}`);
       } else {
@@ -1162,8 +1164,10 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
         }
         publishes[pi] = { ...pub, slaveReposts: reposts };
       }
-      await updatePost({ ...post, publishes });
+      const updatedPost = { ...post, publishes };
+      await updatePost(updatedPost);
       await loadAll();
+      await refreshPostEngagement(updatedPost);
       if (failures.length > 0) {
         setError(`Reposted with ${done}, failed ${failures.length}: ${failures.slice(0, 5).join(' · ')}`);
       } else {
@@ -1204,8 +1208,10 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
         }
         publishes[pi] = { ...pub, slaveLikes: remaining };
       }
-      await updatePost({ ...post, publishes });
+      const updatedPost = { ...post, publishes };
+      await updatePost(updatedPost);
       await loadAll();
+      await refreshPostEngagement(updatedPost);
       if (failures.length > 0) {
         setError(`Removed ${removed} likes, failed ${failures.length}: ${failures.slice(0, 5).join(' · ')}`);
       } else {
@@ -1246,8 +1252,10 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
         }
         publishes[pi] = { ...pub, slaveReposts: remaining };
       }
-      await updatePost({ ...post, publishes });
+      const updatedPost = { ...post, publishes };
+      await updatePost(updatedPost);
       await loadAll();
+      await refreshPostEngagement(updatedPost);
       if (failures.length > 0) {
         setError(`Removed ${removed} reposts, failed ${failures.length}: ${failures.slice(0, 5).join(' · ')}`);
       } else {
@@ -3755,6 +3763,16 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                                           </label>
                                           <button
                                             type="button"
+                                            className="btn btn--ghost"
+                                            disabled={Boolean(massBusy)}
+                                            onClick={() =>
+                                              setEngagementInput(post.id, 'like', String(slaveAccounts.length))
+                                            }
+                                          >
+                                            Max
+                                          </button>
+                                          <button
+                                            type="button"
                                             className="btn"
                                             disabled={
                                               Boolean(massBusy) ||
@@ -3788,6 +3806,16 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                                               onChange={(e) => setEngagementInput(post.id, 'repost', e.target.value)}
                                             />
                                           </label>
+                                          <button
+                                            type="button"
+                                            className="btn btn--ghost"
+                                            disabled={Boolean(massBusy)}
+                                            onClick={() =>
+                                              setEngagementInput(post.id, 'repost', String(slaveAccounts.length))
+                                            }
+                                          >
+                                            Max
+                                          </button>
                                           <button
                                             type="button"
                                             className="btn"
