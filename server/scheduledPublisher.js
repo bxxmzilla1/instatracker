@@ -7,9 +7,9 @@ import { publishContent, proxyRowToRelay } from './publish.js';
 
 const STALE_PUBLISH_MS = 15 * 60 * 1000;
 const LOCK_KEY = 'scheduled-publisher';
-const LOCK_TTL_MS = 5 * 60 * 1000;
+const LOCK_TTL_MS = 10 * 60 * 1000;
 const PUBLISH_GAP_MS = 4000;
-const DEFAULT_BATCH_LIMIT = 25;
+const RUN_BUDGET_MS = 280_000;
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -167,12 +167,23 @@ async function markScheduledPosted(db, rowId, postId, result) {
   const post = posts.find((entry) => entry.id === postId);
   if (!post) return;
 
-  const remaining = posts.filter((entry) => entry.id !== postId);
-  const hasPending = remaining.some((entry) => !entry.postedAt);
   const postedAt = Date.now();
+  const updated = posts.map((entry) =>
+    entry.id === postId
+      ? {
+          ...entry,
+          postedAt,
+          permalink: result.permalink,
+          publishingAt: undefined,
+          publishStage: undefined,
+          postError: undefined,
+        }
+      : entry,
+  );
+  const hasPending = updated.some((entry) => !entry.postedAt);
   const history = Array.isArray(row.post_history) ? row.post_history : [];
   const payload = {
-    scheduled_posts: remaining,
+    scheduled_posts: updated,
     scheduled_at: null,
     target_account: null,
     post_error: null,
@@ -233,7 +244,7 @@ async function loadRowsWithSchedules(db) {
   return [...byId.values()];
 }
 
-export async function runScheduledPublisher({ limit = DEFAULT_BATCH_LIMIT } = {}) {
+export async function runScheduledPublisher() {
   const db = getSupabaseAdmin();
   if (!db) {
     return { ok: false, error: 'Supabase service role not configured', processed: 0 };
@@ -247,28 +258,34 @@ export async function runScheduledPublisher({ limit = DEFAULT_BATCH_LIMIT } = {}
   try {
     await clearStaleLocks(db);
 
-    const now = Date.now();
-    let rows;
-    try {
-      rows = await loadRowsWithSchedules(db);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Could not load scheduled content';
-      return { ok: false, error: message, processed: 0 };
-    }
-
-    const dueItems = collectDueScheduledItems(rows, now);
-
     let processed = 0;
     const results = [];
+    const deadline = Date.now() + RUN_BUDGET_MS;
+    let staleClaims = 0;
 
-    const batch = dueItems.slice(0, limit);
-
-    for (let i = 0; i < batch.length; i++) {
-      const { row, post } = batch[i];
+    while (Date.now() < deadline) {
       await extendPublisherLock(db, lockHolder);
 
+      let rows;
+      try {
+        rows = await loadRowsWithSchedules(db);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Could not load scheduled content';
+        return { ok: false, error: message, processed };
+      }
+
+      const dueItems = collectDueScheduledItems(rows, Date.now());
+      if (dueItems.length === 0) break;
+
+      const { row, post } = dueItems[0];
       const claimed = await claimScheduledPost(db, row.id, post.id);
-      if (!claimed) continue;
+      if (!claimed) {
+        staleClaims += 1;
+        if (staleClaims >= 5) break;
+        await sleep(500);
+        continue;
+      }
+      staleClaims = 0;
 
       const { row: claimedRow, post: claimedPost } = claimed;
 
@@ -315,7 +332,7 @@ export async function runScheduledPublisher({ limit = DEFAULT_BATCH_LIMIT } = {}
         });
       }
 
-      if (i < batch.length - 1) {
+      if (Date.now() < deadline) {
         await sleep(PUBLISH_GAP_MS);
       }
     }

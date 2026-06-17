@@ -2788,6 +2788,11 @@ export default function App() {
                               <span className="schedule-card__type">
                                 {contentMediaLabel(reel.mediaType)}
                               </span>
+                              {scheduledPost.postedAt && (
+                                <span className="schedule-card__type schedule-card__type--posted">
+                                  Posted
+                                </span>
+                              )}
                             </div>
                             {(scheduledPost.caption ?? reel.caption) ? (
                               <p className="schedule-card__caption">
@@ -2813,15 +2818,18 @@ export default function App() {
                               </div>
                             ) : scheduledPost.postedAt ? (
                               <p className="schedule-card__status schedule-card__status--posted">
-                                ✓ Posted{' '}
+                                Posted
                                 {scheduledPost.permalink && (
-                                  <a
-                                    href={scheduledPost.permalink}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                  >
-                                    View
-                                  </a>
+                                  <>
+                                    {' · '}
+                                    <a
+                                      href={scheduledPost.permalink}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                    >
+                                      View on Instagram
+                                    </a>
+                                  </>
                                 )}
                               </p>
                             ) : scheduledPost.postError ? (
