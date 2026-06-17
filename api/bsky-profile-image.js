@@ -1,4 +1,4 @@
-import { pushProfileImageToBsky } from '../../server/bskyProfilePush.js';
+import { pushProfileImageToBsky } from '../server/bskyProfilePush.js';
 
 export const maxDuration = 60;
 
