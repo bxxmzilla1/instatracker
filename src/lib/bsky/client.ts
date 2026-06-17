@@ -570,6 +570,26 @@ async function prepareImageForBskyUpload(file: Blob): Promise<{
   throw new Error('Could not compress image under 2MB. Try a smaller image.');
 }
 
+function blobFromXrpcError(err: unknown): unknown | undefined {
+  const e = err as {
+    body?: { jobStatus?: { blob?: unknown } };
+    data?: { jobStatus?: { blob?: unknown } };
+  };
+  return e.body?.jobStatus?.blob ?? e.data?.jobStatus?.blob;
+}
+
+function isDuplicateVideoUpload(
+  status: number,
+  job?: { error?: string; message?: string },
+): boolean {
+  return (
+    status === 409 ||
+    job?.error === 'already_exists' ||
+    /already_exists/i.test(job?.error ?? '') ||
+    /already processed/i.test(job?.message ?? '')
+  );
+}
+
 async function uploadVideoViaBskyService(
   agent: AtpAgent,
   bytes: Uint8Array,
@@ -615,17 +635,27 @@ async function uploadVideoViaBskyService(
     error?: string;
   };
 
-  if (!uploadResponse.ok) {
-    if (uploadBody.jobStatus?.blob) return uploadBody.jobStatus.blob;
+  const uploadJob = uploadBody.jobStatus;
+  const duplicate = isDuplicateVideoUpload(uploadResponse.status, uploadJob);
+
+  let blob = uploadJob?.blob;
+  const jobId = uploadJob?.jobId;
+
+  if (!uploadResponse.ok && !blob && !jobId) {
     throw new Error(
-      uploadBody.message || uploadBody.error || `Video upload failed (${uploadResponse.status})`,
+      uploadBody.message ||
+        uploadBody.error ||
+        uploadJob?.message ||
+        `Video upload failed (${uploadResponse.status})`,
     );
   }
 
-  let blob = uploadBody.jobStatus?.blob;
-  const jobId = uploadBody.jobStatus?.jobId;
   if (blob) return blob;
   if (!jobId) throw new Error('Video upload did not return a job ID.');
+
+  if (duplicate) {
+    onProgress?.('Reusing processed video…');
+  }
 
   const videoAgent = new AtpAgent({ service: 'https://video.bsky.app' });
   for (let attempt = 0; attempt < BSKY_VIDEO_MAX_POLL_ATTEMPTS; attempt++) {
@@ -633,20 +663,30 @@ async function uploadVideoViaBskyService(
       const { data: status } = await videoAgent.app.bsky.video.getJobStatus({ jobId });
       const job = status.jobStatus;
       if (job.blob) return job.blob;
-      if (job.state === 'JOB_STATE_FAILED' && !job.blob) {
+      if (
+        job.state === 'JOB_STATE_FAILED' &&
+        !job.blob &&
+        !isDuplicateVideoUpload(409, job)
+      ) {
         throw new Error(job.message || job.error || 'Video processing failed.');
       }
       const progress =
         job.progress != null ? `${job.progress}%` : job.state?.replace('JOB_STATE_', '').toLowerCase() ?? '';
-      onProgress?.(`Processing video… ${progress}`.trim());
+      onProgress?.(
+        duplicate ? 'Reusing processed video…' : `Processing video… ${progress}`.trim(),
+      );
     } catch (err) {
+      const blobFromErr = blobFromXrpcError(err);
+      if (blobFromErr) return blobFromErr;
+
       const msg = parseError(err);
-      if (/already_exists/i.test(msg)) {
+      if (/already_exists|already processed/i.test(msg)) {
         try {
           const { data: status } = await videoAgent.app.bsky.video.getJobStatus({ jobId });
           if (status.jobStatus.blob) return status.jobStatus.blob;
-        } catch {
-          // fall through to retry
+        } catch (inner) {
+          const innerBlob = blobFromXrpcError(inner);
+          if (innerBlob) return innerBlob;
         }
       } else if (!/fetch|network|timeout/i.test(msg)) {
         throw err;
