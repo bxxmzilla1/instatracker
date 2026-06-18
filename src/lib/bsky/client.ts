@@ -771,7 +771,9 @@ async function uploadVideoViaBskyService(
 
   const uploadUrl = new URL('https://video.bsky.app/xrpc/app.bsky.video.uploadVideo');
   uploadUrl.searchParams.set('did', did);
-  uploadUrl.searchParams.set('name', fileName);
+  // Unique name per attempt so the service doesn't 409 on a name collision.
+  const baseName = /\.mp4$/i.test(fileName) ? fileName.replace(/\.mp4$/i, '') : 'video';
+  uploadUrl.searchParams.set('name', `${baseName}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp4`);
 
   onProgress?.('Uploading video…');
 
@@ -802,7 +804,16 @@ async function uploadVideoViaBskyService(
     normalizeVideoUploadResponse(uploadBody);
   const duplicate = isDuplicateVideoUpload(uploadResponse.status, uploadJob);
 
-  if (duplicate && !repostAttempt) {
+  const blob = uploadJob.blob;
+  const jobId = uploadJob.jobId;
+
+  // On "already_exists" (409) the video API returns the existing video's BlobRef
+  // (or a jobId we can poll) for reuse — prefer that over forcing a new upload.
+  if (blob) return ensureBlobRef(blob);
+
+  // Only re-upload a uniquified copy as a last resort: the service flagged a
+  // duplicate but gave us nothing usable (no blob, no jobId) to work with.
+  if (duplicate && !jobId && !repostAttempt) {
     onProgress?.('Preparing video for repost…');
     const uniqueBytes = uniquifyMp4Bytes(bytes);
     if (uniqueBytes.length > BSKY_VIDEO_MAX_BYTES) {
@@ -811,27 +822,15 @@ async function uploadVideoViaBskyService(
     return uploadVideoViaBskyService(agent, uniqueBytes, fileName, onProgress, true, proxy);
   }
 
-  let blob = uploadJob.blob;
-  const jobId = uploadJob.jobId;
-
-  if (!uploadResponse.ok && !blob && !jobId) {
-    throw new Error(
-      bodyMessage ||
-        bodyError ||
-        uploadJob.message ||
-        uploadJob.error ||
-        `Video upload failed (${uploadResponse.status})`,
-    );
-  }
-
-  if (blob) return ensureBlobRef(blob);
   if (!jobId) {
     throw new Error(
       bodyMessage ||
         bodyError ||
         uploadJob.message ||
         uploadJob.error ||
-        `Video upload did not return a job ID (${uploadResponse.status}).`,
+        (uploadResponse.ok
+          ? `Video upload did not return a job ID (${uploadResponse.status}).`
+          : `Video upload failed (${uploadResponse.status}).`),
     );
   }
 
