@@ -144,7 +144,7 @@ export async function runAccountWarmup(
     shouldCancel?: () => boolean;
   } = {},
   options: { startFromStepIndex?: number } = {},
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<{ ok: boolean; error?: string; cancelled?: boolean }> {
   const onProgress = hooks.onProgress ?? (() => {});
   const shouldCancel = hooks.shouldCancel ?? (() => false);
   const totalSteps = WARMUP_PLAN.length;
@@ -164,7 +164,7 @@ export async function runAccountWarmup(
     let lastProfileHandle: string | undefined;
 
     for (let i = startIdx; i < WARMUP_PLAN.length; i++) {
-      if (shouldCancel()) return { ok: true };
+      if (shouldCancel()) return { ok: true, cancelled: true };
 
       const action = WARMUP_PLAN[i];
       onProgress({ step: i + 1, totalSteps, label: action.label });

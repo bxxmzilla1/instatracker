@@ -714,12 +714,50 @@ function isDuplicateVideoUpload(
   );
 }
 
+interface VideoUploadJobStatus {
+  jobId?: string;
+  blob?: unknown;
+  state?: string;
+  progress?: number;
+  message?: string;
+  error?: string;
+}
+
+/** Bluesky returns JobStatus at the root; some payloads nest it under jobStatus. */
+function normalizeVideoUploadResponse(body: unknown): {
+  job: VideoUploadJobStatus;
+  message?: string;
+  error?: string;
+} {
+  if (!body || typeof body !== 'object') return { job: {} };
+  const raw = body as Record<string, unknown>;
+  const nested =
+    raw.jobStatus && typeof raw.jobStatus === 'object'
+      ? (raw.jobStatus as Record<string, unknown>)
+      : null;
+  const jobSource = nested ?? raw;
+  const job: VideoUploadJobStatus = {
+    jobId: typeof jobSource.jobId === 'string' ? jobSource.jobId : undefined,
+    blob: jobSource.blob,
+    state: typeof jobSource.state === 'string' ? jobSource.state : undefined,
+    progress: typeof jobSource.progress === 'number' ? jobSource.progress : undefined,
+    message: typeof jobSource.message === 'string' ? jobSource.message : undefined,
+    error: typeof jobSource.error === 'string' ? jobSource.error : undefined,
+  };
+  return {
+    job,
+    message: typeof raw.message === 'string' ? raw.message : undefined,
+    error: typeof raw.error === 'string' ? raw.error : undefined,
+  };
+}
+
 async function uploadVideoViaBskyService(
   agent: AtpAgent,
   bytes: Uint8Array,
   fileName: string,
   onProgress?: BskyPublishProgressCallback,
   repostAttempt = false,
+  proxy?: ProxyConfig,
 ): Promise<BlobRef> {
   const dispatchHost = agent.dispatchUrl?.host ?? new URL(agent.pdsUrl ?? agent.serviceUrl).host;
   const { data: serviceAuth } = await agent.com.atproto.server.getServiceAuth({
@@ -737,6 +775,7 @@ async function uploadVideoViaBskyService(
 
   onProgress?.('Uploading video…');
 
+  // Video bytes are too large for the JSON proxy relay; upload goes direct to video.bsky.app.
   const uploadResponse = await fetch(uploadUrl.toString(), {
     method: 'POST',
     headers: {
@@ -747,20 +786,20 @@ async function uploadVideoViaBskyService(
     body: bytes,
   });
 
-  const uploadBody = (await uploadResponse.json().catch(() => ({}))) as {
-    jobStatus?: {
-      jobId?: string;
-      blob?: unknown;
-      state?: string;
-      progress?: number;
-      message?: string;
-      error?: string;
-    };
-    message?: string;
-    error?: string;
-  };
+  const rawText = await uploadResponse.text();
+  let uploadBody: unknown = {};
+  if (rawText.trim()) {
+    try {
+      uploadBody = JSON.parse(rawText);
+    } catch {
+      throw new Error(
+        `Video upload returned invalid JSON (${uploadResponse.status}). Try again or switch proxy.`,
+      );
+    }
+  }
 
-  const uploadJob = uploadBody.jobStatus;
+  const { job: uploadJob, message: bodyMessage, error: bodyError } =
+    normalizeVideoUploadResponse(uploadBody);
   const duplicate = isDuplicateVideoUpload(uploadResponse.status, uploadJob);
 
   if (duplicate && !repostAttempt) {
@@ -769,25 +808,37 @@ async function uploadVideoViaBskyService(
     if (uniqueBytes.length > BSKY_VIDEO_MAX_BYTES) {
       throw new Error('Videos must be 100MB or smaller.');
     }
-    return uploadVideoViaBskyService(agent, uniqueBytes, fileName, onProgress, true);
+    return uploadVideoViaBskyService(agent, uniqueBytes, fileName, onProgress, true, proxy);
   }
 
-  let blob = uploadJob?.blob;
-  const jobId = uploadJob?.jobId;
+  let blob = uploadJob.blob;
+  const jobId = uploadJob.jobId;
 
   if (!uploadResponse.ok && !blob && !jobId) {
     throw new Error(
-      uploadBody.message ||
-        uploadBody.error ||
-        uploadJob?.message ||
+      bodyMessage ||
+        bodyError ||
+        uploadJob.message ||
+        uploadJob.error ||
         `Video upload failed (${uploadResponse.status})`,
     );
   }
 
   if (blob) return ensureBlobRef(blob);
-  if (!jobId) throw new Error('Video upload did not return a job ID.');
+  if (!jobId) {
+    throw new Error(
+      bodyMessage ||
+        bodyError ||
+        uploadJob.message ||
+        uploadJob.error ||
+        `Video upload did not return a job ID (${uploadResponse.status}).`,
+    );
+  }
 
-  const videoAgent = new AtpAgent({ service: 'https://video.bsky.app' });
+  const videoAgent = new AtpAgent({
+    service: 'https://video.bsky.app',
+    ...(proxy ? { fetch: makeProxyFetch(proxy) } : {}),
+  });
   for (let attempt = 0; attempt < BSKY_VIDEO_MAX_POLL_ATTEMPTS; attempt++) {
     try {
       const { data: status } = await videoAgent.app.bsky.video.getJobStatus({ jobId });
@@ -881,7 +932,14 @@ export async function publishBskyMediaPost(
   const fileName =
     options.fileName ||
     (options.file instanceof File && options.file.name ? options.file.name : 'video.mp4');
-  const videoBlob = await uploadVideoViaBskyService(agent, bytes, fileName, options.onProgress);
+  const videoBlob = await uploadVideoViaBskyService(
+    agent,
+    bytes,
+    fileName,
+    options.onProgress,
+    false,
+    credentials.proxy,
+  );
   const aspectRatio = await mediaAspectRatio(options.file, 'video');
 
   options.onProgress?.('Publishing post…');

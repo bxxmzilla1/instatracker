@@ -256,6 +256,8 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   const warmupCardProgressRef = useRef<Record<string, WarmupCardState>>({});
   const warmupClientIdRef = useRef(`client-${crypto.randomUUID()}`);
   const warmupResumeLockRef = useRef(false);
+  const warmupCancelRef = useRef<Record<string, boolean>>({});
+  const warmupStopRequestedRef = useRef(false);
   // Per-engagement-card input for how many slave accounts to like / repost with.
   const [engagementInputs, setEngagementInputs] = useState<
     Record<string, { like: string; repost: string }>
@@ -1354,6 +1356,20 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     [activeWarmupRows, remoteWarmupRuns, warmupCardProgress],
   );
 
+  const activeSlaveWarmupCount = useMemo(() => {
+    const keys = new Set<string>();
+    for (const [key, card] of Object.entries(warmupCardProgress)) {
+      if (!key.startsWith('slave:')) continue;
+      if (card.status === 'waiting' || card.status === 'running') keys.add(key);
+    }
+    for (const run of Object.values(remoteWarmupRuns)) {
+      if (run.accountKey.startsWith('slave:') && isWarmupRunInProgress(run)) {
+        keys.add(run.accountKey);
+      }
+    }
+    return keys.size;
+  }, [warmupCardProgress, remoteWarmupRuns]);
+
   function needsWarmupExecutor(run: BskyWarmupRun, now = Date.now()): boolean {
     if (!run.active) return false;
     if (run.status === 'done' || run.status === 'error') return false;
@@ -1374,6 +1390,56 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
       id: run.accountKey.startsWith(prefix) ? run.accountKey.slice(prefix.length) : run.accountKey,
       handle: run.handle,
     };
+  }
+
+  function warmupRowFromKey(key: string): WarmupRunRow {
+    const remote = remoteWarmupRuns[key];
+    if (remote) return warmupRowFromRun(remote);
+    const prefix = key.startsWith('slave:') ? 'slave:' : 'follow:';
+    const id = key.slice(prefix.length);
+    const handle =
+      (key.startsWith('slave:')
+        ? slaveAccounts.find((s) => s.id === id)?.handle
+        : accounts.find((a) => a.id === id)?.identifier) ?? key;
+    return { key, id, handle: handle.replace(/^@/, '') };
+  }
+
+  function collectActiveSlaveWarmupKeys(): string[] {
+    const keys = new Set<string>();
+    for (const key of warmupExecutorKeysRef.current) {
+      if (key.startsWith('slave:')) keys.add(key);
+    }
+    for (const [key, card] of Object.entries(warmupCardProgress)) {
+      if (!key.startsWith('slave:')) continue;
+      if (card.status === 'waiting' || card.status === 'running') keys.add(key);
+    }
+    for (const run of Object.values(remoteWarmupRuns)) {
+      if (run.accountKey.startsWith('slave:') && isWarmupRunInProgress(run)) {
+        keys.add(run.accountKey);
+      }
+    }
+    return [...keys];
+  }
+
+  function stopAllSlaveWarmups() {
+    const keys = collectActiveSlaveWarmupKeys();
+    if (keys.length === 0) return;
+    warmupStopRequestedRef.current = true;
+    for (const key of keys) warmupCancelRef.current[key] = true;
+    for (const key of keys) {
+      const card = warmupCardProgress[key];
+      if (card?.status === 'waiting') {
+        clearFinishedWarmupRow(warmupRowFromKey(key), 0);
+      } else if (card?.status === 'running') {
+        setWarmupCardProgress((prev) => ({
+          ...prev,
+          [key]: { ...prev[key]!, label: 'Stopping…' },
+        }));
+      } else {
+        void deleteWarmupRun(key).catch(() => {});
+      }
+    }
+    setSuccessMessage(`Stopping ${keys.length} slave warm-up${keys.length === 1 ? '' : 's'}…`);
   }
 
   function persistWarmupRun(
@@ -1522,6 +1588,11 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     row: WarmupRunRow,
     options: { resume?: boolean; queueOrder: number },
   ): Promise<string | null> {
+    if (warmupCancelRef.current[row.key]) {
+      clearFinishedWarmupRow(row, 0);
+      return null;
+    }
+
     const remote = remoteWarmupRuns[row.key];
     const creds = warmupCredentialsForRow(row);
     if (!creds) {
@@ -1575,9 +1646,16 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
             setWarmupCardProgress((prev) => ({ ...prev, [row.key]: card }));
             persistWarmupRun(row, card, true, false, options.queueOrder);
           },
+          shouldCancel: () => warmupCancelRef.current[row.key] === true,
         },
         { startFromStepIndex },
       );
+
+      if (res.cancelled || warmupCancelRef.current[row.key]) {
+        delete warmupCancelRef.current[row.key];
+        clearFinishedWarmupRow(row, 0);
+        return null;
+      }
 
       if (!res.ok) {
         const err = res.error ?? 'warm-up failed';
@@ -1622,6 +1700,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     if (!options.resume) {
       const initialCards: Record<string, WarmupCardState> = {};
       ordered.forEach((row, index) => {
+        warmupCancelRef.current[row.key] = false;
         initialCards[row.key] = {
           status: 'waiting',
           step: 0,
@@ -1641,10 +1720,14 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
       const launch = () => {
         while (activeWorkers < WARMUP_CONCURRENCY && cursor < ordered.length) {
           const row = ordered[cursor];
-          const queueOrder = options.resume
-            ? warmupQueueOrderForKey(row.key, cursor)
-            : cursor;
           cursor += 1;
+          if (warmupCancelRef.current[row.key]) {
+            clearFinishedWarmupRow(row, 0);
+            continue;
+          }
+          const queueOrder = options.resume
+            ? warmupQueueOrderForKey(row.key, cursor - 1)
+            : cursor - 1;
           activeWorkers += 1;
           void runWarmupOne(row, { resume: options.resume, queueOrder }).then((failure) => {
             if (failure) failures.push(failure);
@@ -1653,13 +1736,18 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
             else launch();
           });
         }
-        if (ordered.length === 0) resolve();
+        if (ordered.length === 0 || (cursor >= ordered.length && activeWorkers === 0)) resolve();
       };
       launch();
     });
 
+    const stopped = warmupStopRequestedRef.current;
+    warmupStopRequestedRef.current = false;
+
     if (!options.resume) {
-      if (failures.length > 0) {
+      if (stopped) {
+        setSuccessMessage('Warm-up stopped.');
+      } else if (failures.length > 0) {
         setError(
           `Warm-up finished with ${failures.length} error${failures.length === 1 ? '' : 's'}: ${failures.slice(0, 3).join(' · ')}`,
         );
@@ -4327,16 +4415,27 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
               <section className="panel">
                 <div className="panel-head">
                   <h2>Warmups</h2>
-                  <button
-                    type="button"
-                    className="btn"
-                    disabled={startableWarmupRows.length === 0}
-                    onClick={() => void startWarmup()}
-                  >
-                    {warmupRunning
-                      ? `Running… · ${startableWarmupRows.length} ready`
-                      : `Start warm-up (${startableWarmupRows.length})`}
-                  </button>
+                  <div style={{ display: 'flex', gap: '0.5rem', flexShrink: 0 }}>
+                    {warmupTab === 'slave' && activeSlaveWarmupCount > 0 && (
+                      <button
+                        type="button"
+                        className="btn btn--danger"
+                        onClick={stopAllSlaveWarmups}
+                      >
+                        Stop all ({activeSlaveWarmupCount})
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="btn"
+                      disabled={startableWarmupRows.length === 0}
+                      onClick={() => void startWarmup()}
+                    >
+                      {warmupRunning
+                        ? `Running… · ${startableWarmupRows.length} ready`
+                        : `Start warm-up (${startableWarmupRows.length})`}
+                    </button>
+                  </div>
                 </div>
 
                 <p className="empty-note">
