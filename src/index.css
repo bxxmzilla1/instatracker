@@ -3626,6 +3626,13 @@ button:disabled {
   color: #ef4444;
 }
 
+.warmup-bubble-card__delete {
+  width: 100%;
+  margin-top: 0.65rem;
+  padding: 0.4rem 0.65rem;
+  font-size: 0.78rem;
+}
+
 .slave-row__check {
   display: flex;
   align-items: center;

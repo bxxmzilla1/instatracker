@@ -241,6 +241,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   const [warmupCardProgress, setWarmupCardProgress] = useState<Record<string, WarmupCardState>>(
     {},
   );
+  const [deletingWarmupKey, setDeletingWarmupKey] = useState<string | null>(null);
   // Per-engagement-card input for how many slave accounts to like / repost with.
   const [engagementInputs, setEngagementInputs] = useState<
     Record<string, { like: string; repost: string }>
@@ -1387,6 +1388,56 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     }
   }
 
+  function isAccountTakedownError(message?: string): boolean {
+    return /taken\s*down|takedown|accountsuspended|account\s*suspended/i.test(message ?? '');
+  }
+
+  async function handleDeleteTakedownWarmupAccount(row: WarmupRunRow) {
+    const label = `@${row.handle}`;
+    if (
+      !window.confirm(
+        `Delete ${label} from the app? This permanently removes the account from your lists.`,
+      )
+    ) {
+      return;
+    }
+    setDeletingWarmupKey(row.key);
+    setError(null);
+    try {
+      if (row.key.startsWith('slave:')) {
+        await deleteSlaveAccount(row.id);
+      } else {
+        await deleteBskyAccount(row.id);
+        const norm = row.handle.toLowerCase();
+        const saved = savedAccounts.find(
+          (a) => a.handle.trim().replace(/^@/, '').toLowerCase() === norm,
+        );
+        if (saved) await deleteSavedAccount(saved.id);
+      }
+      setSelectedFollowWarmupIds((prev) => {
+        const next = new Set(prev);
+        next.delete(row.id);
+        return next;
+      });
+      setSelectedSlaveWarmupIds((prev) => {
+        const next = new Set(prev);
+        next.delete(row.id);
+        return next;
+      });
+      setWarmupCardProgress((prev) => {
+        const next = { ...prev };
+        delete next[row.key];
+        return next;
+      });
+      setSuccessMessage(`${label} removed from the app.`);
+      await loadAll();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not delete account.');
+    } finally {
+      setDeletingWarmupKey(null);
+    }
+  }
+
   function renderWarmupBubbleCards(rows: WarmupRunRow[]) {
     if (rows.length === 0) return null;
     return (
@@ -1433,6 +1484,16 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                 </span>
               </div>
               {card.error && <p className="warmup-bubble-card__error">{card.error}</p>}
+              {card.status === 'error' && isAccountTakedownError(card.error) && (
+                <button
+                  type="button"
+                  className="btn btn--danger warmup-bubble-card__delete"
+                  disabled={deletingWarmupKey === row.key || warmupRunning}
+                  onClick={() => void handleDeleteTakedownWarmupAccount(row)}
+                >
+                  {deletingWarmupKey === row.key ? 'Deleting…' : 'Delete account'}
+                </button>
+              )}
             </div>
           );
         })}
