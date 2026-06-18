@@ -202,19 +202,11 @@ export async function processWarmupQueue() {
         updatedAt: Date.now(),
         claimedBy: EXECUTOR_ID,
       });
+      await db.from('bsky_warmup_runs').delete().eq('account_key', next.accountKey);
       return { processed: 1, accountKey: next.accountKey, error: res.error };
     }
 
-    await upsertWarmupRun(db, {
-      ...next,
-      status: 'done',
-      step: WARMUP_STEP_COUNT,
-      totalSteps: WARMUP_STEP_COUNT,
-      label: 'Completed',
-      active: false,
-      updatedAt: Date.now(),
-      claimedBy: EXECUTOR_ID,
-    });
+    await db.from('bsky_warmup_runs').delete().eq('account_key', next.accountKey);
     return { processed: 1, accountKey: next.accountKey, ok: true };
   } finally {
     clearInterval(heartbeat);
