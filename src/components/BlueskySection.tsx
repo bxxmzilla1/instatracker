@@ -210,6 +210,9 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   const [newSlaveHandle, setNewSlaveHandle] = useState('');
   const [newSlavePassword, setNewSlavePassword] = useState('');
   const [savingSlave, setSavingSlave] = useState(false);
+  // Multi-select for bulk-deleting slave accounts.
+  const [selectedSlaveIds, setSelectedSlaveIds] = useState<Set<string>>(() => new Set());
+  const [deletingSlaves, setDeletingSlaves] = useState(false);
   // Per-engagement-card input for how many slave accounts to like / repost with.
   const [engagementInputs, setEngagementInputs] = useState<
     Record<string, { like: string; repost: string }>
@@ -1052,10 +1055,73 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   async function handleDeleteSlaveAccount(id: string) {
     try {
       await deleteSlaveAccount(id);
+      setSelectedSlaveIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
       await loadAll();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not delete slave account.');
     }
+  }
+
+  function toggleSlaveSelected(id: string) {
+    setSelectedSlaveIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectAllSlaves() {
+    setSelectedSlaveIds((prev) =>
+      prev.size === slaveAccounts.length ? new Set() : new Set(slaveAccounts.map((a) => a.id)),
+    );
+  }
+
+  // Deletes the given slave account ids sequentially, then refreshes.
+  async function deleteSlaveAccounts(ids: string[]) {
+    if (ids.length === 0) return;
+    setDeletingSlaves(true);
+    setError(null);
+    const failures: string[] = [];
+    try {
+      for (const id of ids) {
+        try {
+          await deleteSlaveAccount(id);
+        } catch (err) {
+          failures.push(err instanceof Error ? err.message : 'delete failed');
+        }
+      }
+      setSelectedSlaveIds(new Set());
+      await loadAll();
+      if (failures.length > 0) {
+        setError(`Deleted ${ids.length - failures.length} of ${ids.length}. ${failures.length} failed.`);
+      } else {
+        setSuccessMessage(`Deleted ${ids.length} slave account${ids.length === 1 ? '' : 's'}.`);
+      }
+    } finally {
+      setDeletingSlaves(false);
+    }
+  }
+
+  async function handleDeleteSelectedSlaves() {
+    const ids = slaveAccounts.filter((a) => selectedSlaveIds.has(a.id)).map((a) => a.id);
+    if (ids.length === 0) return;
+    if (!window.confirm(`Delete ${ids.length} selected slave account${ids.length === 1 ? '' : 's'}?`)) {
+      return;
+    }
+    await deleteSlaveAccounts(ids);
+  }
+
+  async function handleDeleteAllSlaves() {
+    if (slaveAccounts.length === 0) return;
+    if (!window.confirm(`Delete ALL ${slaveAccounts.length} slave accounts? This cannot be undone.`)) {
+      return;
+    }
+    await deleteSlaveAccounts(slaveAccounts.map((a) => a.id));
   }
 
   function engagementInput(postId: string): { like: string; repost: string } {
@@ -3259,6 +3325,48 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                   appear in account dropdowns.
                 </p>
 
+                {slaveAccounts.length > 0 && (
+                  <div className="slave-bulkbar">
+                    <label className="slave-bulkbar__select">
+                      <input
+                        type="checkbox"
+                        checked={selectedSlaveIds.size === slaveAccounts.length}
+                        ref={(el) => {
+                          if (el)
+                            el.indeterminate =
+                              selectedSlaveIds.size > 0 &&
+                              selectedSlaveIds.size < slaveAccounts.length;
+                        }}
+                        onChange={toggleSelectAllSlaves}
+                        disabled={deletingSlaves}
+                      />
+                      <span>
+                        {selectedSlaveIds.size > 0
+                          ? `${selectedSlaveIds.size} selected`
+                          : 'Select all'}
+                      </span>
+                    </label>
+                    <div className="slave-bulkbar__actions">
+                      <button
+                        type="button"
+                        className="btn btn--ghost"
+                        disabled={deletingSlaves || selectedSlaveIds.size === 0}
+                        onClick={() => void handleDeleteSelectedSlaves()}
+                      >
+                        {deletingSlaves ? 'Deleting…' : `Delete selected (${selectedSlaveIds.size})`}
+                      </button>
+                      <button
+                        type="button"
+                        className="license-row__delete slave-bulkbar__delete-all"
+                        disabled={deletingSlaves}
+                        onClick={() => void handleDeleteAllSlaves()}
+                      >
+                        Delete all
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 {showAddSlave && (
                   <form className="bio-form" onSubmit={handleAddSlaveAccount}>
                     <input
@@ -3304,7 +3412,18 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                 ) : (
                   <div className="proxy-list">
                     {slaveAccounts.map((acct) => (
-                      <div key={acct.id} className="proxy-row">
+                      <div
+                        key={acct.id}
+                        className={`proxy-row${selectedSlaveIds.has(acct.id) ? ' proxy-row--selected' : ''}`}
+                      >
+                        <label className="slave-row__check" title="Select">
+                          <input
+                            type="checkbox"
+                            checked={selectedSlaveIds.has(acct.id)}
+                            onChange={() => toggleSlaveSelected(acct.id)}
+                            disabled={deletingSlaves}
+                          />
+                        </label>
                         <div className="proxy-row__body">
                           <div className="proxy-row__top">
                             <strong>@{acct.handle}</strong>
@@ -3319,6 +3438,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                             type="button"
                             className="license-row__delete"
                             onClick={() => handleDeleteSlaveAccount(acct.id)}
+                            disabled={deletingSlaves}
                             title="Delete slave account"
                           >
                             ✕

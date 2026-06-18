@@ -3472,6 +3472,62 @@ button:disabled {
   color: var(--accent);
 }
 
+.slave-bulkbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin: 0.5rem 0 0.75rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-2);
+}
+
+.slave-bulkbar__select {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.slave-bulkbar__select input {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.slave-bulkbar__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.slave-bulkbar__delete-all {
+  padding: 0.35rem 0.7rem;
+  font-size: 0.8rem;
+  border-radius: 8px;
+}
+
+.slave-row__check {
+  display: flex;
+  align-items: center;
+  padding-right: 0.25rem;
+}
+
+.slave-row__check input {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.proxy-row--selected {
+  border-color: var(--accent);
+  background: rgba(29, 155, 240, 0.1);
+}
+
 .publish-progress--indeterminate .publish-progress__track {
   position: relative;
 }
