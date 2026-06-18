@@ -35,14 +35,43 @@ function proxyRowToRelay(row) {
   };
 }
 
+function trimCaption(value) {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+async function verifyContainerCaption(containerId, accessToken, expectedCaption, proxy) {
+  const expected = trimCaption(expectedCaption);
+  if (!expected) return;
+
+  try {
+    const { caption: stored } = await graphCall(
+      'GET',
+      `/${containerId}`,
+      accessToken,
+      { fields: 'caption' },
+      proxy,
+    );
+    const got = trimCaption(stored);
+    if (!got) {
+      throw new Error(
+        'Instagram accepted the reel but did not store the caption on the media container. Check API permissions (instagram_content_publish) and try again.',
+      );
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (message.includes('did not store the caption')) throw err;
+    // Caption field may not be readable on the container yet — do not block publish.
+  }
+}
+
 async function createMediaContainer(igUserId, accessToken, params, proxy) {
   const payload = { ...params };
-  if (payload.caption != null) {
-    const caption = String(payload.caption).trim();
-    if (caption) payload.caption = caption;
-    else delete payload.caption;
-  }
+  const expectedCaption = payload.caption != null ? trimCaption(String(payload.caption)) : '';
+  if (expectedCaption) payload.caption = expectedCaption;
+  else delete payload.caption;
+
   const data = await graphCall('POST', `/${igUserId}/media`, accessToken, payload, proxy);
+  await verifyContainerCaption(data.id, accessToken, expectedCaption, proxy);
   return data.id;
 }
 

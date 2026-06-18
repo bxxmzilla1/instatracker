@@ -361,13 +361,15 @@ export async function runScheduledPublisher() {
             ipInfo = undefined;
           }
         }
+        const caption = resolvePublishCaption(claimedPost, claimedRow);
+
         const result = await publishContent(
           igUserId,
           igAccessToken,
           {
             mediaType: claimedRow.media_type ?? 'reel',
             mediaUrls,
-            caption: resolvePublishCaption(claimedPost, claimedRow),
+            caption,
             proxy,
           },
           async (progress) => {

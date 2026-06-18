@@ -90,12 +90,14 @@ export async function relayGraphRequest(payload = {}) {
       init.body = JSON.stringify(body);
     }
   } else {
-    // Form body (not query string) for POST params — required for multi-line
-    // captions with emoji/hashtags, especially when publishing through a proxy.
+    // Meta Graph POST examples pass params (including access_token and caption)
+    // as application/x-www-form-urlencoded in the body — not the query string.
+    // Query-string captions are truncated by URL limits and many proxies.
     const form = new URLSearchParams();
     for (const [key, value] of Object.entries(params)) {
       if (value != null) form.set(key, String(value));
     }
+    form.set('access_token', accessToken);
     init.headers['Content-Type'] = 'application/x-www-form-urlencoded';
     init.body = form.toString();
   }
