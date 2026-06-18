@@ -2245,34 +2245,6 @@ export default function App() {
 
           <button
             type="button"
-            className={view === 'bio' ? 'nav-item nav-item--active' : 'nav-item'}
-            onClick={() => {
-              setSelectedEmployee(null);
-              setView('bio');
-            }}
-          >
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M4 5h16M4 10h16M4 15h10M4 20h7" />
-            </svg>
-            Account Bio
-          </button>
-
-          <button
-            type="button"
-            className={view === 'cta' ? 'nav-item nav-item--active' : 'nav-item'}
-            onClick={() => {
-              setSelectedEmployee(null);
-              setView('cta');
-            }}
-          >
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M3 11l18-7-7 18-2.5-7.5z" />
-            </svg>
-            CTA
-          </button>
-
-          <button
-            type="button"
             className={view === 'content' ? 'nav-item nav-item--active' : 'nav-item'}
             onClick={() => {
               setSelectedEmployee(null);
