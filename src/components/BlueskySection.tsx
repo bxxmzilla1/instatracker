@@ -76,6 +76,7 @@ import { AssignmentPicker } from './AssignmentPicker';
 import { ProxyPicker } from './ProxyPicker';
 import { SavedAccountMultiPicker } from './SavedAccountMultiPicker';
 import { SavedAccountPicker } from './SavedAccountPicker';
+import { WarmupAccountMultiPicker } from './WarmupAccountMultiPicker';
 import { SquareImageCropModal } from './SquareImageCropModal';
 import { BskyFollowChart, type FollowBar } from './BskyFollowChart';
 import { CopyButton } from './CopyButton';
@@ -216,17 +217,30 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   // Multi-select for bulk-deleting slave accounts.
   const [selectedSlaveIds, setSelectedSlaveIds] = useState<Set<string>>(() => new Set());
   const [deletingSlaves, setDeletingSlaves] = useState(false);
-  // Warm-up multi-select and progress (Bluesky accounts + slave pool).
-  const [selectedWarmupKeys, setSelectedWarmupKeys] = useState<Set<string>>(() => new Set());
-  const [warmupRunning, setWarmupRunning] = useState(false);
-  const [warmupProgress, setWarmupProgress] = useState<{
-    accountIndex: number;
-    accountTotal: number;
-    accountHandle: string;
+  // Warm-up tabs, selection, and per-account bubble progress.
+  type WarmupTab = 'follow' | 'slave';
+  type WarmupCardStatus = 'ready' | 'waiting' | 'running' | 'done' | 'error';
+  type WarmupCardState = {
+    status: WarmupCardStatus;
     step: number;
     totalSteps: number;
     label: string;
-  } | null>(null);
+    error?: string;
+  };
+  const [warmupTab, setWarmupTab] = useState<WarmupTab>('follow');
+  const [warmupFollowEmployee, setWarmupFollowEmployee] = useState('');
+  const [selectedFollowWarmupIds, setSelectedFollowWarmupIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [selectAllFollowWarmups, setSelectAllFollowWarmups] = useState(false);
+  const [selectedSlaveWarmupIds, setSelectedSlaveWarmupIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [selectAllSlaveWarmups, setSelectAllSlaveWarmups] = useState(false);
+  const [warmupRunning, setWarmupRunning] = useState(false);
+  const [warmupCardProgress, setWarmupCardProgress] = useState<Record<string, WarmupCardState>>(
+    {},
+  );
   // Per-engagement-card input for how many slave accounts to like / repost with.
   const [engagementInputs, setEngagementInputs] = useState<
     Record<string, { like: string; repost: string }>
@@ -1155,54 +1169,128 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     await deleteSlaveAccounts(slaveAccounts.map((a) => a.id));
   }
 
-  type WarmupAccountRow = { key: string; handle: string; kind: 'saved' | 'slave' };
+  type WarmupRunRow = { key: string; id: string; handle: string };
 
-  const warmupAccounts = useMemo((): WarmupAccountRow[] => {
-    const saved = savedAccounts
-      .filter((a) => a.password?.trim() && !a.banned)
-      .map((a) => ({ key: `saved:${a.id}`, handle: a.handle, kind: 'saved' as const }));
-    if (!isAdmin) return saved;
-    const slaves = slaveAccounts.map((a) => ({
-      key: `slave:${a.id}`,
-      handle: a.handle,
-      kind: 'slave' as const,
+  const followWarmupPool = useMemo(
+    () => accounts.filter((a) => a.identifier?.trim() && a.password?.trim()),
+    [accounts],
+  );
+
+  const followWarmupFiltered = useMemo(() => {
+    if (!isAdmin || !warmupFollowEmployee) return followWarmupPool;
+    return followWarmupPool.filter((a) => matchesEmployee(a, warmupFollowEmployee));
+  }, [followWarmupPool, warmupFollowEmployee, isAdmin]);
+
+  const slaveWarmupPool = useMemo(
+    () => slaveAccounts.filter((a) => a.handle?.trim() && a.password?.trim()),
+    [slaveAccounts],
+  );
+
+  const followWarmupPickerAccounts = useMemo(
+    () =>
+      followWarmupFiltered.map((a) => ({
+        id: a.id,
+        label: `@${a.identifier.trim().replace(/^@/, '')}`,
+      })),
+    [followWarmupFiltered],
+  );
+
+  const slaveWarmupPickerAccounts = useMemo(
+    () =>
+      slaveWarmupPool.map((a) => ({
+        id: a.id,
+        label: `@${a.handle.trim().replace(/^@/, '')}`,
+      })),
+    [slaveWarmupPool],
+  );
+
+  const selectedFollowWarmupRows = useMemo((): WarmupRunRow[] => {
+    const pool = selectAllFollowWarmups
+      ? followWarmupFiltered
+      : followWarmupFiltered.filter((a) => selectedFollowWarmupIds.has(a.id));
+    return pool.map((a) => ({
+      key: `follow:${a.id}`,
+      id: a.id,
+      handle: a.identifier.trim().replace(/^@/, ''),
     }));
-    return [...saved, ...slaves];
-  }, [savedAccounts, slaveAccounts, isAdmin]);
+  }, [followWarmupFiltered, selectAllFollowWarmups, selectedFollowWarmupIds]);
 
-  function warmupCredentials(row: WarmupAccountRow): BskyCredentials | null {
-    if (row.kind === 'slave') {
-      const acct = slaveAccounts.find((s) => s.id === row.key.slice('slave:'.length));
-      return acct ? credentialsForSlave(acct) : null;
+  const selectedSlaveWarmupRows = useMemo((): WarmupRunRow[] => {
+    const pool = selectAllSlaveWarmups
+      ? slaveWarmupPool
+      : slaveWarmupPool.filter((a) => selectedSlaveWarmupIds.has(a.id));
+    return pool.map((a) => ({
+      key: `slave:${a.id}`,
+      id: a.id,
+      handle: a.handle.trim().replace(/^@/, ''),
+    }));
+  }, [slaveWarmupPool, selectAllSlaveWarmups, selectedSlaveWarmupIds]);
+
+  const activeWarmupRows =
+    warmupTab === 'follow' ? selectedFollowWarmupRows : selectedSlaveWarmupRows;
+
+  useEffect(() => {
+    if (isAdmin && employees.length > 0 && !warmupFollowEmployee) {
+      setWarmupFollowEmployee(employees[0].username);
     }
-    const acct = savedAccounts.find((s) => s.id === row.key.slice('saved:'.length));
-    return acct ? credentialsForSavedAccount(acct) : null;
+  }, [isAdmin, employees, warmupFollowEmployee]);
+
+  useEffect(() => {
+    setSelectedFollowWarmupIds(new Set());
+    setSelectAllFollowWarmups(false);
+  }, [warmupFollowEmployee]);
+
+  useEffect(() => {
+    if (!isAdmin && warmupTab === 'slave') setWarmupTab('follow');
+  }, [isAdmin, warmupTab]);
+
+  function credentialsForFollowAccount(acct: BskyAccount): BskyCredentials {
+    return {
+      identifier: acct.identifier.trim().replace(/^@/, ''),
+      password: acct.password.trim(),
+      proxy: proxyConfigFor(acct.proxyId),
+    };
   }
 
-  function toggleWarmupSelected(key: string) {
-    setSelectedWarmupKeys((prev) => {
+  function warmupCredentialsForRow(row: WarmupRunRow): BskyCredentials | null {
+    if (row.key.startsWith('slave:')) {
+      const acct = slaveAccounts.find((s) => s.id === row.id);
+      return acct ? credentialsForSlave(acct) : null;
+    }
+    const acct = accounts.find((a) => a.id === row.id);
+    return acct ? credentialsForFollowAccount(acct) : null;
+  }
+
+  function toggleFollowWarmupSelected(id: string) {
+    setSelectAllFollowWarmups(false);
+    setSelectedFollowWarmupIds((prev) => {
       const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   }
 
-  function toggleSelectAllWarmups() {
-    setSelectedWarmupKeys((prev) =>
-      prev.size === warmupAccounts.length ? new Set() : new Set(warmupAccounts.map((a) => a.key)),
-    );
+  function toggleSlaveWarmupSelected(id: string) {
+    setSelectAllSlaveWarmups(false);
+    setSelectedSlaveWarmupIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   }
 
-  function warmupOverallPercent(): number {
-    if (!warmupProgress) return 0;
-    const { accountIndex, accountTotal, step, totalSteps } = warmupProgress;
-    const done = (accountIndex - 1) * totalSteps + step;
-    return Math.min(100, Math.round((done / (accountTotal * totalSteps)) * 100));
+  function warmupCardPercent(card: WarmupCardState | undefined): number {
+    if (!card) return 0;
+    if (card.status === 'done') return 100;
+    if (card.status === 'ready' || card.status === 'waiting') return 0;
+    if (card.totalSteps <= 0) return 0;
+    return Math.min(100, Math.round((card.step / card.totalSteps) * 100));
   }
 
   async function startWarmup() {
-    const selected = warmupAccounts.filter((a) => selectedWarmupKeys.has(a.key));
+    const selected = activeWarmupRows;
     if (selected.length === 0) {
       setError('Select at least one account to warm up.');
       return;
@@ -1210,37 +1298,79 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     setWarmupRunning(true);
     setError(null);
     setSuccessMessage(null);
+    const initialCards: Record<string, WarmupCardState> = {};
+    for (const row of selected) {
+      initialCards[row.key] = {
+        status: 'waiting',
+        step: 0,
+        totalSteps: WARMUP_STEP_COUNT,
+        label: 'Waiting…',
+      };
+    }
+    setWarmupCardProgress(initialCards);
     const failures: string[] = [];
     try {
-      for (let i = 0; i < selected.length; i++) {
-        const row = selected[i];
-        const creds = warmupCredentials(row);
+      for (const row of selected) {
+        const creds = warmupCredentialsForRow(row);
         if (!creds) {
-          failures.push(`@${row.handle.replace(/^@/, '')}: missing credentials`);
+          failures.push(`@${row.handle}: missing credentials`);
+          setWarmupCardProgress((prev) => ({
+            ...prev,
+            [row.key]: {
+              status: 'error',
+              step: 0,
+              totalSteps: WARMUP_STEP_COUNT,
+              label: 'Failed',
+              error: 'Missing credentials',
+            },
+          }));
           continue;
         }
-        setWarmupProgress({
-          accountIndex: i + 1,
-          accountTotal: selected.length,
-          accountHandle: row.handle,
-          step: 0,
-          totalSteps: WARMUP_STEP_COUNT,
-          label: 'Signing in…',
-        });
+        setWarmupCardProgress((prev) => ({
+          ...prev,
+          [row.key]: {
+            status: 'running',
+            step: 0,
+            totalSteps: WARMUP_STEP_COUNT,
+            label: 'Signing in…',
+          },
+        }));
         const res = await runAccountWarmup(creds, {
           onProgress: (p) => {
-            setWarmupProgress({
-              accountIndex: i + 1,
-              accountTotal: selected.length,
-              accountHandle: row.handle,
-              step: p.step,
-              totalSteps: p.totalSteps,
-              label: p.label,
-            });
+            setWarmupCardProgress((prev) => ({
+              ...prev,
+              [row.key]: {
+                status: 'running',
+                step: p.step,
+                totalSteps: p.totalSteps,
+                label: p.label,
+              },
+            }));
           },
         });
         if (!res.ok) {
-          failures.push(`@${row.handle.replace(/^@/, '')}: ${res.error ?? 'warm-up failed'}`);
+          const err = res.error ?? 'warm-up failed';
+          failures.push(`@${row.handle}: ${err}`);
+          setWarmupCardProgress((prev) => ({
+            ...prev,
+            [row.key]: {
+              status: 'error',
+              step: prev[row.key]?.step ?? 0,
+              totalSteps: WARMUP_STEP_COUNT,
+              label: 'Failed',
+              error: err,
+            },
+          }));
+        } else {
+          setWarmupCardProgress((prev) => ({
+            ...prev,
+            [row.key]: {
+              status: 'done',
+              step: WARMUP_STEP_COUNT,
+              totalSteps: WARMUP_STEP_COUNT,
+              label: 'Completed',
+            },
+          }));
         }
       }
       if (failures.length > 0) {
@@ -1254,8 +1384,60 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
       }
     } finally {
       setWarmupRunning(false);
-      setWarmupProgress(null);
     }
+  }
+
+  function renderWarmupBubbleCards(rows: WarmupRunRow[]) {
+    if (rows.length === 0) return null;
+    return (
+      <div className="warmup-cards-grid">
+        {rows.map((row) => {
+          const card =
+            warmupCardProgress[row.key] ??
+            ({
+              status: 'ready',
+              step: 0,
+              totalSteps: WARMUP_STEP_COUNT,
+              label: 'Ready to start',
+            } satisfies WarmupCardState);
+          const percent = warmupCardPercent(card);
+          const statusLabel =
+            card.status === 'ready'
+              ? 'Ready'
+              : card.status === 'waiting'
+                ? 'Waiting'
+                : card.status === 'running'
+                  ? 'Running'
+                  : card.status === 'done'
+                    ? 'Done'
+                    : 'Error';
+          return (
+            <div
+              key={row.key}
+              className={`warmup-bubble-card warmup-bubble-card--${card.status}`}
+            >
+              <div className="warmup-bubble-card__head">
+                <strong className="warmup-bubble-card__handle">@{row.handle}</strong>
+                <span className={`warmup-bubble-card__status warmup-bubble-card__status--${card.status}`}>
+                  {statusLabel}
+                </span>
+              </div>
+              <div className="publish-progress warmup-bubble-card__progress">
+                <div className="publish-progress__track">
+                  <div className="publish-progress__fill" style={{ width: `${percent}%` }} />
+                </div>
+                <span className="publish-progress__label">
+                  {card.status === 'running' || card.status === 'done'
+                    ? `Step ${card.step}/${card.totalSteps} · ${card.label}`
+                    : card.label}
+                </span>
+              </div>
+              {card.error && <p className="warmup-bubble-card__error">{card.error}</p>}
+            </div>
+          );
+        })}
+      </div>
+    );
   }
 
   function engagementInput(postId: string): { like: string; repost: string } {
@@ -3616,92 +3798,128 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
             {view === 'warmups' && (
               <section className="panel">
                 <div className="panel-head">
-                  <h2>Warmups ({warmupAccounts.length})</h2>
+                  <h2>Warmups</h2>
                   <button
                     type="button"
                     className="btn"
-                    disabled={warmupRunning || selectedWarmupKeys.size === 0}
+                    disabled={warmupRunning || activeWarmupRows.length === 0}
                     onClick={() => void startWarmup()}
                   >
-                    {warmupRunning ? 'Running…' : `Start warm-up (${selectedWarmupKeys.size})`}
+                    {warmupRunning
+                      ? 'Running…'
+                      : `Start warm-up (${activeWarmupRows.length})`}
                   </button>
                 </div>
 
                 <p className="empty-note">
                   Each selected account runs a ~5 minute warm-up: feed scrolling, likes, thread
                   reads, profile browsing, and short replies — simulating natural Bluesky activity.
-                  Slave accounts use their assigned proxy when set.
                 </p>
 
-                {warmupRunning && warmupProgress && (
-                  <div className="publish-progress warmup-progress">
-                    <div className="publish-progress__track">
-                      <div
-                        className="publish-progress__fill"
-                        style={{ width: `${warmupOverallPercent()}%` }}
-                      />
-                    </div>
-                    <span className="publish-progress__label">
-                      Account {warmupProgress.accountIndex}/{warmupProgress.accountTotal} · @
-                      {warmupProgress.accountHandle.replace(/^@/, '')} · Step{' '}
-                      {warmupProgress.step}/{warmupProgress.totalSteps} · {warmupProgress.label}
-                    </span>
-                  </div>
-                )}
+                <div className="platform-switch warmup-tabs">
+                  <button
+                    type="button"
+                    className={
+                      warmupTab === 'follow'
+                        ? 'platform-switch__btn platform-switch__btn--active'
+                        : 'platform-switch__btn'
+                    }
+                    onClick={() => setWarmupTab('follow')}
+                    disabled={warmupRunning}
+                  >
+                    Follow accounts
+                  </button>
+                  {isAdmin && (
+                    <button
+                      type="button"
+                      className={
+                        warmupTab === 'slave'
+                          ? 'platform-switch__btn platform-switch__btn--active'
+                          : 'platform-switch__btn'
+                      }
+                      onClick={() => setWarmupTab('slave')}
+                      disabled={warmupRunning}
+                    >
+                      Slave accounts
+                    </button>
+                  )}
+                </div>
 
-                {warmupAccounts.length === 0 ? (
-                  <p className="empty-note">
-                    No warmable accounts yet. Add saved accounts (with passwords) or slave accounts.
-                  </p>
-                ) : (
+                {warmupTab === 'follow' && (
                   <>
-                    <div className="slave-bulkbar">
-                      <label className="slave-bulkbar__select">
-                        <input
-                          type="checkbox"
-                          checked={selectedWarmupKeys.size === warmupAccounts.length}
-                          ref={(el) => {
-                            if (el) {
-                              el.indeterminate =
-                                selectedWarmupKeys.size > 0 &&
-                                selectedWarmupKeys.size < warmupAccounts.length;
-                            }
-                          }}
-                          onChange={toggleSelectAllWarmups}
-                          disabled={warmupRunning}
-                        />
-                        <span>
-                          {selectedWarmupKeys.size > 0
-                            ? `${selectedWarmupKeys.size} selected`
-                            : 'Select all'}
+                    {isAdmin && (
+                      <label className="cred-field warmup-employee-filter">
+                        <span className="cred-field__label">Employee</span>
+                        <select
+                          className="cred-form__input"
+                          value={warmupFollowEmployee}
+                          onChange={(e) => setWarmupFollowEmployee(e.target.value)}
+                          disabled={warmupRunning || employees.length === 0}
+                        >
+                          {employees.length === 0 ? (
+                            <option value="">No employees</option>
+                          ) : (
+                            employees.map((emp) => (
+                              <option key={emp.username} value={emp.username}>
+                                {emp.username} ({employeeCounts[emp.username] ?? 0} accounts)
+                              </option>
+                            ))
+                          )}
+                        </select>
+                        <span className="cred-field__hint">
+                          Shows follow accounts assigned to this employee.
                         </span>
                       </label>
-                    </div>
-                    <div className="proxy-list">
-                      {warmupAccounts.map((acct) => (
-                        <div
-                          key={acct.key}
-                          className={`proxy-row${selectedWarmupKeys.has(acct.key) ? ' proxy-row--selected' : ''}`}
-                        >
-                          <label className="slave-row__check" title="Select">
-                            <input
-                              type="checkbox"
-                              checked={selectedWarmupKeys.has(acct.key)}
-                              onChange={() => toggleWarmupSelected(acct.key)}
-                              disabled={warmupRunning}
-                            />
-                          </label>
-                          <div className="proxy-row__body">
-                            <div className="proxy-row__top">
-                              <strong>@{acct.handle.replace(/^@/, '')}</strong>
-                              <span className={`owner-tag owner-tag--${acct.kind}`}>
-                                {acct.kind === 'slave' ? 'Slave' : 'Account'}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                    )}
+
+                    {followWarmupFiltered.length === 0 ? (
+                      <p className="empty-note">
+                        {isAdmin
+                          ? 'No follow accounts for this employee. Add accounts on the Follow page and assign them.'
+                          : 'No follow accounts yet. Add accounts on the Follow page.'}
+                      </p>
+                    ) : (
+                      <>
+                        <WarmupAccountMultiPicker
+                          accounts={followWarmupPickerAccounts}
+                          selected={selectedFollowWarmupIds}
+                          all={selectAllFollowWarmups}
+                          onToggle={toggleFollowWarmupSelected}
+                          onAllChange={setSelectAllFollowWarmups}
+                          label="Follow accounts to warm up"
+                          hint="Multi-select or choose Select all, then start warm-up."
+                          disabled={warmupRunning}
+                        />
+                        {renderWarmupBubbleCards(selectedFollowWarmupRows)}
+                      </>
+                    )}
+                  </>
+                )}
+
+                {warmupTab === 'slave' && isAdmin && (
+                  <>
+                    <p className="empty-note">
+                      Slave accounts use their assigned proxy when set.
+                    </p>
+                    {slaveWarmupPool.length === 0 ? (
+                      <p className="empty-note">
+                        No slave accounts yet. Add accounts on the Slave Accounts page.
+                      </p>
+                    ) : (
+                      <>
+                        <WarmupAccountMultiPicker
+                          accounts={slaveWarmupPickerAccounts}
+                          selected={selectedSlaveWarmupIds}
+                          all={selectAllSlaveWarmups}
+                          onToggle={toggleSlaveWarmupSelected}
+                          onAllChange={setSelectAllSlaveWarmups}
+                          label="Slave accounts to warm up"
+                          hint="Multi-select or choose Select all, then start warm-up."
+                          disabled={warmupRunning}
+                        />
+                        {renderWarmupBubbleCards(selectedSlaveWarmupRows)}
+                      </>
+                    )}
                   </>
                 )}
               </section>
