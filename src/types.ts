@@ -137,6 +137,7 @@ export interface BskyWarmupRun {
   owner?: string;
   active: boolean;
   updatedAt: number;
+  claimedBy?: string;
 }
 
 /** A recorded batch of follows performed by a Bluesky follow account. */

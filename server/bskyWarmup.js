@@ -1,35 +1,11 @@
-import type { AtpAgent } from '@atproto/api';
-import { loginBskyAgent, parseError, type BskyCredentials } from './client';
+import { AtpAgent } from '@atproto/api';
+import { makeRelayFetch } from './bskyRelayFetch.js';
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-/** Total session length (~5 minutes). */
 export const WARMUP_SESSION_MS = 5 * 60 * 1000;
 
-export interface WarmupProgress {
-  step: number;
-  totalSteps: number;
-  label: string;
-}
-
-type WarmupAction =
-  | 'scroll_feed'
-  | 'like_post'
-  | 'like_comment'
-  | 'read_thread'
-  | 'open_profile'
-  | 'browse_feed'
-  | 'post_comment'
-  | 'reply_comment';
-
-interface PostRef {
-  uri: string;
-  cid: string;
-  handle?: string;
-}
-
-/** Ordered warm-up script matching the requested 5-minute activity mix. */
-const WARMUP_PLAN: { type: WarmupAction; durationMs: number; label: string }[] = [
+const WARMUP_PLAN = [
   { type: 'scroll_feed', durationMs: 20000, label: 'Scrolling feed…' },
   { type: 'like_post', durationMs: 2000, label: 'Liking a post…' },
   { type: 'like_post', durationMs: 2000, label: 'Liking a post…' },
@@ -54,27 +30,33 @@ export const WARMUP_STEP_COUNT = WARMUP_PLAN.length;
 
 const REPLY_TEXTS = ['Nice!', 'Love this', 'Great post', 'So good', '🔥', 'Interesting'];
 
-function isPostView(v: unknown): v is PostRef {
-  return Boolean(v && typeof v === 'object' && 'uri' in v && 'cid' in v);
+function parseError(err) {
+  if (!err) return 'Unknown error';
+  if (typeof err === 'string') return err;
+  if (err.error && err.message) return `${err.error}: ${err.message}`;
+  return err.message || String(err);
 }
 
-function pickRandom<T>(items: T[]): T | undefined {
+function isPostView(v) {
+  return Boolean(v && typeof v === 'object' && v.uri && v.cid);
+}
+
+function pickRandom(items) {
   if (!items.length) return undefined;
   return items[Math.floor(Math.random() * items.length)];
 }
 
-function collectThreadPosts(node: unknown, out: PostRef[] = []): PostRef[] {
+function collectThreadPosts(node, out = []) {
   if (!node || typeof node !== 'object') return out;
-  const n = node as { post?: unknown; replies?: unknown[] };
-  if (isPostView(n.post)) {
-    const author = (n.post as { author?: { handle?: string } }).author;
-    out.push({ uri: n.post.uri, cid: n.post.cid, handle: author?.handle });
+  if (isPostView(node.post)) {
+    const author = node.post.author;
+    out.push({ uri: node.post.uri, cid: node.post.cid, handle: author?.handle });
   }
-  for (const reply of n.replies ?? []) collectThreadPosts(reply, out);
+  for (const reply of node.replies ?? []) collectThreadPosts(reply, out);
   return out;
 }
 
-async function fetchTimelinePosts(agent: AtpAgent, limit = 30): Promise<PostRef[]> {
+async function fetchTimelinePosts(agent, limit = 30) {
   const res = await agent.app.bsky.feed.getTimeline({ limit });
   return (res.data.feed ?? [])
     .map((item) => item.post)
@@ -82,13 +64,13 @@ async function fetchTimelinePosts(agent: AtpAgent, limit = 30): Promise<PostRef[
     .map((post) => ({
       uri: post.uri,
       cid: post.cid,
-      handle: (post as { author?: { handle?: string } }).author?.handle,
+      handle: post.author?.handle,
     }));
 }
 
-async function scrollTimeline(agent: AtpAgent, durationMs: number) {
+async function scrollTimeline(agent, durationMs) {
   const started = Date.now();
-  let cursor: string | undefined;
+  let cursor;
   while (Date.now() - started < durationMs) {
     const res = await agent.app.bsky.feed.getTimeline({ limit: 30, cursor });
     cursor = res.data.cursor;
@@ -99,9 +81,9 @@ async function scrollTimeline(agent: AtpAgent, durationMs: number) {
   if (remaining > 0) await sleep(remaining);
 }
 
-async function browseAuthorFeed(agent: AtpAgent, actor: string, durationMs: number) {
+async function browseAuthorFeed(agent, actor, durationMs) {
   const started = Date.now();
-  let cursor: string | undefined;
+  let cursor;
   while (Date.now() - started < durationMs) {
     const res = await agent.app.bsky.feed.getAuthorFeed({ actor, limit: 30, cursor });
     cursor = res.data.cursor;
@@ -112,8 +94,8 @@ async function browseAuthorFeed(agent: AtpAgent, actor: string, durationMs: numb
   if (remaining > 0) await sleep(remaining);
 }
 
-async function likePost(agent: AtpAgent, post: PostRef) {
-  if (!post.uri || !post.cid) return;
+async function likePost(agent, post) {
+  if (!post?.uri || !post?.cid) return;
   try {
     await agent.like(post.uri, post.cid);
   } catch (err) {
@@ -122,7 +104,7 @@ async function likePost(agent: AtpAgent, post: PostRef) {
   }
 }
 
-async function postReply(agent: AtpAgent, root: PostRef, parent: PostRef, text: string) {
+async function postReply(agent, root, parent, text) {
   await agent.post({
     text,
     reply: {
@@ -133,20 +115,21 @@ async function postReply(agent: AtpAgent, root: PostRef, parent: PostRef, text: 
   });
 }
 
-/**
- * Runs the full ~5-minute warm-up session for one Bluesky account.
- * Simulates feed scrolling, profile browsing, likes, reads, and replies.
- */
-export async function runAccountWarmup(
-  credentials: BskyCredentials,
-  hooks: {
-    onProgress?: (progress: WarmupProgress) => void;
-    shouldCancel?: () => boolean;
-  } = {},
-  options: { startFromStepIndex?: number } = {},
-): Promise<{ ok: boolean; error?: string }> {
+async function loginAgent(credentials) {
+  const { identifier, password, service, proxy } = credentials;
+  if (!identifier?.trim() || !password?.trim()) {
+    throw new Error('Missing handle/email or app password.');
+  }
+  const agent = new AtpAgent({
+    service: (service && service.trim()) || 'https://bsky.social',
+    ...(proxy ? { fetch: makeRelayFetch(proxy) } : {}),
+  });
+  await agent.login({ identifier: identifier.trim(), password: password.trim() });
+  return agent;
+}
+
+export async function runAccountWarmup(credentials, hooks = {}, options = {}) {
   const onProgress = hooks.onProgress ?? (() => {});
-  const shouldCancel = hooks.shouldCancel ?? (() => false);
   const totalSteps = WARMUP_PLAN.length;
   const sessionStart = Date.now();
   const startIdx = Math.max(0, Math.min(options.startFromStepIndex ?? 0, WARMUP_PLAN.length));
@@ -157,26 +140,23 @@ export async function runAccountWarmup(
       totalSteps,
       label: startIdx > 0 ? 'Resuming warm-up…' : 'Signing in…',
     });
-    const agent = await loginBskyAgent(credentials);
+    const agent = await loginAgent(credentials);
 
     let timeline = await fetchTimelinePosts(agent);
-    let threadPosts: PostRef[] = [];
-    let lastProfileHandle: string | undefined;
+    let threadPosts = [];
+    let lastProfileHandle;
 
     for (let i = startIdx; i < WARMUP_PLAN.length; i++) {
-      if (shouldCancel()) return { ok: true };
-
       const action = WARMUP_PLAN[i];
       onProgress({ step: i + 1, totalSteps, label: action.label });
 
       if (timeline.length === 0) timeline = await fetchTimelinePosts(agent);
 
       switch (action.type) {
-        case 'scroll_feed': {
+        case 'scroll_feed':
           await scrollTimeline(agent, action.durationMs);
           timeline = await fetchTimelinePosts(agent);
           break;
-        }
         case 'like_post': {
           const post = pickRandom(timeline);
           if (post) await likePost(agent, post);
@@ -193,7 +173,6 @@ export async function runAccountWarmup(
               const comment = pickRandom(comments.length ? comments : threadPosts);
               if (comment) await likePost(agent, comment);
             } catch {
-              // fall back to liking a timeline post
               await likePost(agent, root);
             }
           }

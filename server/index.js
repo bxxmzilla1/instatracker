@@ -14,6 +14,7 @@ import { relayThroughProxy } from './bskyProxy.js';
 import { pushProfileImageToBsky } from './bskyProfilePush.js';
 import { relayGraphRequest } from './graph.js';
 import { runScheduledPublisher } from './scheduledPublisher.js';
+import { processWarmupQueue } from './warmupWorker.js';
 import { lookupExitIp, lookupIp } from './ipinfo.js';
 import { getSupabaseAdmin, collectUsedIps, findUniqueProxy } from './autoUnique.js';
 
@@ -178,10 +179,41 @@ app.get('/api/cron/publish-scheduled', async (req, res) => {
   }
 });
 
+app.post('/api/bsky-warmup/process', async (_req, res) => {
+  try {
+    const { processWarmupQueueUntilIdle } = await import('./warmupWorker.js');
+    const result = await processWarmupQueueUntilIdle();
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/cron/bsky-warmup', async (req, res) => {
+  const secret = process.env.CRON_SECRET;
+  if (secret) {
+    const auth = req.headers.authorization;
+    if (auth !== `Bearer ${secret}`) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+  }
+  try {
+    const result = await processWarmupQueue();
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
   setInterval(() => {
     runScheduledPublisher().catch((err) =>
       console.error('Scheduled publish error:', err?.message || err),
+    );
+  }, 60_000);
+  setInterval(() => {
+    processWarmupQueue().catch((err) =>
+      console.error('Warm-up worker error:', err?.message || err),
     );
   }, 60_000);
 }
