@@ -303,6 +303,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   const [postPublishProgress, setPostPublishProgress] = useState<ProfilePushProgressState | null>(null);
   const [refreshingPostStats, setRefreshingPostStats] = useState<string | null>(null);
   const [deletingProfilePost, setDeletingProfilePost] = useState<string | null>(null);
+  const [removingPublishKey, setRemovingPublishKey] = useState<string | null>(null);
   const [postCaptionModal, setPostCaptionModal] = useState<{ post: BskyPost } | null>(null);
   const [postCaptionText, setPostCaptionText] = useState('');
   const [postHashtagsText, setPostHashtagsText] = useState('');
@@ -1095,6 +1096,35 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
       setError(err instanceof Error ? err.message : 'Could not delete post from Bluesky.');
     } finally {
       setDeletingProfilePost(null);
+    }
+  }
+
+  // Removes a single publish entry (e.g. a failed/suspended account) from a post's
+  // engagement list. If the entry has a live post on Bluesky, it is deleted there too.
+  async function removePublishRecord(post: BskyPost, index: number) {
+    const publishes = post.publishes ?? [];
+    const pub = publishes[index];
+    if (!pub) return;
+    setRemovingPublishKey(`${post.id}-${index}`);
+    setError(null);
+    try {
+      if (pub.uri && !pub.error) {
+        const acct = pushableAccounts.find((a) => a.id === pub.accountId);
+        if (acct) {
+          try {
+            await deleteBskyPost(credentialsForSavedAccount(acct), pub.uri);
+          } catch {
+            // Already gone or unreachable — still remove the local record.
+          }
+        }
+      }
+      const remaining = publishes.filter((_, i) => i !== index);
+      await updatePost({ ...post, publishes: remaining });
+      await loadAll();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not remove entry.');
+    } finally {
+      setRemovingPublishKey(null);
     }
   }
 
@@ -4939,20 +4969,33 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                                   <span className="post-engagement-stat">↻ {formatCount(totalReposts)}</span>
                                 </div>
                                 <div className="post-engagement-card__accounts">
-                                  {(post.publishes ?? []).map((pub) => (
-                                    <div key={`${post.id}-${pub.accountId}`} className="post-engagement-row">
-                                      <div className="post-engagement-row__main">
-                                        <span className="post-engagement-row__handle">@{pub.handle.replace(/^@/, '')}</span>
-                                        {pub.error ? (
-                                          <span className="post-engagement-row__error">{pub.error}</span>
-                                        ) : (
-                                          <span className="post-engagement-row__stats">
-                                            ♥ {pub.likeCount ?? '—'} · 💬 {pub.replyCount ?? '—'} · ↻ {pub.repostCount ?? '—'}
-                                          </span>
-                                        )}
+                                  {(post.publishes ?? []).map((pub, pubIndex) => {
+                                    const rowKey = `${post.id}-${pubIndex}`;
+                                    return (
+                                      <div key={rowKey} className="post-engagement-row">
+                                        <div className="post-engagement-row__main">
+                                          <span className="post-engagement-row__handle">@{pub.handle.replace(/^@/, '')}</span>
+                                          {pub.error ? (
+                                            <span className="post-engagement-row__error">{pub.error}</span>
+                                          ) : (
+                                            <span className="post-engagement-row__stats">
+                                              ♥ {pub.likeCount ?? '—'} · 💬 {pub.replyCount ?? '—'} · ↻ {pub.repostCount ?? '—'}
+                                            </span>
+                                          )}
+                                        </div>
+                                        <button
+                                          type="button"
+                                          className="license-row__delete"
+                                          disabled={removingPublishKey === rowKey}
+                                          onClick={() => void removePublishRecord(post, pubIndex)}
+                                          title={pub.error ? 'Remove this entry' : 'Remove from Bluesky and clear entry'}
+                                          aria-label="Remove entry"
+                                        >
+                                          {removingPublishKey === rowKey ? '…' : '✕'}
+                                        </button>
                                       </div>
-                                    </div>
-                                  ))}
+                                    );
+                                  })}
                                 </div>
                                 {isAdmin && (
                                   <div className="mass-engage">

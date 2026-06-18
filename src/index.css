@@ -955,12 +955,18 @@ code {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
 }
 
 .post-engagement-row__main {
   display: flex;
   flex-direction: column;
   gap: 0.15rem;
+  min-width: 0;
+  flex: 1;
 }
 
 .post-engagement-row__handle {
