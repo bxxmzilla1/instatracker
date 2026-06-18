@@ -43,8 +43,7 @@ function requestViaProxy(url, init, proxy) {
     );
     req.on('timeout', () => req.destroy(new Error('Graph proxy request timed out.')));
     req.on('error', reject);
-    if (init.body) req.write(init.body);
-    req.end();
+    req.end(init.body ?? undefined);
   });
 }
 
@@ -69,6 +68,9 @@ export async function relayGraphRequest(payload = {}) {
   const base = ALLOWED_HOSTS.has(host) ? host : GRAPH_HOST;
 
   const url = new URL(`${base}/${version}${path.startsWith('/') ? path : `/${path}`}`);
+  // Meta accepts access_token in the query string; keep it there so proxied
+  // requests still authenticate even if a proxy mishandles Authorization.
+  url.searchParams.set('access_token', accessToken);
 
   const init = {
     method,
@@ -88,16 +90,14 @@ export async function relayGraphRequest(payload = {}) {
       init.body = JSON.stringify(body);
     }
   } else {
-    // Send parameters in the request body (form-urlencoded) rather than the
-    // query string. Long/multi-line values like Instagram captions can exceed
-    // URL-length limits or be truncated by proxies when placed in the URL,
-    // which makes a reel publish without its caption.
-    const form = new URLSearchParams();
-    for (const [key, value] of Object.entries(params)) {
-      if (value != null) form.set(key, String(value));
-    }
-    init.headers['Content-Type'] = 'application/x-www-form-urlencoded';
-    init.body = form.toString();
+    // JSON body (not query string) for POST params — required for multi-line
+    // captions with emoji/hashtags, especially when publishing through a proxy.
+    init.headers['Content-Type'] = 'application/json';
+    init.body = JSON.stringify(
+      Object.fromEntries(
+        Object.entries(params).filter(([, value]) => value != null).map(([key, value]) => [key, String(value)]),
+      ),
+    );
   }
 
   try {

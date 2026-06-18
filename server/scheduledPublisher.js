@@ -258,6 +258,14 @@ async function getProxyRelay(db, proxyId) {
   return proxyRowToRelay(data);
 }
 
+function resolveScheduledCaption(post, row) {
+  if (row.media_type === 'story') return '';
+  const fromPost = typeof post.caption === 'string' ? post.caption.trim() : '';
+  if (fromPost) return fromPost;
+  const fromRow = typeof row.caption === 'string' ? row.caption.trim() : '';
+  return fromRow;
+}
+
 async function loadRowsWithSchedules(db) {
   const [legacyRes, queueRes] = await Promise.all([
     db.from('content').select('*').not('scheduled_at', 'is', null),
@@ -363,9 +371,7 @@ export async function runScheduledPublisher() {
           {
             mediaType: claimedRow.media_type ?? 'reel',
             mediaUrls,
-            caption:
-              claimedPost.caption ??
-              (claimedRow.media_type === 'story' ? '' : (claimedRow.caption ?? '')),
+            caption: resolveScheduledCaption(claimedPost, claimedRow),
             proxy,
           },
           async (progress) => {

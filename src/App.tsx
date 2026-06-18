@@ -1472,7 +1472,7 @@ export default function App() {
       {
         mediaType: reel.mediaType ?? 'reel',
         mediaUrls,
-        caption: reel.mediaType === 'story' ? '' : caption,
+        caption: reel.mediaType === 'story' ? '' : caption.trim(),
         proxy: relayProxy,
       },
       onProgress,
@@ -1492,6 +1492,7 @@ export default function App() {
   async function saveSchedule() {
     if (!scheduleReel) return;
 
+    const trimmedCaption = newContentCaption.trim();
     const activeReel = content.find((c) => c.id === scheduleReel.id) ?? scheduleReel;
     const knownEmployeeUsernames = employees.map((e) => e.username);
     const allowedAccounts = filterPostableAccountsForContent(
@@ -1538,7 +1539,7 @@ export default function App() {
 
         const result = await publishReelToAccount(
           publishingReel,
-          newContentCaption,
+          trimmedCaption,
           newContentTarget,
           newContentProxyId || undefined,
           async (progress) => {
@@ -1576,7 +1577,7 @@ export default function App() {
         await updateContent({
           ...publishingReel,
           mediaType: scheduleReel.mediaType ?? 'reel',
-          caption: newContentCaption,
+          caption: trimmedCaption,
           targetAccount: newContentTarget,
           proxyId: newContentProxyId || undefined,
           scheduledAt: undefined,
@@ -1645,7 +1646,7 @@ export default function App() {
                 ...post,
                 account: newContentTarget,
                 scheduledAt: scheduledAtMs,
-                caption: newContentCaption || undefined,
+                caption: trimmedCaption || undefined,
                 proxyId: newContentProxyId || undefined,
               }
             : post,
@@ -1657,7 +1658,7 @@ export default function App() {
             id: crypto.randomUUID(),
             account: newContentTarget,
             scheduledAt: scheduledAtMs,
-            caption: newContentCaption || undefined,
+            caption: trimmedCaption || undefined,
             proxyId: newContentProxyId || undefined,
           },
         ];
@@ -1665,7 +1666,7 @@ export default function App() {
 
       await updateContent({
         ...scheduleReel,
-        caption: newContentCaption,
+        caption: trimmedCaption,
         scheduledPosts: nextScheduledPosts,
         scheduledAt: undefined,
         targetAccount: undefined,

@@ -485,7 +485,9 @@ async function createMediaContainer(
   params: Record<string, string>,
   proxy?: GraphRelayProxy,
 ): Promise<string> {
-  const data = await graphRequest<MediaContainerResponse>(`/${igUserId}/media`, accessToken, params, {
+  const payload = { ...params };
+  if (payload.caption != null) payload.caption = String(payload.caption);
+  const data = await graphRequest<MediaContainerResponse>(`/${igUserId}/media`, accessToken, payload, {
     method: 'POST',
     proxy,
   });
