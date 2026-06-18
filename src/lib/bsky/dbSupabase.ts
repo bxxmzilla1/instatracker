@@ -9,6 +9,7 @@ import type {
   BskySavedAccount,
   BskySlaveAccount,
   BskyTarget,
+  BskyWarmupRun,
   Cta,
   Employee,
   ImageAsset,
@@ -696,5 +697,69 @@ export async function upsertRun(run: BskyRun): Promise<void> {
     active: run.active,
     updated_at: run.updatedAt,
   });
+  if (error) throw new Error(error.message);
+}
+
+interface WarmupRunRow {
+  account_key: string;
+  handle: string | null;
+  kind: string | null;
+  status: string | null;
+  step: number | string | null;
+  total_steps: number | string | null;
+  label: string | null;
+  error: string | null;
+  owner: string | null;
+  active: boolean | null;
+  updated_at: number | string | null;
+}
+
+function toWarmupRun(row: WarmupRunRow): BskyWarmupRun {
+  const kind = row.kind === 'slave' ? 'slave' : 'follow';
+  const statusRaw = row.status ?? 'waiting';
+  const status =
+    statusRaw === 'running' || statusRaw === 'done' || statusRaw === 'error'
+      ? statusRaw
+      : 'waiting';
+  return {
+    accountKey: row.account_key,
+    handle: row.handle ?? '',
+    kind,
+    status,
+    step: Number(row.step ?? 0),
+    totalSteps: Number(row.total_steps ?? 0),
+    label: row.label ?? '',
+    error: row.error ?? undefined,
+    owner: row.owner ?? undefined,
+    active: row.active ?? false,
+    updatedAt: Number(row.updated_at ?? 0),
+  };
+}
+
+export async function getWarmupRuns(): Promise<BskyWarmupRun[]> {
+  const { data, error } = await client().from('bsky_warmup_runs').select('*');
+  if (error) return [];
+  return (data as WarmupRunRow[]).map(toWarmupRun);
+}
+
+export async function upsertWarmupRun(run: BskyWarmupRun): Promise<void> {
+  const { error } = await client().from('bsky_warmup_runs').upsert({
+    account_key: run.accountKey,
+    handle: run.handle,
+    kind: run.kind,
+    status: run.status,
+    step: run.step,
+    total_steps: run.totalSteps,
+    label: run.label,
+    error: run.error ?? null,
+    owner: run.owner ?? null,
+    active: run.active,
+    updated_at: run.updatedAt,
+  });
+  if (error) throw new Error(error.message);
+}
+
+export async function deleteWarmupRun(accountKey: string): Promise<void> {
+  const { error } = await client().from('bsky_warmup_runs').delete().eq('account_key', accountKey);
   if (error) throw new Error(error.message);
 }

@@ -9,6 +9,7 @@ import type {
   BskySavedAccount,
   BskySlaveAccount,
   BskyTarget,
+  BskyWarmupRun,
   Employee,
   ImageAsset,
   Proxy,
@@ -48,7 +49,10 @@ import {
   getSavedAccounts,
   getSlaveAccounts,
   getTargets,
+  getWarmupRuns,
   upsertRun,
+  upsertWarmupRun,
+  deleteWarmupRun,
   updateBanner,
   updateBio,
   updatePost,
@@ -175,6 +179,8 @@ interface RunState {
 
 // A shared run is considered live only if its heartbeat is newer than this.
 const RUN_STALE_MS = 15000;
+// Finished warm-ups stay visible on other sessions for this long.
+const WARMUP_DONE_VISIBLE_MS = 60 * 60 * 1000;
 
 // Local day key (YYYY-M-D) used to keep one cumulative follow-event row per
 // account per day, so the events table stays small instead of growing forever.
@@ -242,6 +248,8 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     {},
   );
   const [deletingWarmupKey, setDeletingWarmupKey] = useState<string | null>(null);
+  const warmupWriteTimesRef = useRef<Record<string, number>>({});
+  const warmupExecutorKeysRef = useRef<Set<string>>(new Set());
   // Per-engagement-card input for how many slave accounts to like / repost with.
   const [engagementInputs, setEngagementInputs] = useState<
     Record<string, { like: string; repost: string }>
@@ -356,6 +364,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   // Live run statuses written by every session, so each PC can see follow jobs
   // running elsewhere (other admins, employees, etc.).
   const [remoteRuns, setRemoteRuns] = useState<Record<string, BskyRun>>({});
+  const [remoteWarmupRuns, setRemoteWarmupRuns] = useState<Record<string, BskyWarmupRun>>({});
 
   const [running, setRunning] = useState(false);
   // Number of follow jobs currently in flight. Tracked separately from the
@@ -616,6 +625,29 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
         const map: Record<string, BskyRun> = {};
         for (const r of runs) map[r.accountId] = r;
         setRemoteRuns(map);
+      } catch {
+        // ignore transient fetch errors
+      }
+    };
+    void refresh();
+    const id = window.setInterval(() => void refresh(), 2000);
+    return () => {
+      active = false;
+      window.clearInterval(id);
+    };
+  }, []);
+
+  // Poll shared warm-up statuses so every session can see warm-ups running on
+  // other PCs, mirroring the follow-job indicator.
+  useEffect(() => {
+    let active = true;
+    const refresh = async () => {
+      try {
+        const runs = await getWarmupRuns();
+        if (!active) return;
+        const map: Record<string, BskyWarmupRun> = {};
+        for (const r of runs) map[r.accountKey] = r;
+        setRemoteWarmupRuns(map);
       } catch {
         // ignore transient fetch errors
       }
@@ -1245,6 +1277,123 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     if (!isAdmin && warmupTab === 'slave') setWarmupTab('follow');
   }, [isAdmin, warmupTab]);
 
+  const visibleWarmupKeys = useMemo(() => {
+    const keys = new Set<string>();
+    for (const a of accounts) keys.add(`follow:${a.id}`);
+    for (const s of slaveAccounts) keys.add(`slave:${s.id}`);
+    return keys;
+  }, [accounts, slaveAccounts]);
+
+  function warmupSessionOwner(): string {
+    return session.role === 'employee' ? session.username : 'admin';
+  }
+
+  function warmupCardFromRun(run: BskyWarmupRun): WarmupCardState {
+    return {
+      status: run.status,
+      step: run.step,
+      totalSteps: run.totalSteps,
+      label: run.label,
+      error: run.error,
+    };
+  }
+
+  function isWarmupRunVisible(run: BskyWarmupRun, now = Date.now()): boolean {
+    if (!visibleWarmupKeys.has(run.accountKey)) return false;
+    const live =
+      run.active &&
+      (run.status === 'waiting' || run.status === 'running') &&
+      now - run.updatedAt < RUN_STALE_MS;
+    const recentDone =
+      !run.active &&
+      (run.status === 'done' || run.status === 'error') &&
+      now - run.updatedAt < WARMUP_DONE_VISIBLE_MS;
+    return live || recentDone;
+  }
+
+  function persistWarmupRun(
+    row: WarmupRunRow,
+    card: WarmupCardState,
+    active: boolean,
+    force = false,
+  ) {
+    const now = Date.now();
+    const last = warmupWriteTimesRef.current[row.key] ?? 0;
+    if (!force && now - last < 1500) return;
+    warmupWriteTimesRef.current[row.key] = now;
+    const status: BskyWarmupRun['status'] =
+      card.status === 'ready' || card.status === 'waiting'
+        ? 'waiting'
+        : card.status === 'running' ||
+            card.status === 'done' ||
+            card.status === 'error'
+          ? card.status
+          : 'waiting';
+    void upsertWarmupRun({
+      accountKey: row.key,
+      handle: row.handle,
+      kind: row.key.startsWith('slave:') ? 'slave' : 'follow',
+      status,
+      step: card.step,
+      totalSteps: card.totalSteps,
+      label: card.label,
+      error: card.error,
+      owner: warmupSessionOwner(),
+      active,
+      updatedAt: now,
+    }).catch(() => {});
+  }
+
+  const displayWarmupRowsForTab = useMemo((): WarmupRunRow[] => {
+    const prefix = warmupTab === 'follow' ? 'follow:' : 'slave:';
+    const byKey = new Map<string, WarmupRunRow>();
+    const now = Date.now();
+    for (const run of Object.values(remoteWarmupRuns)) {
+      if (!run.accountKey.startsWith(prefix)) continue;
+      if (!isWarmupRunVisible(run, now)) continue;
+      byKey.set(run.accountKey, {
+        key: run.accountKey,
+        id: run.accountKey.slice(prefix.length),
+        handle: run.handle,
+      });
+    }
+    const selected = warmupTab === 'follow' ? selectedFollowWarmupRows : selectedSlaveWarmupRows;
+    for (const row of selected) byKey.set(row.key, row);
+    return [...byKey.values()];
+  }, [
+    warmupTab,
+    remoteWarmupRuns,
+    selectedFollowWarmupRows,
+    selectedSlaveWarmupRows,
+    visibleWarmupKeys,
+  ]);
+
+  useEffect(() => {
+    const now = Date.now();
+    setWarmupCardProgress((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const run of Object.values(remoteWarmupRuns)) {
+        if (!visibleWarmupKeys.has(run.accountKey)) continue;
+        if (warmupExecutorKeysRef.current.has(run.accountKey)) continue;
+        if (!isWarmupRunVisible(run, now)) continue;
+        const card = warmupCardFromRun(run);
+        const prevCard = next[run.accountKey];
+        if (
+          !prevCard ||
+          prevCard.status !== card.status ||
+          prevCard.step !== card.step ||
+          prevCard.label !== card.label ||
+          prevCard.error !== card.error
+        ) {
+          next[run.accountKey] = card;
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [remoteWarmupRuns, visibleWarmupKeys]);
+
   function credentialsForFollowAccount(acct: BskyAccount): BskyCredentials {
     return {
       identifier: acct.identifier.trim().replace(/^@/, ''),
@@ -1299,6 +1448,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     setWarmupRunning(true);
     setError(null);
     setSuccessMessage(null);
+    warmupExecutorKeysRef.current = new Set(selected.map((r) => r.key));
     const initialCards: Record<string, WarmupCardState> = {};
     for (const row of selected) {
       initialCards[row.key] = {
@@ -1307,6 +1457,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
         totalSteps: WARMUP_STEP_COUNT,
         label: 'Waiting…',
       };
+      persistWarmupRun(row, initialCards[row.key], true, true);
     }
     setWarmupCardProgress(initialCards);
     const failures: string[] = [];
@@ -1315,63 +1466,60 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
         const creds = warmupCredentialsForRow(row);
         if (!creds) {
           failures.push(`@${row.handle}: missing credentials`);
-          setWarmupCardProgress((prev) => ({
-            ...prev,
-            [row.key]: {
-              status: 'error',
-              step: 0,
-              totalSteps: WARMUP_STEP_COUNT,
-              label: 'Failed',
-              error: 'Missing credentials',
-            },
-          }));
-          continue;
-        }
-        setWarmupCardProgress((prev) => ({
-          ...prev,
-          [row.key]: {
-            status: 'running',
+          const errCard: WarmupCardState = {
+            status: 'error',
             step: 0,
             totalSteps: WARMUP_STEP_COUNT,
-            label: 'Signing in…',
-          },
-        }));
+            label: 'Failed',
+            error: 'Missing credentials',
+          };
+          setWarmupCardProgress((prev) => ({ ...prev, [row.key]: errCard }));
+          persistWarmupRun(row, errCard, false, true);
+          continue;
+        }
+        const runningCard: WarmupCardState = {
+          status: 'running',
+          step: 0,
+          totalSteps: WARMUP_STEP_COUNT,
+          label: 'Signing in…',
+        };
+        setWarmupCardProgress((prev) => ({ ...prev, [row.key]: runningCard }));
+        persistWarmupRun(row, runningCard, true, true);
+        let lastStep = 0;
         const res = await runAccountWarmup(creds, {
           onProgress: (p) => {
-            setWarmupCardProgress((prev) => ({
-              ...prev,
-              [row.key]: {
-                status: 'running',
-                step: p.step,
-                totalSteps: p.totalSteps,
-                label: p.label,
-              },
-            }));
+            lastStep = p.step;
+            const card: WarmupCardState = {
+              status: 'running',
+              step: p.step,
+              totalSteps: p.totalSteps,
+              label: p.label,
+            };
+            setWarmupCardProgress((prev) => ({ ...prev, [row.key]: card }));
+            persistWarmupRun(row, card, true);
           },
         });
         if (!res.ok) {
           const err = res.error ?? 'warm-up failed';
           failures.push(`@${row.handle}: ${err}`);
-          setWarmupCardProgress((prev) => ({
-            ...prev,
-            [row.key]: {
-              status: 'error',
-              step: prev[row.key]?.step ?? 0,
-              totalSteps: WARMUP_STEP_COUNT,
-              label: 'Failed',
-              error: err,
-            },
-          }));
+          const errCard: WarmupCardState = {
+            status: 'error',
+            step: lastStep,
+            totalSteps: WARMUP_STEP_COUNT,
+            label: 'Failed',
+            error: err,
+          };
+          setWarmupCardProgress((prev) => ({ ...prev, [row.key]: errCard }));
+          persistWarmupRun(row, errCard, false, true);
         } else {
-          setWarmupCardProgress((prev) => ({
-            ...prev,
-            [row.key]: {
-              status: 'done',
-              step: WARMUP_STEP_COUNT,
-              totalSteps: WARMUP_STEP_COUNT,
-              label: 'Completed',
-            },
-          }));
+          const doneCard: WarmupCardState = {
+            status: 'done',
+            step: WARMUP_STEP_COUNT,
+            totalSteps: WARMUP_STEP_COUNT,
+            label: 'Completed',
+          };
+          setWarmupCardProgress((prev) => ({ ...prev, [row.key]: doneCard }));
+          persistWarmupRun(row, doneCard, false, true);
         }
       }
       if (failures.length > 0) {
@@ -1384,6 +1532,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
         );
       }
     } finally {
+      warmupExecutorKeysRef.current = new Set();
       setWarmupRunning(false);
     }
   }
@@ -1429,6 +1578,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
         delete next[row.key];
         return next;
       });
+      void deleteWarmupRun(row.key).catch(() => {});
       setSuccessMessage(`${label} removed from the app.`);
       await loadAll();
     } catch (err) {
@@ -3320,6 +3470,38 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     else liveFollowedTotal += remoteRuns[id]?.success ?? 0;
   }
 
+  const localWarmupActiveKeys = warmupRunning
+    ? Object.entries(warmupCardProgress)
+        .filter(
+          ([key, card]) =>
+            warmupExecutorKeysRef.current.has(key) &&
+            (card.status === 'waiting' || card.status === 'running'),
+        )
+        .map(([key]) => key)
+    : [];
+  const remoteWarmupActiveKeys = Object.values(remoteWarmupRuns)
+    .filter(
+      (r) =>
+        r.active &&
+        (r.status === 'waiting' || r.status === 'running') &&
+        nowTs - r.updatedAt < RUN_STALE_MS &&
+        visibleWarmupKeys.has(r.accountKey) &&
+        (!warmupRunning || !warmupExecutorKeysRef.current.has(r.accountKey)),
+    )
+    .map((r) => r.accountKey);
+  const warmupActiveKeySet = new Set([...localWarmupActiveKeys, ...remoteWarmupActiveKeys]);
+  const warmupActiveCount = warmupActiveKeySet.size;
+  let warmupRunningCount = 0;
+  let warmupDoneInSession = 0;
+  for (const key of warmupActiveKeySet) {
+    const card =
+      warmupCardProgress[key] ??
+      (remoteWarmupRuns[key] ? warmupCardFromRun(remoteWarmupRuns[key]) : undefined);
+    if (card?.status === 'running') warmupRunningCount += 1;
+    if (card?.status === 'done') warmupDoneInSession += 1;
+  }
+  const warmupRemoteOnly = remoteWarmupActiveKeys.length > 0 && !warmupRunning;
+
   const dashboardCards = [
     { label: 'Employees', value: employees.length, show: isAdmin },
     { label: 'Accounts', value: savedAccounts.length, show: true },
@@ -3433,6 +3615,33 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                 {activeJobs > 0 && (
                   <button type="button" className="btn btn--danger" onClick={stopAll}>
                     Stop
+                  </button>
+                )}
+              </div>
+            )}
+            {warmupActiveCount > 0 && (
+              <div className="follow-running warmup-running" role="status">
+                <span className="follow-running__pulse" aria-hidden />
+                <span className="follow-running__text">
+                  Warm-up · {warmupActiveCount}{' '}
+                  {warmupActiveCount === 1 ? 'account' : 'accounts'}
+                  {warmupRunningCount > 0
+                    ? ` · ${warmupRunningCount} running`
+                    : warmupDoneInSession > 0
+                      ? ` · ${warmupDoneInSession} done`
+                      : ''}
+                  {warmupRemoteOnly ? ' (other devices)' : ''}
+                </span>
+                {view !== 'warmups' && (
+                  <button
+                    type="button"
+                    className="btn btn--ghost"
+                    onClick={() => {
+                      setSelectedEmployee(null);
+                      setView('warmups');
+                    }}
+                  >
+                    View
                   </button>
                 )}
               </div>
@@ -3951,7 +4160,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                           hint="Multi-select or choose Select all, then start warm-up."
                           disabled={warmupRunning}
                         />
-                        {renderWarmupBubbleCards(selectedFollowWarmupRows)}
+                        {renderWarmupBubbleCards(displayWarmupRowsForTab)}
                       </>
                     )}
                   </>
@@ -3978,7 +4187,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                           hint="Multi-select or choose Select all, then start warm-up."
                           disabled={warmupRunning}
                         />
-                        {renderWarmupBubbleCards(selectedSlaveWarmupRows)}
+                        {renderWarmupBubbleCards(displayWarmupRowsForTab)}
                       </>
                     )}
                   </>

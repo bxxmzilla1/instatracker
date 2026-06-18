@@ -47,4 +47,7 @@ export const {
   addFollowEvents,
   getRuns,
   upsertRun,
+  getWarmupRuns,
+  upsertWarmupRun,
+  deleteWarmupRun,
 } = impl;

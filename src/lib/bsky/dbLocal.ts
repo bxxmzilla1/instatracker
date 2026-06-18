@@ -9,6 +9,7 @@ import type {
   BskySavedAccount,
   BskySlaveAccount,
   BskyTarget,
+  BskyWarmupRun,
   Cta,
   Employee,
   ImageAsset,
@@ -37,14 +38,15 @@ interface BskyDB extends DBSchema {
   targets: { key: string; value: BskyTarget };
   followEvents: { key: string; value: BskyFollowEvent };
   runs: { key: string; value: BskyRun };
+  warmupRuns: { key: string; value: BskyWarmupRun };
 }
 
 let dbPromise: Promise<IDBPDatabase<BskyDB>> | null = null;
 
 function getDb() {
   if (!dbPromise) {
-    dbPromise = openDB<BskyDB>('drbossing-bsky-v1', 6, {
-      upgrade(db) {
+    dbPromise = openDB<BskyDB>('drbossing-bsky-v1', 7, {
+      upgrade(db, oldVersion) {
         for (const store of [
           'employees',
           'proxies',
@@ -65,6 +67,9 @@ function getDb() {
               keyPath: store === 'employees' ? 'username' : store === 'runs' ? 'accountId' : 'id',
             });
           }
+        }
+        if (oldVersion < 7 && !db.objectStoreNames.contains('warmupRuns')) {
+          db.createObjectStore('warmupRuns', { keyPath: 'accountKey' });
         }
       },
     });
@@ -381,4 +386,19 @@ export async function getRuns(): Promise<BskyRun[]> {
 export async function upsertRun(run: BskyRun): Promise<void> {
   const db = await getDb();
   await db.put('runs', run);
+}
+
+export async function getWarmupRuns(): Promise<BskyWarmupRun[]> {
+  const db = await getDb();
+  return db.getAll('warmupRuns');
+}
+
+export async function upsertWarmupRun(run: BskyWarmupRun): Promise<void> {
+  const db = await getDb();
+  await db.put('warmupRuns', run);
+}
+
+export async function deleteWarmupRun(accountKey: string): Promise<void> {
+  const db = await getDb();
+  await db.delete('warmupRuns', accountKey);
 }

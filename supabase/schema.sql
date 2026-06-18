@@ -402,6 +402,21 @@ create table if not exists bsky_account_runs (
   updated_at bigint
 );
 
+-- Live warm-up progress per account, shared across sessions/devices.
+create table if not exists bsky_warmup_runs (
+  account_key text primary key,
+  handle text,
+  kind text,
+  status text,
+  step bigint,
+  total_steps bigint,
+  label text,
+  error text,
+  owner text,
+  active boolean,
+  updated_at bigint
+);
+
 alter table bsky_employees enable row level security;
 alter table bsky_proxies enable row level security;
 alter table bsky_bios enable row level security;
@@ -415,6 +430,7 @@ alter table bsky_slave_accounts enable row level security;
 alter table bsky_targets enable row level security;
 alter table bsky_follow_events enable row level security;
 alter table bsky_account_runs enable row level security;
+alter table bsky_warmup_runs enable row level security;
 
 drop policy if exists "allow anon all" on bsky_employees;
 drop policy if exists "allow anon all" on bsky_proxies;
@@ -429,6 +445,7 @@ drop policy if exists "allow anon all" on bsky_slave_accounts;
 drop policy if exists "allow anon all" on bsky_targets;
 drop policy if exists "allow anon all" on bsky_follow_events;
 drop policy if exists "allow anon all" on bsky_account_runs;
+drop policy if exists "allow anon all" on bsky_warmup_runs;
 
 create policy "allow anon all" on bsky_employees
   for all to anon using (true) with check (true);
@@ -455,6 +472,8 @@ create policy "allow anon all" on bsky_targets
 create policy "allow anon all" on bsky_follow_events
   for all to anon using (true) with check (true);
 create policy "allow anon all" on bsky_account_runs
+  for all to anon using (true) with check (true);
+create policy "allow anon all" on bsky_warmup_runs
   for all to anon using (true) with check (true);
 
 -- Storage bucket for cached profile pictures, reel thumbnails, and story images.

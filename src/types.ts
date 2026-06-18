@@ -124,6 +124,21 @@ export interface BskyRun {
   updatedAt: number;
 }
 
+/** Live warm-up progress for a Bluesky account, shared across sessions/devices. */
+export interface BskyWarmupRun {
+  accountKey: string;
+  handle: string;
+  kind: 'follow' | 'slave';
+  status: 'waiting' | 'running' | 'done' | 'error';
+  step: number;
+  totalSteps: number;
+  label: string;
+  error?: string;
+  owner?: string;
+  active: boolean;
+  updatedAt: number;
+}
+
 /** A recorded batch of follows performed by a Bluesky follow account. */
 export interface BskyFollowEvent {
   id: string;
