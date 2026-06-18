@@ -713,6 +713,7 @@ interface WarmupRunRow {
   active: boolean | null;
   updated_at: number | string | null;
   claimed_by: string | null;
+  queue_order: number | string | null;
 }
 
 function toWarmupRun(row: WarmupRunRow): BskyWarmupRun {
@@ -735,6 +736,7 @@ function toWarmupRun(row: WarmupRunRow): BskyWarmupRun {
     active: row.active ?? false,
     updatedAt: Number(row.updated_at ?? 0),
     claimedBy: row.claimed_by ?? undefined,
+    queueOrder: row.queue_order != null ? Number(row.queue_order) : undefined,
   };
 }
 
@@ -758,6 +760,7 @@ export async function upsertWarmupRun(run: BskyWarmupRun): Promise<void> {
     active: run.active,
     updated_at: run.updatedAt,
     claimed_by: run.claimedBy ?? null,
+    queue_order: run.queueOrder ?? null,
   });
   if (error) throw new Error(error.message);
 }

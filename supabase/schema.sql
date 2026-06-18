@@ -415,10 +415,12 @@ create table if not exists bsky_warmup_runs (
   owner text,
   active boolean,
   updated_at bigint,
-  claimed_by text
+  claimed_by text,
+  queue_order bigint
 );
 
 alter table bsky_warmup_runs add column if not exists claimed_by text;
+alter table bsky_warmup_runs add column if not exists queue_order bigint;
 
 alter table bsky_employees enable row level security;
 alter table bsky_proxies enable row level security;

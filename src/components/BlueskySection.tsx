@@ -182,6 +182,8 @@ interface RunState {
 const RUN_STALE_MS = 15000;
 // Finished warm-ups are cleared from the UI/DB shortly after completion.
 const WARMUP_DONE_FLASH_MS = 8000;
+/** Max accounts warming up at the same time, in selection order. */
+const WARMUP_CONCURRENCY = 5;
 
 // Local day key (YYYY-M-D) used to keep one cumulative follow-event row per
 // account per day, so the events table stays small instead of growing forever.
@@ -1364,16 +1366,12 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     };
   }
 
-  function triggerServerWarmupProcess() {
-    if (!isSupabaseConfigured) return;
-    void fetch('/api/bsky-warmup/process', { method: 'POST' }).catch(() => {});
-  }
-
   function persistWarmupRun(
     row: WarmupRunRow,
     card: WarmupCardState,
     active: boolean,
     force = false,
+    queueOrder?: number,
   ) {
     const now = Date.now();
     const last = warmupWriteTimesRef.current[row.key] ?? 0;
@@ -1387,6 +1385,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
             card.status === 'error'
           ? card.status
           : 'waiting';
+    const existingOrder = remoteWarmupRuns[row.key]?.queueOrder;
     void upsertWarmupRun({
       accountKey: row.key,
       handle: row.handle,
@@ -1400,7 +1399,21 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
       active,
       updatedAt: now,
       claimedBy: warmupClientIdRef.current,
+      queueOrder: queueOrder ?? existingOrder,
     }).catch(() => {});
+  }
+
+  function warmupQueueOrderForKey(key: string, fallback = 0): number {
+    return remoteWarmupRuns[key]?.queueOrder ?? fallback;
+  }
+
+  function sortWarmupRowsByQueue(rows: WarmupRunRow[]): WarmupRunRow[] {
+    const fallbackOrder = new Map(rows.map((r, i) => [r.key, i]));
+    return [...rows].sort((a, b) => {
+      const orderA = remoteWarmupRuns[a.key]?.queueOrder ?? fallbackOrder.get(a.key) ?? 0;
+      const orderB = remoteWarmupRuns[b.key]?.queueOrder ?? fallbackOrder.get(b.key) ?? 0;
+      return orderA - orderB;
+    });
   }
 
   const displayWarmupRowsForTab = useMemo((): WarmupRunRow[] => {
@@ -1434,7 +1447,9 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
         handle: handle.replace(/^@/, ''),
       });
     }
-    return [...byKey.values()];
+    return [...byKey.values()].sort(
+      (a, b) => warmupQueueOrderForKey(a.key) - warmupQueueOrderForKey(b.key),
+    );
   }, [
     warmupTab,
     remoteWarmupRuns,
@@ -1493,140 +1508,164 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     warmupCardProgressRef.current = warmupCardProgress;
   }, [warmupCardProgress]);
 
+  async function runWarmupOne(
+    row: WarmupRunRow,
+    options: { resume?: boolean; queueOrder: number },
+  ): Promise<string | null> {
+    const remote = remoteWarmupRuns[row.key];
+    const creds = warmupCredentialsForRow(row);
+    if (!creds) {
+      const errCard: WarmupCardState = {
+        status: 'error',
+        step: 0,
+        totalSteps: WARMUP_STEP_COUNT,
+        label: 'Failed',
+        error: 'Missing credentials',
+      };
+      setWarmupCardProgress((prev) => ({ ...prev, [row.key]: errCard }));
+      persistWarmupRun(row, errCard, false, true, options.queueOrder);
+      clearFinishedWarmupRow(row, WARMUP_DONE_FLASH_MS);
+      return `@${row.handle}: missing credentials`;
+    }
+
+    const resumeStep = remote?.step ?? 0;
+    const startFromStepIndex =
+      options.resume && resumeStep > 0
+        ? Math.max(0, Math.min(resumeStep - 1, WARMUP_STEP_COUNT - 1))
+        : 0;
+
+    const runningCard: WarmupCardState = {
+      status: 'running',
+      step: resumeStep,
+      totalSteps: WARMUP_STEP_COUNT,
+      label: startFromStepIndex > 0 ? 'Resuming warm-up…' : 'Signing in…',
+    };
+    setWarmupCardProgress((prev) => ({ ...prev, [row.key]: runningCard }));
+    persistWarmupRun(row, runningCard, true, true, options.queueOrder);
+
+    let lastStep = resumeStep;
+    const heartbeat = setInterval(() => {
+      const card = warmupCardProgressRef.current[row.key];
+      if (!card) return;
+      persistWarmupRun(row, card, true, true, options.queueOrder);
+    }, 2000);
+
+    try {
+      const res = await runAccountWarmup(
+        creds,
+        {
+          onProgress: (p) => {
+            lastStep = p.step;
+            const card: WarmupCardState = {
+              status: 'running',
+              step: p.step,
+              totalSteps: p.totalSteps,
+              label: p.label,
+            };
+            setWarmupCardProgress((prev) => ({ ...prev, [row.key]: card }));
+            persistWarmupRun(row, card, true, false, options.queueOrder);
+          },
+        },
+        { startFromStepIndex },
+      );
+
+      if (!res.ok) {
+        const err = res.error ?? 'warm-up failed';
+        const errCard: WarmupCardState = {
+          status: 'error',
+          step: lastStep,
+          totalSteps: WARMUP_STEP_COUNT,
+          label: 'Failed',
+          error: err,
+        };
+        setWarmupCardProgress((prev) => ({ ...prev, [row.key]: errCard }));
+        persistWarmupRun(row, errCard, false, true, options.queueOrder);
+        if (!isAccountTakedownError(err)) {
+          clearFinishedWarmupRow(row, WARMUP_DONE_FLASH_MS);
+        }
+        return `@${row.handle}: ${err}`;
+      }
+
+      const doneCard: WarmupCardState = {
+        status: 'done',
+        step: WARMUP_STEP_COUNT,
+        totalSteps: WARMUP_STEP_COUNT,
+        label: 'Completed',
+      };
+      setWarmupCardProgress((prev) => ({ ...prev, [row.key]: doneCard }));
+      persistWarmupRun(row, doneCard, false, true, options.queueOrder);
+      clearFinishedWarmupRow(row, WARMUP_DONE_FLASH_MS);
+      return null;
+    } finally {
+      clearInterval(heartbeat);
+    }
+  }
+
   async function runWarmupQueue(rows: WarmupRunRow[], options: { resume?: boolean } = {}) {
     if (rows.length === 0) return;
+    const ordered = options.resume ? sortWarmupRowsByQueue(rows) : rows;
     setWarmupRunning(true);
     setError(null);
     if (!options.resume) setSuccessMessage(null);
-    warmupExecutorKeysRef.current = new Set(rows.map((r) => r.key));
+    warmupExecutorKeysRef.current = new Set(ordered.map((r) => r.key));
 
     if (!options.resume) {
       const initialCards: Record<string, WarmupCardState> = {};
-      for (const row of rows) {
+      ordered.forEach((row, index) => {
         initialCards[row.key] = {
           status: 'waiting',
           step: 0,
           totalSteps: WARMUP_STEP_COUNT,
           label: 'Waiting…',
         };
-        persistWarmupRun(row, initialCards[row.key], true, true);
-      }
+        persistWarmupRun(row, initialCards[row.key], true, true, index);
+      });
       setWarmupCardProgress((prev) => ({ ...prev, ...initialCards }));
     }
 
     const failures: string[] = [];
-    const heartbeats: ReturnType<typeof setInterval>[] = [];
+    let cursor = 0;
+    let activeWorkers = 0;
 
-    try {
-      for (const row of rows) {
-        const remote = remoteWarmupRuns[row.key];
-        const creds = warmupCredentialsForRow(row);
-        if (!creds) {
-          failures.push(`@${row.handle}: missing credentials`);
-          const errCard: WarmupCardState = {
-            status: 'error',
-            step: 0,
-            totalSteps: WARMUP_STEP_COUNT,
-            label: 'Failed',
-            error: 'Missing credentials',
-          };
-          setWarmupCardProgress((prev) => ({ ...prev, [row.key]: errCard }));
-          persistWarmupRun(row, errCard, false, true);
-          clearFinishedWarmupRow(row, WARMUP_DONE_FLASH_MS);
-          continue;
+    await new Promise<void>((resolve) => {
+      const launch = () => {
+        while (activeWorkers < WARMUP_CONCURRENCY && cursor < ordered.length) {
+          const row = ordered[cursor];
+          const queueOrder = options.resume
+            ? warmupQueueOrderForKey(row.key, cursor)
+            : cursor;
+          cursor += 1;
+          activeWorkers += 1;
+          void runWarmupOne(row, { resume: options.resume, queueOrder }).then((failure) => {
+            if (failure) failures.push(failure);
+            activeWorkers -= 1;
+            if (cursor >= ordered.length && activeWorkers === 0) resolve();
+            else launch();
+          });
         }
+        if (ordered.length === 0) resolve();
+      };
+      launch();
+    });
 
-        const resumeStep = remote?.step ?? 0;
-        const startFromStepIndex =
-          options.resume && resumeStep > 0
-            ? Math.max(0, Math.min(resumeStep - 1, WARMUP_STEP_COUNT - 1))
-            : 0;
-
-        const runningCard: WarmupCardState = {
-          status: 'running',
-          step: resumeStep,
-          totalSteps: WARMUP_STEP_COUNT,
-          label: startFromStepIndex > 0 ? 'Resuming warm-up…' : 'Signing in…',
-        };
-        setWarmupCardProgress((prev) => ({ ...prev, [row.key]: runningCard }));
-        persistWarmupRun(row, runningCard, true, true);
-
-        let lastStep = resumeStep;
-        const heartbeat = setInterval(() => {
-          const card = warmupCardProgressRef.current[row.key];
-          if (!card) return;
-          persistWarmupRun(row, card, true, true);
-        }, 2000);
-        heartbeats.push(heartbeat);
-
-        const res = await runAccountWarmup(
-          creds,
-          {
-            onProgress: (p) => {
-              lastStep = p.step;
-              const card: WarmupCardState = {
-                status: 'running',
-                step: p.step,
-                totalSteps: p.totalSteps,
-                label: p.label,
-              };
-              setWarmupCardProgress((prev) => ({ ...prev, [row.key]: card }));
-              persistWarmupRun(row, card, true);
-            },
-          },
-          { startFromStepIndex },
-        );
-
-        clearInterval(heartbeat);
-
-        if (!res.ok) {
-          const err = res.error ?? 'warm-up failed';
-          failures.push(`@${row.handle}: ${err}`);
-          const errCard: WarmupCardState = {
-            status: 'error',
-            step: lastStep,
-            totalSteps: WARMUP_STEP_COUNT,
-            label: 'Failed',
-            error: err,
-          };
-          setWarmupCardProgress((prev) => ({ ...prev, [row.key]: errCard }));
-          persistWarmupRun(row, errCard, false, true);
-          if (!isAccountTakedownError(err)) {
-            clearFinishedWarmupRow(row, WARMUP_DONE_FLASH_MS);
-          }
-        } else {
-          const doneCard: WarmupCardState = {
-            status: 'done',
-            step: WARMUP_STEP_COUNT,
-            totalSteps: WARMUP_STEP_COUNT,
-            label: 'Completed',
-          };
-          setWarmupCardProgress((prev) => ({ ...prev, [row.key]: doneCard }));
-          persistWarmupRun(row, doneCard, false, true);
-          clearFinishedWarmupRow(row, WARMUP_DONE_FLASH_MS);
-        }
-      }
-
-      if (!options.resume) {
-        if (failures.length > 0) {
-          setError(
-            `Warm-up finished with ${failures.length} error${failures.length === 1 ? '' : 's'}: ${failures.slice(0, 3).join(' · ')}`,
-          );
-        } else {
-          setSuccessMessage(
-            `Warm-up completed for ${rows.length} account${rows.length === 1 ? '' : 's'}.`,
-          );
-        }
-      } else if (failures.length > 0) {
+    if (!options.resume) {
+      if (failures.length > 0) {
         setError(
-          `Resumed warm-up finished with ${failures.length} error${failures.length === 1 ? '' : 's'}: ${failures.slice(0, 3).join(' · ')}`,
+          `Warm-up finished with ${failures.length} error${failures.length === 1 ? '' : 's'}: ${failures.slice(0, 3).join(' · ')}`,
+        );
+      } else {
+        setSuccessMessage(
+          `Warm-up completed for ${ordered.length} account${ordered.length === 1 ? '' : 's'}.`,
         );
       }
-    } finally {
-      for (const id of heartbeats) clearInterval(id);
-      warmupExecutorKeysRef.current = new Set();
-      setWarmupRunning(false);
+    } else if (failures.length > 0) {
+      setError(
+        `Resumed warm-up finished with ${failures.length} error${failures.length === 1 ? '' : 's'}: ${failures.slice(0, 3).join(' · ')}`,
+      );
     }
+
+    warmupExecutorKeysRef.current = new Set();
+    setWarmupRunning(false);
   }
 
   async function startWarmup() {
@@ -1639,7 +1678,6 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
       }
       return;
     }
-    triggerServerWarmupProcess();
     await runWarmupQueue(selected);
   }
 
@@ -1647,15 +1685,27 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     if (loading || warmupRunning || warmupResumeLockRef.current) return;
 
     const now = Date.now();
-    const orphans = Object.values(remoteWarmupRuns)
-      .filter((r) => visibleWarmupKeys.has(r.accountKey) && needsWarmupExecutor(r, now))
-      .sort((a, b) => a.updatedAt - b.updatedAt);
+    const orphans = sortWarmupRowsByQueue(
+      Object.values(remoteWarmupRuns)
+        .filter((r) => visibleWarmupKeys.has(r.accountKey) && needsWarmupExecutor(r, now))
+        .map(warmupRowFromRun),
+    );
 
     if (orphans.length === 0) return;
 
+    // Let the browser orchestrator handle the queue; server only fills gaps when idle.
+    const freshClientRunning = Object.values(remoteWarmupRuns).some(
+      (r) =>
+        r.active &&
+        r.status === 'running' &&
+        r.claimedBy?.startsWith('client-') &&
+        now - r.updatedAt < RUN_STALE_MS,
+    );
+    if (freshClientRunning) return;
+
     warmupResumeLockRef.current = true;
 
-    const rows = orphans.map(warmupRowFromRun);
+    const rows = orphans;
     const resume = async () => {
       try {
         if (typeof navigator !== 'undefined' && navigator.locks) {

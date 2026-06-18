@@ -181,8 +181,7 @@ app.get('/api/cron/publish-scheduled', async (req, res) => {
 
 app.post('/api/bsky-warmup/process', async (_req, res) => {
   try {
-    const { processWarmupQueueUntilIdle } = await import('./warmupWorker.js');
-    const result = await processWarmupQueueUntilIdle();
+    const result = await processWarmupQueue();
     res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });

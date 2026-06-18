@@ -3,6 +3,7 @@ import { runAccountWarmup, WARMUP_STEP_COUNT } from './bskyWarmup.js';
 
 const RUN_STALE_MS = 15000;
 const EXECUTOR_ID = 'server';
+const WARMUP_CONCURRENCY = 5;
 
 function rowToRelay(row) {
   if (!row?.host || !row?.port) return undefined;
@@ -34,6 +35,7 @@ function parseWarmupRow(row) {
     active: row.active ?? false,
     updatedAt: Number(row.updated_at ?? 0),
     claimedBy: row.claimed_by ?? undefined,
+    queueOrder: row.queue_order != null ? Number(row.queue_order) : undefined,
   };
 }
 
@@ -51,6 +53,7 @@ async function upsertWarmupRun(db, run) {
     active: run.active,
     updated_at: run.updatedAt,
     claimed_by: run.claimedBy ?? null,
+    queue_order: run.queueOrder ?? null,
   });
 }
 
@@ -101,9 +104,15 @@ async function resolveCredentials(db, run) {
   };
 }
 
+function countFreshRunning(runs, now) {
+  return runs.filter(
+    (r) => r.active && r.status === 'running' && now - r.updatedAt < RUN_STALE_MS,
+  ).length;
+}
+
 /**
  * Process the next orphaned warm-up job (waiting or stale running).
- * Skips when a browser/client executor is actively heartbeating.
+ * Skips when a browser/client executor is actively heartbeating or 5 are already running.
  */
 export async function processWarmupQueue() {
   const db = getSupabaseAdmin();
@@ -124,9 +133,18 @@ export async function processWarmupQueue() {
   );
   if (freshClient) return { processed: 0, reason: 'client_active' };
 
+  if (countFreshRunning(runs, now) >= WARMUP_CONCURRENCY) {
+    return { processed: 0, reason: 'at_capacity' };
+  }
+
   const next = runs
     .filter((r) => needsExecutor(r, now))
-    .sort((a, b) => a.updatedAt - b.updatedAt)[0];
+    .sort((a, b) => {
+      const orderA = a.queueOrder ?? Number.MAX_SAFE_INTEGER;
+      const orderB = b.queueOrder ?? Number.MAX_SAFE_INTEGER;
+      if (orderA !== orderB) return orderA - orderB;
+      return a.updatedAt - b.updatedAt;
+    })[0];
   if (!next) return { processed: 0, reason: 'idle' };
 
   const creds = await resolveCredentials(db, next);

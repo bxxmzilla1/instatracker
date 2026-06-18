@@ -1,4 +1,4 @@
-import { processWarmupQueueUntilIdle } from '../../server/warmupWorker.js';
+import { processWarmupQueue } from '../../server/warmupWorker.js';
 
 export const maxDuration = 300;
 
@@ -8,7 +8,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const result = await processWarmupQueueUntilIdle();
+    const result = await processWarmupQueue();
     res.status(200).json(result);
   } catch (err) {
     res.status(500).json({ error: err?.message || 'Warm-up process failed' });
