@@ -966,10 +966,17 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
         setPostPublishProgress({ pushKey, done: i + 1, total: targets.length, kind: 'post' });
       }
 
+      // Merge by account so a re-attempt replaces that account's previous record
+      // (a successful publish clears its old error; a new error replaces the old one)
+      // instead of piling up duplicate rows in the engagement view.
+      const mergedByAccount = new Map<string, BskyPostPublish>();
+      for (const pub of post.publishes ?? []) mergedByAccount.set(pub.accountId, pub);
+      for (const pub of newPublishes) mergedByAccount.set(pub.accountId, pub);
+
       await updatePost({
         ...post,
         text: finalText,
-        publishes: [...(post.publishes ?? []), ...newPublishes],
+        publishes: [...mergedByAccount.values()],
       });
       await loadAll();
       closePostCaptionModal();
