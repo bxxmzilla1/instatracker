@@ -15,8 +15,10 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const PROXY_SERVER_THRESHOLD_BYTES = 2.5 * 1024 * 1024;
 const PROFILE_PUSH_MAX_ATTEMPTS = 3;
 
+const PROXY_RELAY_MAX_ATTEMPTS = 3;
+
 function isTransientPushError(message: string): boolean {
-  return /timeout|timed out|econnreset|econnrefused|fetch failed|network|proxy relay failed|502|503|504|socket/i.test(
+  return /timeout|timed out|econnreset|econnrefused|fetch failed|network|proxy relay failed|empty response|invalid json|unexpected end of json|502|503|504|socket/i.test(
     message,
   );
 }
@@ -69,37 +71,116 @@ function makeProxyFetch(proxy: ProxyConfig): typeof fetch {
       }
     }
 
-    const relay = await fetch('/api/bsky-proxy', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url, method, headers, body, bodyEncoding, proxy }),
-    });
-    if (!relay.ok) {
-      const e = (await relay.json().catch(() => ({}))) as { error?: string };
-      throw new Error(e.error || `Proxy relay failed (${relay.status})`);
+    const relayPayload = { url, method, headers, body, bodyEncoding, proxy };
+    let lastError = 'Proxy relay failed.';
+
+    for (let attempt = 1; attempt <= PROXY_RELAY_MAX_ATTEMPTS; attempt++) {
+      try {
+        const relay = await fetch('/api/bsky-proxy', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(relayPayload),
+        });
+
+        const raw = await relay.text();
+        if (!relay.ok) {
+          let errMsg = `Proxy relay failed (${relay.status})`;
+          if (raw.trim()) {
+            try {
+              const e = JSON.parse(raw) as { error?: string };
+              if (e.error) errMsg = e.error;
+            } catch {
+              errMsg = raw.slice(0, 200);
+            }
+          }
+          lastError = errMsg;
+          if (attempt < PROXY_RELAY_MAX_ATTEMPTS && isTransientPushError(errMsg)) {
+            await sleep(1000 * attempt);
+            continue;
+          }
+          throw new Error(errMsg);
+        }
+
+        if (!raw.trim()) {
+          lastError = 'Proxy relay returned an empty response.';
+          if (attempt < PROXY_RELAY_MAX_ATTEMPTS) {
+            await sleep(1000 * attempt);
+            continue;
+          }
+          throw new Error(lastError);
+        }
+
+        let data: {
+          status: number;
+          headers: Record<string, string>;
+          body: string;
+          bodyEncoding?: 'text' | 'base64';
+        };
+        try {
+          data = JSON.parse(raw);
+        } catch {
+          lastError = 'Proxy relay returned invalid JSON.';
+          if (attempt < PROXY_RELAY_MAX_ATTEMPTS) {
+            await sleep(1000 * attempt);
+            continue;
+          }
+          throw new Error(lastError);
+        }
+
+        const contentType = (
+          data.headers?.['content-type'] ||
+          data.headers?.['Content-Type'] ||
+          ''
+        ).toLowerCase();
+        if (
+          data.status >= 200 &&
+          data.status < 300 &&
+          contentType.includes('json') &&
+          (data.body == null || data.body === '')
+        ) {
+          lastError = 'Bluesky returned an empty response through the proxy.';
+          if (attempt < PROXY_RELAY_MAX_ATTEMPTS) {
+            await sleep(1000 * attempt);
+            continue;
+          }
+          throw new Error(lastError);
+        }
+
+        const responseBody =
+          data.bodyEncoding === 'base64' ? base64ToBytes(data.body) : data.body ?? '';
+        return new Response(responseBody, { status: data.status, headers: data.headers });
+      } catch (err) {
+        lastError = parseError(err);
+        if (attempt < PROXY_RELAY_MAX_ATTEMPTS && isTransientPushError(lastError)) {
+          await sleep(1000 * attempt);
+          continue;
+        }
+        throw err instanceof Error ? err : new Error(lastError);
+      }
     }
-    const data = (await relay.json()) as {
-      status: number;
-      headers: Record<string, string>;
-      body: string;
-      bodyEncoding?: 'text' | 'base64';
-    };
-    const responseBody =
-      data.bodyEncoding === 'base64' ? base64ToBytes(data.body) : data.body ?? '';
-    return new Response(responseBody, { status: data.status, headers: data.headers });
+
+    throw new Error(lastError);
   };
 }
 
 export function parseError(err: unknown): string {
   if (!err) return 'Unknown error';
-  if (typeof err === 'string') return err;
+  if (typeof err === 'string') {
+    if (/unexpected end of json input/i.test(err)) {
+      return 'Proxy or Bluesky returned an empty response — retry or switch proxy.';
+    }
+    return err;
+  }
   const e = err as { error?: string; message?: string; cause?: unknown };
   if (e.cause) {
     const inner = parseError(e.cause);
     if (inner && inner !== 'Unknown error') return inner;
   }
-  if (e.error && e.message) return `${e.error}: ${e.message}`;
-  return e.message || String(err);
+  const msg = e.error && e.message ? `${e.error}: ${e.message}` : e.message || e.error || String(err);
+  if (/unexpected end of json input/i.test(msg)) {
+    return 'Proxy or Bluesky returned an empty response — retry or switch proxy.';
+  }
+  return msg;
 }
 
 interface UserView {

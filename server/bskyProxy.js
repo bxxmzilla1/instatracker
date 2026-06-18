@@ -60,7 +60,18 @@ export async function relayThroughProxy({
       },
     );
     req.on('timeout', () => req.destroy(new Error('Proxy request timed out.')));
-    req.on('error', reject);
+    req.on('error', (err) => {
+      const code = err && typeof err === 'object' && 'code' in err ? String(err.code) : '';
+      if (code === 'ECONNRESET') {
+        reject(new Error('Proxy connection was reset — try again or switch proxy.'));
+        return;
+      }
+      if (code === 'ETIMEDOUT' || code === 'ESOCKETTIMEDOUT') {
+        reject(new Error('Proxy request timed out.'));
+        return;
+      }
+      reject(err);
+    });
     if (body) {
       const payload = bodyEncoding === 'base64' ? Buffer.from(body, 'base64') : body;
       req.write(payload);

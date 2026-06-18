@@ -427,6 +427,18 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     return a.all || a.set.size > 0;
   }
 
+  /** New library items created by employees are assigned to themselves so they appear in their view. */
+  function newLibraryItemAssign() {
+    if (session.role === 'employee') {
+      return { employees: [session.username], allEmployees: false };
+    }
+    return { employees: [], allEmployees: false };
+  }
+
+  function ownsLibraryItem(item: { employees?: string[] }) {
+    return isAdmin || (item.employees ?? []).includes(session.username);
+  }
+
   const loadAll = useCallback(async () => {
     const [bn, pp, bi, po, px, ac, sa, tg, fe, sl] = await Promise.all([
       getBanners(ownerFilter),
@@ -702,8 +714,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
         id: crypto.randomUUID(),
         text: bioText.trim(),
         createdAt: Date.now(),
-        employees: [],
-        allEmployees: false,
+        ...newLibraryItemAssign(),
       });
       setBioText('');
       setAddBioOpen(false);
@@ -742,8 +753,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
           id: crypto.randomUUID(),
           text: '',
           mediaType,
-          employees: [],
-          allEmployees: false,
+          ...newLibraryItemAssign(),
           createdAt: Date.now(),
           publishes: [],
         },
@@ -2096,7 +2106,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     setUploading(true);
     try {
       await addBanner(
-        { id: crypto.randomUUID(), url: '', createdAt: Date.now(), employees: [], allEmployees: false },
+        { id: crypto.randomUUID(), url: '', createdAt: Date.now(), ...newLibraryItemAssign() },
         file,
       );
       await loadAll();
@@ -2111,7 +2121,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     setUploading(true);
     try {
       await addProfilePic(
-        { id: crypto.randomUUID(), url: '', createdAt: Date.now(), employees: [], allEmployees: false },
+        { id: crypto.randomUUID(), url: '', createdAt: Date.now(), ...newLibraryItemAssign() },
         file,
       );
       await loadAll();
@@ -3355,8 +3365,8 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
       )}
       <section className="panel">
         <div className="panel-head">
-          <h2>{isAdmin ? `${title} library (${items.length})` : `Your ${title.toLowerCase()}s`}</h2>
-          {isAdmin && instantLibraryAdd && mergeLibraryAdd && (
+          <h2>{isAdmin ? `${title} library (${items.length})` : `Your ${title.toLowerCase()}s (${items.length})`}</h2>
+          {instantLibraryAdd && mergeLibraryAdd && (
             <>
               <button
                 type="button"
@@ -3398,7 +3408,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                       Assign
                     </button>
                   )}
-                  {isAdmin && (
+                  {ownsLibraryItem(item) && (
                     <button
                       type="button"
                       className="reel-cell__btn reel-cell__btn--danger"
@@ -3461,7 +3471,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                         Assign
                       </button>
                     )}
-                    {isAdmin && (
+                    {ownsLibraryItem(item) && (
                       <button
                         type="button"
                         className="license-row__delete"
@@ -3502,6 +3512,31 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                 >
                   Assign
                 </button>
+                <button
+                  type="button"
+                  className="reel-cell__btn"
+                  onClick={() => openEditBioModal(item)}
+                  title="Edit bio"
+                  aria-label="Edit bio"
+                >
+                  ✎
+                </button>
+                <button
+                  type="button"
+                  className="reel-cell__btn reel-cell__btn--danger"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void handleDeleteBio(item.id);
+                  }}
+                  title="Delete"
+                  aria-label="Delete"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
+            {!isAdmin && ownsLibraryItem(item) && (
+              <div className="bio-cell__overlay">
                 <button
                   type="button"
                   className="reel-cell__btn"
@@ -3575,35 +3610,27 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
         )}
       </section>
 
-      {isAdmin && (
-        <section className="panel">
-          <div className="panel-head">
-            <h2>Bio library ({items.length})</h2>
-            <button
-              type="button"
-              className="panel-add-toggle"
-              onClick={openAddBioModal}
-            >
-              ADD
-            </button>
-          </div>
-          {items.length === 0 ? (
-            <p className="empty-note">Nothing here yet.</p>
-          ) : (
-            renderBioLibrary(items)
-          )}
-        </section>
-      )}
-      {!isAdmin && (
       <section className="panel">
-        <h2>Your bios</h2>
+        <div className="panel-head">
+          <h2>{isAdmin ? `Bio library (${items.length})` : `Your bios (${items.length})`}</h2>
+          <button
+            type="button"
+            className="panel-add-toggle"
+            onClick={openAddBioModal}
+          >
+            ADD
+          </button>
+        </div>
         {items.length === 0 ? (
-          <p className="empty-note">Nothing here yet.</p>
+          <p className="empty-note">
+            {isAdmin
+              ? 'Nothing here yet. Add a bio, assign employees, then push to Bluesky.'
+              : 'Nothing here yet. Add a bio, then push it to your accounts.'}
+          </p>
         ) : (
           renderBioLibrary(items)
         )}
       </section>
-      )}
     </>
     );
   };
@@ -4613,7 +4640,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                   </button>
                 </div>
 
-                {isAdmin && postMediaTab !== 'engagement' && (
+                {postMediaTab !== 'engagement' && (
                   <input
                     ref={postFileInputRef}
                     type="file"
@@ -4633,22 +4660,20 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                         <h2>
                           {isAdmin
                             ? `${postMediaTab === 'image' ? 'Images' : 'Videos'} (${displayedPosts.length})`
-                            : `Your ${postMediaTab === 'image' ? 'images' : 'videos'}`}
+                            : `Your ${postMediaTab === 'image' ? 'images' : 'videos'} (${displayedPosts.length})`}
                         </h2>
-                        {isAdmin && (
-                          <button
-                            type="button"
-                            className="btn"
-                            onClick={() => postFileInputRef.current?.click()}
-                            disabled={uploading}
-                          >
-                            {uploading
-                              ? 'Uploading…'
-                              : postMediaTab === 'image'
-                                ? 'Add image'
-                                : 'Add video'}
-                          </button>
-                        )}
+                        <button
+                          type="button"
+                          className="btn"
+                          onClick={() => postFileInputRef.current?.click()}
+                          disabled={uploading}
+                        >
+                          {uploading
+                            ? 'Uploading…'
+                            : postMediaTab === 'image'
+                              ? 'Add image'
+                              : 'Add video'}
+                        </button>
                       </div>
                       {uploading && (
                         <div className="publish-progress publish-progress--indeterminate">
@@ -4664,7 +4689,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                         <p className="empty-note">
                           {isAdmin
                             ? `No ${postMediaTab === 'image' ? 'images' : 'videos'} yet. Upload one, assign an employee, then post to Bluesky.`
-                            : `No ${postMediaTab === 'image' ? 'images' : 'videos'} assigned to you yet.`}
+                            : `No ${postMediaTab === 'image' ? 'images' : 'videos'} yet. Upload one, then post to your Bluesky accounts.`}
                         </p>
                       ) : (
                         <div className="reels-grid">
@@ -4716,7 +4741,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                                       Assign
                                     </button>
                                   )}
-                                  {isAdmin && (
+                                  {ownsLibraryItem(post) && (
                                     <button
                                       type="button"
                                       className="reel-cell__btn reel-cell__btn--danger"
