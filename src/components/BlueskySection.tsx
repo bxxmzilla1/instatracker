@@ -71,6 +71,7 @@ import {
   type JobResult,
   type ProxyConfig,
 } from '../lib/bsky/client';
+import { runAccountWarmup, WARMUP_STEP_COUNT } from '../lib/bsky/warmup';
 import { AssignmentPicker } from './AssignmentPicker';
 import { ProxyPicker } from './ProxyPicker';
 import { SavedAccountMultiPicker } from './SavedAccountMultiPicker';
@@ -143,6 +144,7 @@ type View =
   | 'dashboard'
   | 'accounts'
   | 'slaves'
+  | 'warmups'
   | 'targets'
   | 'banner'
   | 'profilepic'
@@ -214,6 +216,17 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   // Multi-select for bulk-deleting slave accounts.
   const [selectedSlaveIds, setSelectedSlaveIds] = useState<Set<string>>(() => new Set());
   const [deletingSlaves, setDeletingSlaves] = useState(false);
+  // Warm-up multi-select and progress (Bluesky accounts + slave pool).
+  const [selectedWarmupKeys, setSelectedWarmupKeys] = useState<Set<string>>(() => new Set());
+  const [warmupRunning, setWarmupRunning] = useState(false);
+  const [warmupProgress, setWarmupProgress] = useState<{
+    accountIndex: number;
+    accountTotal: number;
+    accountHandle: string;
+    step: number;
+    totalSteps: number;
+    label: string;
+  } | null>(null);
   // Per-engagement-card input for how many slave accounts to like / repost with.
   const [engagementInputs, setEngagementInputs] = useState<
     Record<string, { like: string; repost: string }>
@@ -1140,6 +1153,109 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
       return;
     }
     await deleteSlaveAccounts(slaveAccounts.map((a) => a.id));
+  }
+
+  type WarmupAccountRow = { key: string; handle: string; kind: 'saved' | 'slave' };
+
+  const warmupAccounts = useMemo((): WarmupAccountRow[] => {
+    const saved = savedAccounts
+      .filter((a) => a.password?.trim() && !a.banned)
+      .map((a) => ({ key: `saved:${a.id}`, handle: a.handle, kind: 'saved' as const }));
+    if (!isAdmin) return saved;
+    const slaves = slaveAccounts.map((a) => ({
+      key: `slave:${a.id}`,
+      handle: a.handle,
+      kind: 'slave' as const,
+    }));
+    return [...saved, ...slaves];
+  }, [savedAccounts, slaveAccounts, isAdmin]);
+
+  function warmupCredentials(row: WarmupAccountRow): BskyCredentials | null {
+    if (row.kind === 'slave') {
+      const acct = slaveAccounts.find((s) => s.id === row.key.slice('slave:'.length));
+      return acct ? credentialsForSlave(acct) : null;
+    }
+    const acct = savedAccounts.find((s) => s.id === row.key.slice('saved:'.length));
+    return acct ? credentialsForSavedAccount(acct) : null;
+  }
+
+  function toggleWarmupSelected(key: string) {
+    setSelectedWarmupKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
+  function toggleSelectAllWarmups() {
+    setSelectedWarmupKeys((prev) =>
+      prev.size === warmupAccounts.length ? new Set() : new Set(warmupAccounts.map((a) => a.key)),
+    );
+  }
+
+  function warmupOverallPercent(): number {
+    if (!warmupProgress) return 0;
+    const { accountIndex, accountTotal, step, totalSteps } = warmupProgress;
+    const done = (accountIndex - 1) * totalSteps + step;
+    return Math.min(100, Math.round((done / (accountTotal * totalSteps)) * 100));
+  }
+
+  async function startWarmup() {
+    const selected = warmupAccounts.filter((a) => selectedWarmupKeys.has(a.key));
+    if (selected.length === 0) {
+      setError('Select at least one account to warm up.');
+      return;
+    }
+    setWarmupRunning(true);
+    setError(null);
+    setSuccessMessage(null);
+    const failures: string[] = [];
+    try {
+      for (let i = 0; i < selected.length; i++) {
+        const row = selected[i];
+        const creds = warmupCredentials(row);
+        if (!creds) {
+          failures.push(`@${row.handle.replace(/^@/, '')}: missing credentials`);
+          continue;
+        }
+        setWarmupProgress({
+          accountIndex: i + 1,
+          accountTotal: selected.length,
+          accountHandle: row.handle,
+          step: 0,
+          totalSteps: WARMUP_STEP_COUNT,
+          label: 'Signing in…',
+        });
+        const res = await runAccountWarmup(creds, {
+          onProgress: (p) => {
+            setWarmupProgress({
+              accountIndex: i + 1,
+              accountTotal: selected.length,
+              accountHandle: row.handle,
+              step: p.step,
+              totalSteps: p.totalSteps,
+              label: p.label,
+            });
+          },
+        });
+        if (!res.ok) {
+          failures.push(`@${row.handle.replace(/^@/, '')}: ${res.error ?? 'warm-up failed'}`);
+        }
+      }
+      if (failures.length > 0) {
+        setError(
+          `Warm-up finished with ${failures.length} error${failures.length === 1 ? '' : 's'}: ${failures.slice(0, 3).join(' · ')}`,
+        );
+      } else {
+        setSuccessMessage(
+          `Warm-up completed for ${selected.length} account${selected.length === 1 ? '' : 's'}.`,
+        );
+      }
+    } finally {
+      setWarmupRunning(false);
+      setWarmupProgress(null);
+    }
   }
 
   function engagementInput(postId: string): { like: string; repost: string } {
@@ -2289,6 +2405,16 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
       ),
     },
     {
+      id: 'warmups',
+      label: 'Warmups',
+      icon: (
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
+          <circle cx="12" cy="12" r="4" />
+        </svg>
+      ),
+    },
+    {
       id: 'follow',
       label: 'Follow',
       icon: (
@@ -2368,6 +2494,8 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
       ? 'Accounts'
       : view === 'slaves'
       ? 'Slave Accounts'
+      : view === 'warmups'
+      ? 'Warmups'
       : view === 'targets'
       ? 'Target Profiles'
       : view === 'banner'
@@ -3481,6 +3609,100 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                       </div>
                     ))}
                   </div>
+                )}
+              </section>
+            )}
+
+            {view === 'warmups' && (
+              <section className="panel">
+                <div className="panel-head">
+                  <h2>Warmups ({warmupAccounts.length})</h2>
+                  <button
+                    type="button"
+                    className="btn"
+                    disabled={warmupRunning || selectedWarmupKeys.size === 0}
+                    onClick={() => void startWarmup()}
+                  >
+                    {warmupRunning ? 'Running…' : `Start warm-up (${selectedWarmupKeys.size})`}
+                  </button>
+                </div>
+
+                <p className="empty-note">
+                  Each selected account runs a ~5 minute warm-up: feed scrolling, likes, thread
+                  reads, profile browsing, and short replies — simulating natural Bluesky activity.
+                  Slave accounts use their assigned proxy when set.
+                </p>
+
+                {warmupRunning && warmupProgress && (
+                  <div className="publish-progress warmup-progress">
+                    <div className="publish-progress__track">
+                      <div
+                        className="publish-progress__fill"
+                        style={{ width: `${warmupOverallPercent()}%` }}
+                      />
+                    </div>
+                    <span className="publish-progress__label">
+                      Account {warmupProgress.accountIndex}/{warmupProgress.accountTotal} · @
+                      {warmupProgress.accountHandle.replace(/^@/, '')} · Step{' '}
+                      {warmupProgress.step}/{warmupProgress.totalSteps} · {warmupProgress.label}
+                    </span>
+                  </div>
+                )}
+
+                {warmupAccounts.length === 0 ? (
+                  <p className="empty-note">
+                    No warmable accounts yet. Add saved accounts (with passwords) or slave accounts.
+                  </p>
+                ) : (
+                  <>
+                    <div className="slave-bulkbar">
+                      <label className="slave-bulkbar__select">
+                        <input
+                          type="checkbox"
+                          checked={selectedWarmupKeys.size === warmupAccounts.length}
+                          ref={(el) => {
+                            if (el) {
+                              el.indeterminate =
+                                selectedWarmupKeys.size > 0 &&
+                                selectedWarmupKeys.size < warmupAccounts.length;
+                            }
+                          }}
+                          onChange={toggleSelectAllWarmups}
+                          disabled={warmupRunning}
+                        />
+                        <span>
+                          {selectedWarmupKeys.size > 0
+                            ? `${selectedWarmupKeys.size} selected`
+                            : 'Select all'}
+                        </span>
+                      </label>
+                    </div>
+                    <div className="proxy-list">
+                      {warmupAccounts.map((acct) => (
+                        <div
+                          key={acct.key}
+                          className={`proxy-row${selectedWarmupKeys.has(acct.key) ? ' proxy-row--selected' : ''}`}
+                        >
+                          <label className="slave-row__check" title="Select">
+                            <input
+                              type="checkbox"
+                              checked={selectedWarmupKeys.has(acct.key)}
+                              onChange={() => toggleWarmupSelected(acct.key)}
+                              disabled={warmupRunning}
+                            />
+                          </label>
+                          <div className="proxy-row__body">
+                            <div className="proxy-row__top">
+                              <strong>@{acct.handle.replace(/^@/, '')}</strong>
+                              <span className={`owner-tag owner-tag--${acct.kind}`}>
+                                {acct.kind === 'slave' ? 'Slave' : 'Account'}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
                 )}
               </section>
             )}
