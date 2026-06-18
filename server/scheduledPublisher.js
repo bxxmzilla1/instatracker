@@ -3,9 +3,11 @@
 
 import { createClient } from '@supabase/supabase-js';
 import {
+  backfillScheduledPostCaptions,
   collectDueScheduledItems,
   normalizeScheduledPosts,
   resolvePublishCaption,
+  trimCaption,
 } from './contentSchedule.js';
 import { publishContent, proxyRowToRelay } from './publish.js';
 import { lookupExitIp } from './ipinfo.js';
@@ -118,9 +120,18 @@ async function claimScheduledPost(db, rowId, postId) {
   if (current.publishingAt || current.postedAt) return null;
   if (posts.some((post) => post.id !== postId && post.publishingAt && !post.postedAt)) return null;
 
-  const updated = posts.map((post, i) =>
+  const resolvedCaption = resolvePublishCaption(current, row);
+  const postsWithCaption = backfillScheduledPostCaptions(posts, resolvedCaption || row.caption || '');
+
+  const updated = postsWithCaption.map((post, i) =>
     i === idx
-      ? { ...post, publishingAt: Date.now(), publishStage: 'creating', postError: undefined }
+      ? {
+          ...post,
+          caption: resolvedCaption || trimCaption(post.caption) || undefined,
+          publishingAt: Date.now(),
+          publishStage: 'creating',
+          postError: undefined,
+        }
       : post,
   );
 

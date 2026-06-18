@@ -22,6 +22,19 @@ function trimCaption(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
 }
 
+/** Copy a shared caption onto pending scheduled posts that are missing one. */
+export function backfillScheduledPostCaptions(
+  posts: ScheduledPost[],
+  caption: string,
+): ScheduledPost[] {
+  const fallback = trimCaption(caption);
+  if (!fallback) return posts;
+  return posts.map((post) => {
+    if (post.postedAt || trimCaption(post.caption)) return post;
+    return { ...post, caption: fallback };
+  });
+}
+
 /** Caption for a scheduled publish: per-post caption, then reel-level fallback. */
 export function resolvePublishCaption(
   post: Pick<ScheduledPost, 'caption'> | undefined,

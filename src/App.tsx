@@ -50,7 +50,11 @@ import {
   updateAccount,
 } from './lib/db';
 import { assignedEmployees } from './lib/assignment';
-import { getScheduledPostsForDate, normalizeScheduledPosts } from './lib/contentSchedule';
+import {
+  backfillScheduledPostCaptions,
+  getScheduledPostsForDate,
+  normalizeScheduledPosts,
+} from './lib/contentSchedule';
 import { parseProxyString } from './lib/proxy';
 import { AUTO_UNIQUE_PROXY_ID, proxyOptionLabel, proxyToRelayConfig } from './lib/proxyRelay';
 import type { GraphRelayProxy } from './lib/proxyRelay';
@@ -1636,6 +1640,9 @@ export default function App() {
 
       const existing = normalizeScheduledPosts(scheduleReel);
       const scheduledAtMs = parseDatetimeLocal(newContentScheduledAt);
+      const inheritedCaption = scheduleReel.caption?.trim() ?? '';
+      const entryCaption = trimmedCaption || inheritedCaption;
+      const reelCaption = trimmedCaption || inheritedCaption;
 
       let nextScheduledPosts;
       if (editingScheduledPost) {
@@ -1646,7 +1653,7 @@ export default function App() {
                 ...post,
                 account: newContentTarget,
                 scheduledAt: scheduledAtMs,
-                caption: trimmedCaption,
+                caption: trimmedCaption || inheritedCaption,
                 proxyId: newContentProxyId || undefined,
               }
             : post,
@@ -1658,15 +1665,17 @@ export default function App() {
             id: crypto.randomUUID(),
             account: newContentTarget,
             scheduledAt: scheduledAtMs,
-            caption: trimmedCaption,
+            caption: entryCaption,
             proxyId: newContentProxyId || undefined,
           },
         ];
       }
 
+      nextScheduledPosts = backfillScheduledPostCaptions(nextScheduledPosts, reelCaption);
+
       await updateContent({
         ...scheduleReel,
-        caption: trimmedCaption,
+        caption: reelCaption,
         scheduledPosts: nextScheduledPosts,
         scheduledAt: undefined,
         targetAccount: undefined,

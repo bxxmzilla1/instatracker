@@ -4,7 +4,16 @@ function trimCaption(value) {
   return typeof value === 'string' ? value.trim() : '';
 }
 
-/** Caption for a scheduled publish: per-post caption, then reel-level fallback. */
+/** Copy a shared caption onto pending scheduled posts that are missing one. */
+export function backfillScheduledPostCaptions(posts, caption) {
+  const fallback = trimCaption(caption);
+  if (!fallback) return posts;
+  return posts.map((post) => {
+    if (post.postedAt || trimCaption(post.caption)) return post;
+    return { ...post, caption: fallback };
+  });
+}
+
 export function resolvePublishCaption(post, row) {
   if (row?.media_type === 'story') return '';
   const fromPost = trimCaption(post?.caption);
@@ -59,3 +68,5 @@ export function collectDueScheduledItems(rows, now) {
   }
   return dueItems.sort((a, b) => a.post.scheduledAt - b.post.scheduledAt);
 }
+
+export { trimCaption };
