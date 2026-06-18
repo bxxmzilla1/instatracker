@@ -1,15 +1,34 @@
 /** Helpers for multi-account scheduled posts (mirrors src/lib/contentSchedule.ts). */
 
+function trimCaption(value) {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+/** Caption for a scheduled publish: per-post caption, then reel-level fallback. */
+export function resolvePublishCaption(post, row) {
+  if (row?.media_type === 'story') return '';
+  const fromPost = trimCaption(post?.caption);
+  if (fromPost) return fromPost;
+  return trimCaption(row?.caption);
+}
+
 export function normalizeScheduledPosts(row) {
   const stored = Array.isArray(row.scheduled_posts) ? row.scheduled_posts : [];
-  if (stored.length > 0) return stored;
+  const rowCaption = trimCaption(row?.caption);
+
+  if (stored.length > 0) {
+    return stored.map((post) => {
+      if (trimCaption(post?.caption) || !rowCaption) return post;
+      return { ...post, caption: rowCaption };
+    });
+  }
   if (row.scheduled_at && row.target_account && !row.posted_at) {
     return [
       {
         id: `${row.id}-legacy`,
         account: row.target_account,
         scheduledAt: row.scheduled_at,
-        caption: row.caption || undefined,
+        caption: rowCaption || undefined,
         proxyId: row.proxy_id || undefined,
       },
     ];

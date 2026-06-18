@@ -15,19 +15,42 @@ type ScheduleSource = Pick<
   | 'proxyId'
   | 'caption'
   | 'postedAt'
+  | 'mediaType'
 >;
+
+function trimCaption(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+/** Caption for a scheduled publish: per-post caption, then reel-level fallback. */
+export function resolvePublishCaption(
+  post: Pick<ScheduledPost, 'caption'> | undefined,
+  source: Pick<ScheduleSource, 'caption' | 'mediaType'>,
+): string {
+  if (source.mediaType === 'story') return '';
+  const fromPost = trimCaption(post?.caption);
+  if (fromPost) return fromPost;
+  return trimCaption(source.caption);
+}
 
 /** Merge legacy single-schedule fields into a scheduled-post queue. */
 export function normalizeScheduledPosts(source: ScheduleSource): ScheduledPost[] {
   const stored = source.scheduledPosts ?? [];
-  if (stored.length > 0) return stored;
+  const rowCaption = trimCaption(source.caption);
+
+  if (stored.length > 0) {
+    return stored.map((post) => {
+      if (trimCaption(post.caption) || !rowCaption) return post;
+      return { ...post, caption: rowCaption };
+    });
+  }
   if (source.scheduledAt && source.targetAccount && !source.postedAt) {
     return [
       {
         id: `${source.id}-legacy`,
         account: source.targetAccount,
         scheduledAt: source.scheduledAt,
-        caption: source.caption || undefined,
+        caption: rowCaption || undefined,
         proxyId: source.proxyId,
       },
     ];

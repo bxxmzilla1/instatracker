@@ -90,14 +90,14 @@ export async function relayGraphRequest(payload = {}) {
       init.body = JSON.stringify(body);
     }
   } else {
-    // JSON body (not query string) for POST params — required for multi-line
+    // Form body (not query string) for POST params — required for multi-line
     // captions with emoji/hashtags, especially when publishing through a proxy.
-    init.headers['Content-Type'] = 'application/json';
-    init.body = JSON.stringify(
-      Object.fromEntries(
-        Object.entries(params).filter(([, value]) => value != null).map(([key, value]) => [key, String(value)]),
-      ),
-    );
+    const form = new URLSearchParams();
+    for (const [key, value] of Object.entries(params)) {
+      if (value != null) form.set(key, String(value));
+    }
+    init.headers['Content-Type'] = 'application/x-www-form-urlencoded';
+    init.body = form.toString();
   }
 
   try {

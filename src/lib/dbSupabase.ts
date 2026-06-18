@@ -526,6 +526,7 @@ function toContent(row: ContentRow): ContentReel {
       targetAccount: row.target_account ?? undefined,
       proxyId: row.proxy_id ?? undefined,
       caption: row.caption ?? '',
+      mediaType: parseMediaType(row.media_type),
       postedAt: row.posted_at ?? undefined,
     }),
     publishingAt: row.publishing_at ?? undefined,

@@ -37,7 +37,11 @@ function proxyRowToRelay(row) {
 
 async function createMediaContainer(igUserId, accessToken, params, proxy) {
   const payload = { ...params };
-  if (payload.caption != null) payload.caption = String(payload.caption);
+  if (payload.caption != null) {
+    const caption = String(payload.caption).trim();
+    if (caption) payload.caption = caption;
+    else delete payload.caption;
+  }
   const data = await graphCall('POST', `/${igUserId}/media`, accessToken, payload, proxy);
   return data.id;
 }

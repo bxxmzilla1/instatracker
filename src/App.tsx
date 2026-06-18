@@ -1646,7 +1646,7 @@ export default function App() {
                 ...post,
                 account: newContentTarget,
                 scheduledAt: scheduledAtMs,
-                caption: trimmedCaption || undefined,
+                caption: trimmedCaption,
                 proxyId: newContentProxyId || undefined,
               }
             : post,
@@ -1658,7 +1658,7 @@ export default function App() {
             id: crypto.randomUUID(),
             account: newContentTarget,
             scheduledAt: scheduledAtMs,
-            caption: trimmedCaption || undefined,
+            caption: trimmedCaption,
             proxyId: newContentProxyId || undefined,
           },
         ];
