@@ -1341,6 +1341,28 @@ export default function App() {
     await loadContent();
   }
 
+  async function handleRetryScheduledPost(reel: ContentReel, scheduledPost: ScheduledPost) {
+    const next = normalizeScheduledPosts(reel).map((post) =>
+      post.id === scheduledPost.id
+        ? {
+            ...post,
+            postError: undefined,
+            publishingAt: undefined,
+            publishStage: undefined,
+            scheduledAt: Date.now(),
+          }
+        : post,
+    );
+    await updateContent({
+      ...reel,
+      scheduledPosts: next,
+      postError: undefined,
+      publishingAt: undefined,
+      publishStage: undefined,
+    });
+    await loadContent();
+  }
+
   function openScheduleModal(reel: ContentReel, mode: 'post' | 'schedule') {
     const fresh = content.find((c) => c.id === reel.id) ?? reel;
     setScheduleReel(fresh);
@@ -1655,6 +1677,9 @@ export default function App() {
                 scheduledAt: scheduledAtMs,
                 caption: trimmedCaption || inheritedCaption,
                 proxyId: newContentProxyId || undefined,
+                postError: undefined,
+                publishingAt: undefined,
+                publishStage: undefined,
               }
             : post,
         );
@@ -3133,9 +3158,18 @@ export default function App() {
                                 )}
                               </p>
                             ) : scheduledPost.postError ? (
-                              <p className="schedule-card__status schedule-card__status--error">
-                                ⚠ {scheduledPost.postError}
-                              </p>
+                              <>
+                                <p className="schedule-card__status schedule-card__status--error">
+                                  ⚠ {scheduledPost.postError}
+                                </p>
+                                <button
+                                  type="button"
+                                  className="schedule-card__retry"
+                                  onClick={() => handleRetryScheduledPost(reel, scheduledPost)}
+                                >
+                                  Retry now
+                                </button>
+                              </>
                             ) : (
                               <p className="schedule-card__status">
                                 Scheduled for {formatDateTimeLocal(scheduledPost.scheduledAt)}

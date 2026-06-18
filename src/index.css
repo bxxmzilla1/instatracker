@@ -3881,6 +3881,21 @@ button:disabled {
   color: #f87171;
 }
 
+.schedule-card__retry {
+  margin-top: 0.35rem;
+  padding: 0.25rem 0.65rem;
+  border: 1px solid rgba(248, 113, 113, 0.45);
+  border-radius: 999px;
+  background: transparent;
+  color: #fca5a5;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.schedule-card__retry:hover {
+  background: rgba(248, 113, 113, 0.12);
+}
+
 .schedule-card__progress {
   display: flex;
   flex-direction: column;

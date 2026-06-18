@@ -90,16 +90,24 @@ export async function relayGraphRequest(payload = {}) {
       init.body = JSON.stringify(body);
     }
   } else {
-    // Meta Graph POST examples pass params (including access_token and caption)
-    // as application/x-www-form-urlencoded in the body — not the query string.
-    // Query-string captions are truncated by URL limits and many proxies.
-    const form = new URLSearchParams();
-    for (const [key, value] of Object.entries(params)) {
-      if (value != null) form.set(key, String(value));
+    const entries = Object.entries(params).filter(([, value]) => value != null);
+    const stringParams = Object.fromEntries(entries.map(([key, value]) => [key, String(value)]));
+
+    if (proxy?.host && proxy?.port) {
+      // Scheduled publishes run through a proxy. Meta's content publishing guide
+      // uses a JSON POST body with Authorization Bearer — form bodies are often
+      // dropped or mangled by HTTP proxies, which posts the reel without a caption.
+      init.headers['Content-Type'] = 'application/json';
+      init.body = JSON.stringify(stringParams);
+    } else {
+      const form = new URLSearchParams();
+      for (const [key, value] of entries) {
+        form.set(key, String(value));
+      }
+      form.set('access_token', accessToken);
+      init.headers['Content-Type'] = 'application/x-www-form-urlencoded';
+      init.body = form.toString();
     }
-    form.set('access_token', accessToken);
-    init.headers['Content-Type'] = 'application/x-www-form-urlencoded';
-    init.body = form.toString();
   }
 
   try {

@@ -195,7 +195,7 @@ async function getAccountCredentials(db, username) {
   return { igUserId: data.ig_user_id, igAccessToken: data.ig_access_token };
 }
 
-async function markScheduledPosted(db, rowId, postId, result, ipInfo) {
+async function markScheduledPosted(db, rowId, postId, result, ipInfo, publishedCaption) {
   const { data: row, error } = await db.from('content').select('*').eq('id', rowId).maybeSingle();
   if (error) throw new Error(error.message);
   if (!row) return;
@@ -216,6 +216,7 @@ async function markScheduledPosted(db, rowId, postId, result, ipInfo) {
           permalink: result.permalink,
           publishedIp,
           publishedIpCountry,
+          publishedCaption: publishedCaption || undefined,
           publishingAt: undefined,
           publishStage: undefined,
           postError: undefined,
@@ -372,7 +373,7 @@ export async function runScheduledPublisher() {
             ipInfo = undefined;
           }
         }
-        const caption = resolvePublishCaption(claimedPost, claimedRow);
+        const caption = trimCaption(claimedPost.caption) || resolvePublishCaption(claimedPost, claimedRow);
 
         const result = await publishContent(
           igUserId,
@@ -389,7 +390,7 @@ export async function runScheduledPublisher() {
             }
           },
         );
-        await markScheduledPosted(db, claimedRow.id, claimedPost.id, result, ipInfo);
+        await markScheduledPosted(db, claimedRow.id, claimedPost.id, result, ipInfo, caption);
         if (ipInfo?.ip) await registerUsedIp(db, ipInfo.ip, claimedPost.account);
         processed += 1;
         results.push({
