@@ -18,6 +18,9 @@ function requestViaProxy(url, init, proxy) {
   const target = new URL(url);
   const method = init.method || 'GET';
   const headers = { ...(init.headers || {}) };
+  if (init.body != null && headers['Content-Length'] == null) {
+    headers['Content-Length'] = Buffer.byteLength(init.body);
+  }
 
   return new Promise((resolve, reject) => {
     const req = https.request(
@@ -66,16 +69,17 @@ export async function relayGraphRequest(payload = {}) {
   const base = ALLOWED_HOSTS.has(host) ? host : GRAPH_HOST;
 
   const url = new URL(`${base}/${version}${path.startsWith('/') ? path : `/${path}`}`);
-  for (const [key, value] of Object.entries(params)) {
-    if (value != null) url.searchParams.set(key, String(value));
-  }
 
   const init = {
     method,
     headers: { Authorization: `Bearer ${accessToken}` },
   };
 
-  if (method !== 'GET' && body != null) {
+  if (method === 'GET') {
+    for (const [key, value] of Object.entries(params)) {
+      if (value != null) url.searchParams.set(key, String(value));
+    }
+  } else if (body != null) {
     if (typeof body === 'string') {
       init.headers['Content-Type'] = 'application/x-www-form-urlencoded';
       init.body = body;
@@ -83,6 +87,17 @@ export async function relayGraphRequest(payload = {}) {
       init.headers['Content-Type'] = 'application/json';
       init.body = JSON.stringify(body);
     }
+  } else {
+    // Send parameters in the request body (form-urlencoded) rather than the
+    // query string. Long/multi-line values like Instagram captions can exceed
+    // URL-length limits or be truncated by proxies when placed in the URL,
+    // which makes a reel publish without its caption.
+    const form = new URLSearchParams();
+    for (const [key, value] of Object.entries(params)) {
+      if (value != null) form.set(key, String(value));
+    }
+    init.headers['Content-Type'] = 'application/x-www-form-urlencoded';
+    init.body = form.toString();
   }
 
   try {
