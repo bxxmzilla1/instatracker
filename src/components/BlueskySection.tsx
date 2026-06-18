@@ -209,6 +209,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   const [showAddSlave, setShowAddSlave] = useState(false);
   const [newSlaveHandle, setNewSlaveHandle] = useState('');
   const [newSlavePassword, setNewSlavePassword] = useState('');
+  const [newSlaveProxyId, setNewSlaveProxyId] = useState('');
   const [savingSlave, setSavingSlave] = useState(false);
   // Multi-select for bulk-deleting slave accounts.
   const [selectedSlaveIds, setSelectedSlaveIds] = useState<Set<string>>(() => new Set());
@@ -1018,7 +1019,17 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     return {
       identifier: acct.handle.trim().replace(/^@/, ''),
       password: acct.password.trim(),
+      proxy: proxyConfigFor(acct.proxyId),
     };
+  }
+
+  async function handleUpdateSlaveProxy(acct: BskySlaveAccount, proxyId: string) {
+    try {
+      await addSlaveAccount({ ...acct, proxyId: proxyId || undefined });
+      await loadAll();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not update slave proxy.');
+    }
   }
 
   async function handleAddSlaveAccount(event: FormEvent) {
@@ -1033,15 +1044,22 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     setError(null);
     setSuccessMessage(null);
     try {
-      await verifyBskyLogin({ identifier: handle, password: newSlavePassword.trim() });
+      const credentials: BskyCredentials = {
+        identifier: handle,
+        password: newSlavePassword.trim(),
+        proxy: proxyConfigFor(newSlaveProxyId || undefined),
+      };
+      await verifyBskyLogin(credentials);
       await addSlaveAccount({
         id: crypto.randomUUID(),
         handle,
         password: newSlavePassword.trim(),
+        proxyId: newSlaveProxyId || undefined,
         createdAt: Date.now(),
       });
       setNewSlaveHandle('');
       setNewSlavePassword('');
+      setNewSlaveProxyId('');
       setShowAddSlave(false);
       await loadAll();
       setSuccessMessage(`Slave account @${handle} verified and added.`);
@@ -3385,6 +3403,13 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                       onChange={(e) => setNewSlavePassword(e.target.value)}
                       autoComplete="off"
                     />
+                    <ProxyPicker
+                      proxies={proxies}
+                      value={newSlaveProxyId}
+                      onChange={setNewSlaveProxyId}
+                      label="Proxy (optional)"
+                      optionLabel={proxyOptionLabel}
+                    />
                     <button
                       type="submit"
                       disabled={!newSlaveHandle.trim() || !newSlavePassword.trim() || savingSlave}
@@ -3431,6 +3456,15 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                           <div className="proxy-row__fields">
                             <CopyField label="Handle" value={acct.handle} />
                             <CopyField label="Password" value={acct.password} />
+                          </div>
+                          <div className="slave-row__proxy">
+                            <ProxyPicker
+                              proxies={proxies}
+                              value={acct.proxyId ?? ''}
+                              onChange={(id) => void handleUpdateSlaveProxy(acct, id)}
+                              label="Proxy"
+                              optionLabel={proxyOptionLabel}
+                            />
                           </div>
                         </div>
                         <div className="row-actions">

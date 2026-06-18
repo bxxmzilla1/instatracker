@@ -366,6 +366,8 @@ create table if not exists bsky_slave_accounts (
   created_at bigint
 );
 
+alter table bsky_slave_accounts add column if not exists proxy_id text;
+
 create table if not exists bsky_targets (
   id text primary key,
   handle text,

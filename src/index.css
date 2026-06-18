@@ -3523,6 +3523,11 @@ button:disabled {
   cursor: pointer;
 }
 
+.slave-row__proxy {
+  margin-top: 0.5rem;
+  max-width: 420px;
+}
+
 .proxy-row--selected {
   border-color: var(--accent);
   background: rgba(29, 155, 240, 0.1);

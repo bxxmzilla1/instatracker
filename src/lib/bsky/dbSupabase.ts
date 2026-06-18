@@ -489,6 +489,7 @@ interface SlaveAccountRow {
   id: string;
   handle: string | null;
   password: string | null;
+  proxy_id: string | null;
   created_at: number | null;
 }
 
@@ -497,6 +498,7 @@ function toSlaveAccount(row: SlaveAccountRow): BskySlaveAccount {
     id: row.id,
     handle: row.handle ?? '',
     password: row.password ?? '',
+    proxyId: row.proxy_id ?? undefined,
     createdAt: row.created_at ?? 0,
   };
 }
@@ -515,6 +517,7 @@ export async function addSlaveAccount(account: BskySlaveAccount): Promise<void> 
     id: account.id,
     handle: account.handle,
     password: account.password,
+    proxy_id: account.proxyId ?? null,
     created_at: account.createdAt,
   });
   if (error) throw new Error(error.message);
