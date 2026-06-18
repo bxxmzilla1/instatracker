@@ -232,6 +232,8 @@ export interface Cta {
 }
 
 export const META_SESSIONS_LINK_ID = 'meta-sessions';
+export const META_SESSIONS_LINK_ID_2 = 'meta-sessions-2';
+export const META_SESSIONS_LINK_ID_3 = 'meta-sessions-3';
 
 /** Saved external API link (e.g. Meta Developer sessions URL). */
 export interface ApiLink {

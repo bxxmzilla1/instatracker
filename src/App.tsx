@@ -105,9 +105,11 @@ import type {
   StoryNote,
   TrackedAccount,
 } from './types';
-import { META_SESSIONS_LINK_ID } from './types';
+import { META_SESSIONS_LINK_ID, META_SESSIONS_LINK_ID_2, META_SESSIONS_LINK_ID_3 } from './types';
 
 const META_SESSIONS_LINK_LABEL = 'Sessions Link - Meta Developer';
+const META_SESSIONS_LINK_LABEL_2 = 'Sessions Link - Meta Developer 2';
+const META_SESSIONS_LINK_LABEL_3 = 'Sessions Link - Meta Developer 3';
 
 function externalHref(url: string): string {
   return url.trim();
@@ -380,6 +382,14 @@ export default function App() {
   const [editingMetaSessionsLink, setEditingMetaSessionsLink] = useState(false);
   const [metaSessionsDraft, setMetaSessionsDraft] = useState('');
   const [savingMetaSessionsLink, setSavingMetaSessionsLink] = useState(false);
+  const [metaSessionsLink2, setMetaSessionsLink2] = useState<ApiLink | null>(null);
+  const [editingMetaSessionsLink2, setEditingMetaSessionsLink2] = useState(false);
+  const [metaSessionsDraft2, setMetaSessionsDraft2] = useState('');
+  const [savingMetaSessionsLink2, setSavingMetaSessionsLink2] = useState(false);
+  const [metaSessionsLink3, setMetaSessionsLink3] = useState<ApiLink | null>(null);
+  const [editingMetaSessionsLink3, setEditingMetaSessionsLink3] = useState(false);
+  const [metaSessionsDraft3, setMetaSessionsDraft3] = useState('');
+  const [savingMetaSessionsLink3, setSavingMetaSessionsLink3] = useState(false);
   const [scheduleViewDate, setScheduleViewDate] = useState<string>(() => toDateKey(Date.now()));
   const timezoneLabel = getTimezoneLabel();
   const [contentEmployeeFilter, setContentEmployeeFilter] = useState('');
@@ -459,9 +469,18 @@ export default function App() {
 
   const loadMetaSessionsLink = useCallback(async () => {
     try {
-      setMetaSessionsLink(await getApiLink(META_SESSIONS_LINK_ID));
+      const [link1, link2, link3] = await Promise.all([
+        getApiLink(META_SESSIONS_LINK_ID),
+        getApiLink(META_SESSIONS_LINK_ID_2),
+        getApiLink(META_SESSIONS_LINK_ID_3),
+      ]);
+      setMetaSessionsLink(link1);
+      setMetaSessionsLink2(link2);
+      setMetaSessionsLink3(link3);
     } catch {
       setMetaSessionsLink(null);
+      setMetaSessionsLink2(null);
+      setMetaSessionsLink3(null);
     }
   }, []);
 
@@ -1118,6 +1137,90 @@ export default function App() {
   function openMetaSessionsLink() {
     if (!metaSessionsLink?.url) return;
     const href = externalHref(metaSessionsLink.url);
+    if (!href) return;
+    window.open(href, '_blank', 'noopener,noreferrer');
+  }
+
+  function startEditMetaSessionsLink2() {
+    setMetaSessionsDraft2(metaSessionsLink2?.url ?? '');
+    setEditingMetaSessionsLink2(true);
+  }
+
+  function cancelEditMetaSessionsLink2() {
+    setEditingMetaSessionsLink2(false);
+    setMetaSessionsDraft2('');
+  }
+
+  async function saveMetaSessionsLink2() {
+    const url = metaSessionsDraft2.trim();
+    if (!url) {
+      setError('Enter a sessions link URL.');
+      return;
+    }
+    setSavingMetaSessionsLink2(true);
+    try {
+      const link: ApiLink = {
+        id: META_SESSIONS_LINK_ID_2,
+        label: META_SESSIONS_LINK_LABEL_2,
+        url,
+        updatedAt: Date.now(),
+      };
+      await saveApiLink(link);
+      setMetaSessionsLink2(link);
+      setEditingMetaSessionsLink2(false);
+      setMetaSessionsDraft2('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save sessions link.');
+    } finally {
+      setSavingMetaSessionsLink2(false);
+    }
+  }
+
+  function openMetaSessionsLink2() {
+    if (!metaSessionsLink2?.url) return;
+    const href = externalHref(metaSessionsLink2.url);
+    if (!href) return;
+    window.open(href, '_blank', 'noopener,noreferrer');
+  }
+
+  function startEditMetaSessionsLink3() {
+    setMetaSessionsDraft3(metaSessionsLink3?.url ?? '');
+    setEditingMetaSessionsLink3(true);
+  }
+
+  function cancelEditMetaSessionsLink3() {
+    setEditingMetaSessionsLink3(false);
+    setMetaSessionsDraft3('');
+  }
+
+  async function saveMetaSessionsLink3() {
+    const url = metaSessionsDraft3.trim();
+    if (!url) {
+      setError('Enter a sessions link URL.');
+      return;
+    }
+    setSavingMetaSessionsLink3(true);
+    try {
+      const link: ApiLink = {
+        id: META_SESSIONS_LINK_ID_3,
+        label: META_SESSIONS_LINK_LABEL_3,
+        url,
+        updatedAt: Date.now(),
+      };
+      await saveApiLink(link);
+      setMetaSessionsLink3(link);
+      setEditingMetaSessionsLink3(false);
+      setMetaSessionsDraft3('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save sessions link.');
+    } finally {
+      setSavingMetaSessionsLink3(false);
+    }
+  }
+
+  function openMetaSessionsLink3() {
+    if (!metaSessionsLink3?.url) return;
+    const href = externalHref(metaSessionsLink3.url);
     if (!href) return;
     window.open(href, '_blank', 'noopener,noreferrer');
   }
@@ -3356,6 +3459,130 @@ export default function App() {
                 ) : (
                   <p className="api-bubble-card__url" title={metaSessionsLink.url}>
                     {metaSessionsLink.url}
+                  </p>
+                )}
+              </div>
+
+              <div className="api-bubble-card">
+                <div className="api-bubble-card__head">
+                  <span className="api-bubble-card__label">{META_SESSIONS_LINK_LABEL_2}</span>
+                  {metaSessionsLink2?.url && !editingMetaSessionsLink2 && (
+                    <div className="row-actions">
+                      <button
+                        type="button"
+                        className="row-edit"
+                        onClick={startEditMetaSessionsLink2}
+                        title="Edit link"
+                      >
+                        ✎
+                      </button>
+                      <button
+                        type="button"
+                        className="api-bubble-card__open"
+                        onClick={openMetaSessionsLink2}
+                        title="Open in browser"
+                      >
+                        Open
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {editingMetaSessionsLink2 || !metaSessionsLink2?.url ? (
+                  <div className="api-bubble-card__form">
+                    <input
+                      className="cred-form__input"
+                      type="text"
+                      placeholder="sessions://open/..."
+                      value={metaSessionsDraft2}
+                      onChange={(e) => setMetaSessionsDraft2(e.target.value)}
+                      autoComplete="off"
+                      spellCheck={false}
+                    />
+                    <div className="api-bubble-card__form-actions">
+                      {editingMetaSessionsLink2 && (
+                        <button
+                          type="button"
+                          className="api-bubble-card__cancel"
+                          onClick={cancelEditMetaSessionsLink2}
+                        >
+                          Cancel
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={saveMetaSessionsLink2}
+                        disabled={savingMetaSessionsLink2 || !metaSessionsDraft2.trim()}
+                      >
+                        {savingMetaSessionsLink2 ? 'Saving…' : 'Save'}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="api-bubble-card__url" title={metaSessionsLink2.url}>
+                    {metaSessionsLink2.url}
+                  </p>
+                )}
+              </div>
+
+              <div className="api-bubble-card">
+                <div className="api-bubble-card__head">
+                  <span className="api-bubble-card__label">{META_SESSIONS_LINK_LABEL_3}</span>
+                  {metaSessionsLink3?.url && !editingMetaSessionsLink3 && (
+                    <div className="row-actions">
+                      <button
+                        type="button"
+                        className="row-edit"
+                        onClick={startEditMetaSessionsLink3}
+                        title="Edit link"
+                      >
+                        ✎
+                      </button>
+                      <button
+                        type="button"
+                        className="api-bubble-card__open"
+                        onClick={openMetaSessionsLink3}
+                        title="Open in browser"
+                      >
+                        Open
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {editingMetaSessionsLink3 || !metaSessionsLink3?.url ? (
+                  <div className="api-bubble-card__form">
+                    <input
+                      className="cred-form__input"
+                      type="text"
+                      placeholder="sessions://open/..."
+                      value={metaSessionsDraft3}
+                      onChange={(e) => setMetaSessionsDraft3(e.target.value)}
+                      autoComplete="off"
+                      spellCheck={false}
+                    />
+                    <div className="api-bubble-card__form-actions">
+                      {editingMetaSessionsLink3 && (
+                        <button
+                          type="button"
+                          className="api-bubble-card__cancel"
+                          onClick={cancelEditMetaSessionsLink3}
+                        >
+                          Cancel
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={saveMetaSessionsLink3}
+                        disabled={savingMetaSessionsLink3 || !metaSessionsDraft3.trim()}
+                      >
+                        {savingMetaSessionsLink3 ? 'Saving…' : 'Save'}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="api-bubble-card__url" title={metaSessionsLink3.url}>
+                    {metaSessionsLink3.url}
                   </p>
                 )}
               </div>
