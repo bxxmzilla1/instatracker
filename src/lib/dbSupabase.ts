@@ -315,7 +315,7 @@ export async function deleteProxy(id: string): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
-/** Records an exit IP as used so "Auto Unique" never reuses it. */
+/** Records the exit IP a post was published through (for IP history). */
 export async function registerPostedIp(ip: string, account?: string): Promise<void> {
   if (!ip) return;
   const { error } = await client()

@@ -1,9 +1,6 @@
 import type { Proxy } from '../types';
 import { parseProxyString } from './proxy';
 
-/** Sentinel proxy id that triggers the "Auto Unique" rotating-IP selection. */
-export const AUTO_UNIQUE_PROXY_ID = '__auto_unique__';
-
 export interface GraphRelayProxy {
   type?: string;
   host: string;

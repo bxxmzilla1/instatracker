@@ -70,7 +70,7 @@ alter table proxies add column if not exists current_ip text;
 alter table proxies add column if not exists ip_info jsonb;
 alter table proxies add column if not exists ip_checked_at bigint;
 
--- Registry of every exit IP a post has been published on (for "Auto Unique").
+-- Registry of every exit IP a post has been published on (IP history).
 create table if not exists posted_ips (
   ip text primary key,
   last_account text,

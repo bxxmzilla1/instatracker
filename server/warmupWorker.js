@@ -1,4 +1,4 @@
-import { getSupabaseAdmin } from './autoUnique.js';
+import { getSupabaseAdmin } from './supabaseAdmin.js';
 import { runAccountWarmup, WARMUP_STEP_COUNT } from './bskyWarmup.js';
 
 const RUN_STALE_MS = 15000;
