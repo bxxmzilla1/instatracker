@@ -79,7 +79,7 @@ export interface BskyPost {
   text: string;
   imageUrl?: string;
   videoUrl?: string;
-  mediaType?: 'image' | 'video';
+  mediaType?: 'image' | 'video' | 'text';
   employees: string[];
   allEmployees: boolean;
   scheduledAt?: number;

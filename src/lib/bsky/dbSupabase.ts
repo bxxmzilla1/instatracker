@@ -286,7 +286,14 @@ function toPost(row: PostRow): BskyPost {
     text: row.text ?? '',
     imageUrl: row.image_url ?? undefined,
     videoUrl: row.video_url ?? undefined,
-    mediaType: row.media_type === 'video' ? 'video' : row.media_type === 'image' ? 'image' : undefined,
+    mediaType:
+      row.media_type === 'video'
+        ? 'video'
+        : row.media_type === 'image'
+          ? 'image'
+          : row.media_type === 'text'
+            ? 'text'
+            : undefined,
     publishes: Array.isArray(row.publishes) ? (row.publishes as BskyPost['publishes']) : [],
     employees: Array.isArray(row.employees) ? (row.employees as string[]) : [],
     allEmployees: row.all_employees ?? false,

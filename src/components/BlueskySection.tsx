@@ -63,6 +63,7 @@ import {
   pushProfileImageFromFile,
   pushProfileImageFromUrl,
   publishBskyMediaPost,
+  publishBskyTextPost,
   getBskyPostEngagement,
   verifyBskyLogin,
   deleteBskyPost,
@@ -127,6 +128,12 @@ function profilePushProgressLabel(progress: ProfilePushProgressState): string {
   }
   const step = Math.min(progress.done + (progress.currentHandle ? 1 : 0), progress.total);
   return `${verb} ${noun} ${step} of ${progress.total}…${handle}`;
+}
+
+function resolvePostMediaType(post: BskyPost): 'image' | 'video' | 'text' {
+  if (post.mediaType === 'text') return 'text';
+  if (post.mediaType === 'video' || post.videoUrl) return 'video';
+  return 'image';
 }
 
 function ProfilePushProgressBar({ progress }: { progress: ProfilePushProgressState }) {
@@ -372,7 +379,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   }
 
   const [bioText, setBioText] = useState('');
-  const [postMediaTab, setPostMediaTab] = useState<'image' | 'video' | 'engagement'>('image');
+  const [postMediaTab, setPostMediaTab] = useState<'image' | 'video' | 'text' | 'engagement'>('image');
   const [postPublishAccountIds, setPostPublishAccountIds] = useState<Set<string>>(() => new Set());
   const [postPublishAllAccounts, setPostPublishAllAccounts] = useState(false);
   const [postPublishProxyId, setPostPublishProxyId] = useState('');
@@ -411,6 +418,9 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   const [savingBioEdit, setSavingBioEdit] = useState(false);
   const [addBioOpen, setAddBioOpen] = useState(false);
   const [savingBioAdd, setSavingBioAdd] = useState(false);
+  const [addTextPostOpen, setAddTextPostOpen] = useState(false);
+  const [newTextPostText, setNewTextPostText] = useState('');
+  const [savingTextPostAdd, setSavingTextPostAdd] = useState(false);
   const [picFile, setPicFile] = useState<File | null>(null);
   const [picCaption, setPicCaption] = useState('');
   const [proxyRaw, setProxyRaw] = useState('');
@@ -591,10 +601,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
 
   const displayedPosts = useMemo(() => {
     if (postMediaTab === 'engagement') return [];
-    return posts.filter((post) => {
-      const type = post.mediaType ?? (post.videoUrl ? 'video' : 'image');
-      return type === postMediaTab;
-    });
+    return posts.filter((post) => resolvePostMediaType(post) === postMediaTab);
   }, [posts, postMediaTab]);
 
   const engagementPosts = useMemo(
@@ -841,6 +848,38 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     setBioText('');
   }
 
+  function openAddTextPostModal() {
+    setNewTextPostText('');
+    setAddTextPostOpen(true);
+  }
+
+  function closeAddTextPostModal() {
+    setAddTextPostOpen(false);
+    setNewTextPostText('');
+  }
+
+  async function saveTextPostAdd() {
+    const trimmed = newTextPostText.trim();
+    if (!trimmed) return;
+    setSavingTextPostAdd(true);
+    try {
+      await addPost({
+        id: crypto.randomUUID(),
+        text: trimmed,
+        mediaType: 'text',
+        ...newLibraryItemAssign(),
+        createdAt: Date.now(),
+        publishes: [],
+      });
+      await loadAll();
+      closeAddTextPostModal();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not add text post.');
+    } finally {
+      setSavingTextPostAdd(false);
+    }
+  }
+
   async function uploadPostMedia(file: File) {
     const mediaType = file.type.startsWith('video/') ? 'video' : 'image';
     if (mediaType === 'video' && !file.type.includes('mp4')) {
@@ -1010,6 +1049,11 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     allAccounts: boolean,
   ) {
     const finalText = buildPostText(caption, hashtags);
+    const isTextPost = resolvePostMediaType(post) === 'text';
+    if (isTextPost && !finalText.trim()) {
+      setError('Post text cannot be empty.');
+      return;
+    }
     const postable = postableAccountsForPost(post);
     const targets = allAccounts
       ? postable
@@ -1030,8 +1074,12 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     let ok = 0;
 
     try {
-      const mediaBlob = await fetchPostMediaBlob(post);
-      const mediaType = post.mediaType ?? (post.videoUrl ? 'video' : 'image');
+      let mediaBlob: Blob | null = null;
+      let mediaType: 'image' | 'video' = 'image';
+      if (!isTextPost) {
+        mediaBlob = await fetchPostMediaBlob(post);
+        mediaType = resolvePostMediaType(post) === 'video' ? 'video' : 'image';
+      }
 
       // The hydrated cache strips saved-account passwords for security, so the
       // in-memory copy may not have credentials yet. Pull a fresh copy from the
@@ -1067,21 +1115,34 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
           continue;
         }
         try {
-          const published = await publishBskyMediaPost(credentialsForPublish(liveAcct, proxyId || undefined), {
-            text: finalText,
-            file: mediaBlob,
-            mediaType,
-            fileName: mediaType === 'video' ? 'video.mp4' : 'image.jpg',
-            onProgress: (message) => {
-              setPostPublishProgress({
-                pushKey,
-                done: i,
-                total: targets.length,
-                currentHandle: `${handle} · ${message}`,
-                kind: 'post',
+          const published = isTextPost
+            ? await publishBskyTextPost(credentialsForPublish(liveAcct, proxyId || undefined), {
+                text: finalText,
+                onProgress: (message) => {
+                  setPostPublishProgress({
+                    pushKey,
+                    done: i,
+                    total: targets.length,
+                    currentHandle: `${handle} · ${message}`,
+                    kind: 'post',
+                  });
+                },
+              })
+            : await publishBskyMediaPost(credentialsForPublish(liveAcct, proxyId || undefined), {
+                text: finalText,
+                file: mediaBlob!,
+                mediaType,
+                fileName: mediaType === 'video' ? 'video.mp4' : 'image.jpg',
+                onProgress: (message) => {
+                  setPostPublishProgress({
+                    pushKey,
+                    done: i,
+                    total: targets.length,
+                    currentHandle: `${handle} · ${message}`,
+                    kind: 'post',
+                  });
+                },
               });
-            },
-          });
           newPublishes.push({
             accountId: liveAcct.id,
             handle,
@@ -1143,6 +1204,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   }
 
   function downloadPost(post: BskyPost) {
+    if (resolvePostMediaType(post) === 'text') return;
     const url = post.mediaType === 'video' ? post.videoUrl : post.imageUrl;
     if (!url) return;
     const link = document.createElement('a');
@@ -5051,6 +5113,13 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                   </button>
                   <button
                     type="button"
+                    className={`toggle ${postMediaTab === 'text' ? 'toggle--active' : ''}`}
+                    onClick={() => setPostMediaTab('text')}
+                  >
+                    Text
+                  </button>
+                  <button
+                    type="button"
                     className={`toggle ${postMediaTab === 'engagement' ? 'toggle--active' : ''}`}
                     onClick={() => setPostMediaTab('engagement')}
                   >
@@ -5058,7 +5127,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                   </button>
                 </div>
 
-                {postMediaTab !== 'engagement' && (
+                {(postMediaTab === 'image' || postMediaTab === 'video') && (
                   <input
                     ref={postFileInputRef}
                     type="file"
@@ -5072,7 +5141,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                   />
                 )}
 
-                {postMediaTab !== 'engagement' && (
+                {(postMediaTab === 'image' || postMediaTab === 'video') && (
                   <section className="panel">
                       <div className="panel-head">
                         <h2>
@@ -5115,9 +5184,10 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                             const hasPublished = (post.publishes ?? []).some((p) => p.uri && !p.error);
                             const postable = postableAccountsForPost(post);
                             const isPublishing = postPublishingId === post.id;
+                            const mediaType = resolvePostMediaType(post);
                             return (
                               <div key={post.id} className="reel-cell">
-                                {post.mediaType === 'video' && post.videoUrl ? (
+                                {mediaType === 'video' && post.videoUrl ? (
                                   <HoverLoopVideo
                                     className="reel-cell__media"
                                     src={post.videoUrl}
@@ -5195,6 +5265,92 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                     </section>
                 )}
 
+                {postMediaTab === 'text' && (
+                  <section className="panel">
+                    <div className="panel-head">
+                      <h2>
+                        {isAdmin
+                          ? `Text posts (${displayedPosts.length})`
+                          : `Your text posts (${displayedPosts.length})`}
+                      </h2>
+                      <button type="button" className="btn" onClick={openAddTextPostModal}>
+                        Add text
+                      </button>
+                    </div>
+                    {displayedPosts.length === 0 ? (
+                      <p className="empty-note">
+                        {isAdmin
+                          ? 'No text posts yet. Add one, assign an employee, then post to Bluesky.'
+                          : 'No text posts yet. Add one, then post to your Bluesky accounts.'}
+                      </p>
+                    ) : (
+                      <div className="reels-grid">
+                        {displayedPosts.map((post) => {
+                          const hasPublished = (post.publishes ?? []).some((p) => p.uri && !p.error);
+                          const postable = postableAccountsForPost(post);
+                          const isPublishing = postPublishingId === post.id;
+                          return (
+                            <div key={post.id} className="reel-cell reel-cell--text">
+                              <div className="reel-cell__text-preview">
+                                <p className="bio-row__text">{post.text || 'Empty text post'}</p>
+                              </div>
+                              <div className="reel-cell__overlay">
+                                {hasPublished && (
+                                  <button
+                                    type="button"
+                                    className="reel-cell__btn reel-cell__btn--wide"
+                                    onClick={() => setPostMediaTab('engagement')}
+                                    title="View engagement"
+                                  >
+                                    Engagement
+                                  </button>
+                                )}
+                                {isAdmin && (
+                                  <button
+                                    type="button"
+                                    className="reel-cell__btn reel-cell__btn--wide"
+                                    onClick={() => openAssignPostModal(post)}
+                                    title="Assign to employees"
+                                  >
+                                    Assign
+                                  </button>
+                                )}
+                                {ownsLibraryItem(post) && (
+                                  <button
+                                    type="button"
+                                    className="reel-cell__btn reel-cell__btn--danger"
+                                    onClick={() => void deletePost(post.id).then(loadAll)}
+                                    title="Delete"
+                                    aria-label="Delete"
+                                  >
+                                    ✕
+                                  </button>
+                                )}
+                              </div>
+                              {isPublishing && postPublishProgress?.pushKey === post.id ? (
+                                <div className="reel-cell__progress">
+                                  <ProfilePushProgressBar progress={postPublishProgress} />
+                                </div>
+                              ) : (
+                                <div className="reel-cell__footer">
+                                  <button
+                                    type="button"
+                                    className="reel-cell__action reel-cell__action--primary reel-cell__action--publish"
+                                    disabled={isPublishing || postable.length === 0}
+                                    onClick={() => openPostPublishModal(post)}
+                                  >
+                                    Publish
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </section>
+                )}
+
                 {postMediaTab === 'engagement' && (
                   <section className="panel">
                     <div className="panel-head">
@@ -5219,7 +5375,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                       </button>
                     </div>
                     {engagementPosts.length === 0 ? (
-                      <p className="empty-note">No published posts yet. Post an image or video first.</p>
+                      <p className="empty-note">No published posts yet. Post an image, video, or text first.</p>
                     ) : (
                       <div className="post-engagement-list">
                         {engagementPosts.map((post) => {
@@ -5234,17 +5390,23 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                           return (
                             <div key={post.id} className="post-engagement-card">
                               <div className="post-engagement-card__media">
-                                {post.mediaType === 'video' && post.videoUrl ? (
+                                {resolvePostMediaType(post) === 'video' && post.videoUrl ? (
                                   <HoverLoopVideo
                                     className="bsky-video"
                                     src={post.videoUrl}
                                   />
                                 ) : post.imageUrl ? (
                                   <img className="bsky-image bsky-image--post" src={post.imageUrl} alt="" loading="lazy" />
-                                ) : null}
+                                ) : (
+                                  <div className="post-engagement-card__text">
+                                    <p className="bio-row__text">{post.text || 'Text post'}</p>
+                                  </div>
+                                )}
                               </div>
                               <div className="post-engagement-card__body">
-                                {post.text && <p className="bio-row__text">{post.text}</p>}
+                                {post.text && resolvePostMediaType(post) !== 'text' && (
+                                  <p className="bio-row__text">{post.text}</p>
+                                )}
                                 <div className="post-engagement-card__totals">
                                   <span className="post-engagement-stat">♥ {formatCount(totalLikes)}</span>
                                   <span className="post-engagement-stat">💬 {formatCount(totalReplies)}</span>
@@ -6243,6 +6405,51 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
           </div>
         )}
 
+        {addTextPostOpen && (
+          <div className="modal" onClick={closeAddTextPostModal}>
+            <form
+              className="modal__card"
+              onClick={(e) => e.stopPropagation()}
+              onSubmit={(e) => {
+                e.preventDefault();
+                void saveTextPostAdd();
+              }}
+            >
+              <div className="modal__head">
+                <h3>Add text post</h3>
+                <button
+                  type="button"
+                  className="modal__close"
+                  onClick={closeAddTextPostModal}
+                  aria-label="Close"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="schedule-modal__body">
+                <textarea
+                  className="bio-form__textarea"
+                  placeholder="Write the text you want to post on Bluesky…"
+                  value={newTextPostText}
+                  onChange={(e) => setNewTextPostText(e.target.value)}
+                  rows={8}
+                  autoFocus
+                />
+              </div>
+
+              <div className="schedule-modal__actions">
+                <button type="button" className="btn btn--ghost" onClick={closeAddTextPostModal}>
+                  Cancel
+                </button>
+                <button type="submit" disabled={savingTextPostAdd || !newTextPostText.trim()}>
+                  {savingTextPostAdd ? 'Adding…' : 'Add text'}
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
+
         {assignProfilePic && (
           <div className="modal" onClick={closeAssignProfilePicModal}>
             <form
@@ -6414,7 +6621,11 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
             >
               <div className="modal__head">
                 <h3>
-                  Post {postCaptionModal.post.mediaType === 'video' ? 'video' : 'image'} to Bluesky
+                  {resolvePostMediaType(postCaptionModal.post) === 'video'
+                    ? 'Post video to Bluesky'
+                    : resolvePostMediaType(postCaptionModal.post) === 'text'
+                      ? 'Post text to Bluesky'
+                      : 'Post image to Bluesky'}
                 </h3>
                 <button
                   type="button"
@@ -6428,10 +6639,16 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
 
               <div className="schedule-modal__body">
                 <label className="cred-field">
-                  <span className="cred-field__label">Caption</span>
+                  <span className="cred-field__label">
+                    {resolvePostMediaType(postCaptionModal.post) === 'text' ? 'Post text' : 'Caption'}
+                  </span>
                   <textarea
                     className="bio-form__textarea"
-                    placeholder="Write a caption…"
+                    placeholder={
+                      resolvePostMediaType(postCaptionModal.post) === 'text'
+                        ? 'Write your post…'
+                        : 'Write a caption…'
+                    }
                     value={postCaptionText}
                     onChange={(e) => setPostCaptionText(e.target.value)}
                     rows={4}
@@ -6514,7 +6731,9 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                   disabled={
                     postPublishingId === postCaptionModal.post.id ||
                     activePostPublishAccounts.length === 0 ||
-                    (!postPublishAllAccounts && postPublishAccountIds.size === 0)
+                    (!postPublishAllAccounts && postPublishAccountIds.size === 0) ||
+                    (resolvePostMediaType(postCaptionModal.post) === 'text' &&
+                      !buildPostText(postCaptionText, postHashtagsText).trim())
                   }
                 >
                   {postPublishingId === postCaptionModal.post.id ? 'Posting…' : 'Post to Bluesky'}

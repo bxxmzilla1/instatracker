@@ -876,6 +876,28 @@ async function uploadVideoViaBskyService(
   throw new Error('Video processing timed out. Try a shorter video.');
 }
 
+export async function publishBskyTextPost(
+  credentials: BskyCredentials,
+  options: {
+    text: string;
+    onProgress?: BskyPublishProgressCallback;
+  },
+): Promise<BskyPublishedPost> {
+  const text = options.text.trim();
+  if (!text) throw new Error('Post text cannot be empty.');
+  options.onProgress?.('Publishing post…');
+  const agent = await loginBskyAgent(credentials);
+  const rt = new RichText({ text });
+  await rt.detectFacets(agent);
+  const facets = rt.facets;
+  const result = await agent.post({
+    text: rt.text,
+    ...(facets && facets.length ? { facets } : {}),
+    createdAt: new Date().toISOString(),
+  });
+  return { uri: result.uri, cid: result.cid };
+}
+
 export async function publishBskyMediaPost(
   credentials: BskyCredentials,
   options: {
