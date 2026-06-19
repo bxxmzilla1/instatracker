@@ -51,7 +51,6 @@ import {
 } from './lib/db';
 import { assignedEmployees } from './lib/assignment';
 import {
-  backfillScheduledPostCaptions,
   getScheduledPostsForDate,
   normalizeScheduledPosts,
 } from './lib/contentSchedule';
@@ -1368,7 +1367,9 @@ export default function App() {
     setScheduleReel(fresh);
     setScheduleMode(mode);
     setEditingScheduledPost(null);
-    setNewContentCaption(fresh.caption ?? '');
+    // Always start from a blank caption box so a new post/schedule never inherits
+    // the previously published caption — each scheduled post owns its own caption.
+    setNewContentCaption('');
     setNewContentTarget('');
     setNewContentProxyId('');
     setNewContentScheduledAt(mode === 'schedule' ? nowDatetimeLocal() : '');
@@ -1660,11 +1661,15 @@ export default function App() {
         return;
       }
 
+      // Each scheduled post keeps ONLY the caption typed for it. We don't copy a
+      // shared caption across posts or store one on the content item, so every
+      // new schedule starts blank and posts stay fully independent. Running
+      // `normalizeScheduledPosts` first bakes any previously-inherited caption
+      // onto the existing posts, so clearing the shared caption below can't strip
+      // captions from posts already queued.
       const existing = normalizeScheduledPosts(scheduleReel);
       const scheduledAtMs = parseDatetimeLocal(newContentScheduledAt);
-      const inheritedCaption = scheduleReel.caption?.trim() ?? '';
-      const entryCaption = trimmedCaption || inheritedCaption;
-      const reelCaption = trimmedCaption || inheritedCaption;
+      const entryCaption = trimmedCaption || undefined;
 
       let nextScheduledPosts;
       if (editingScheduledPost) {
@@ -1675,7 +1680,7 @@ export default function App() {
                 ...post,
                 account: newContentTarget,
                 scheduledAt: scheduledAtMs,
-                caption: trimmedCaption || inheritedCaption,
+                caption: entryCaption,
                 proxyId: newContentProxyId || undefined,
                 postError: undefined,
                 publishingAt: undefined,
@@ -1696,11 +1701,9 @@ export default function App() {
         ];
       }
 
-      nextScheduledPosts = backfillScheduledPostCaptions(nextScheduledPosts, reelCaption);
-
       await updateContent({
         ...scheduleReel,
-        caption: reelCaption,
+        caption: '',
         scheduledPosts: nextScheduledPosts,
         scheduledAt: undefined,
         targetAccount: undefined,
