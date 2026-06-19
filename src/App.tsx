@@ -1963,6 +1963,22 @@ export default function App() {
     [accounts],
   );
 
+  // Object URLs for previewing the files chosen in the upload popup. Created when
+  // the selected files change and revoked on cleanup to avoid memory leaks.
+  const uploadPreviews = useMemo(
+    () =>
+      (pendingUpload?.files ?? []).map((file) => ({
+        url: URL.createObjectURL(file),
+        isVideo: isVideoFile(file, file.name),
+        name: file.name,
+      })),
+    [pendingUpload?.files],
+  );
+  useEffect(
+    () => () => uploadPreviews.forEach((p) => URL.revokeObjectURL(p.url)),
+    [uploadPreviews],
+  );
+
   if (!session) {
     return (
       <Login
@@ -2049,22 +2065,6 @@ export default function App() {
     }
     return list;
   })();
-
-  // Object URLs for previewing the files chosen in the upload popup. Created when
-  // the selected files change and revoked on cleanup to avoid memory leaks.
-  const uploadPreviews = useMemo(
-    () =>
-      (pendingUpload?.files ?? []).map((file) => ({
-        url: URL.createObjectURL(file),
-        isVideo: isVideoFile(file, file.name),
-        name: file.name,
-      })),
-    [pendingUpload?.files],
-  );
-  useEffect(
-    () => () => uploadPreviews.forEach((p) => URL.revokeObjectURL(p.url)),
-    [uploadPreviews],
-  );
 
   const scheduledForDate = (() => {
     let scheduled = getScheduledPostsForDate(content, scheduleViewDate);
