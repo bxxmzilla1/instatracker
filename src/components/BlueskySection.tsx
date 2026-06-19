@@ -878,10 +878,17 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   }
 
   function postableAccountsForPost(post: BskyPost): BskySavedAccount[] {
+    // Intentionally does NOT require a loaded password here: the cached snapshot
+    // we hydrate from strips credentials, so gating the Publish button/account
+    // list on `a.password` would wrongly disable posting until the background
+    // refresh lands. The real credentials are re-fetched right before publishing
+    // (see publishLibraryPost), so the only requirement for selection is a valid,
+    // non-banned handle owned by the assigned employee(s).
+    const usable = savedAccounts.filter((a) => !a.banned && a.handle.trim());
     const assignees = getAssignedOwnersForPost(post);
-    if (!assignees) return pushableAccounts;
+    if (!assignees) return usable;
     const allowed = new Set(assignees);
-    return pushableAccounts.filter((acct) => {
+    return usable.filter((acct) => {
       const owner = (acct.owner ?? 'admin').trim().toLowerCase();
       return allowed.has(owner);
     });
@@ -1011,12 +1018,41 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
       const mediaBlob = await fetchPostMediaBlob(post);
       const mediaType = post.mediaType ?? (post.videoUrl ? 'video' : 'image');
 
+      // The hydrated cache strips saved-account passwords for security, so the
+      // in-memory copy may not have credentials yet. Pull a fresh copy from the
+      // database before publishing so a post triggered right after hydration
+      // still has the password it needs.
+      let credSource = savedAccounts;
+      if (targets.some((t) => !(t.password ?? '').trim())) {
+        try {
+          credSource = await getSavedAccounts(ownerFilter);
+          setSavedAccounts(credSource);
+        } catch {
+          // Fall back to the in-memory copy if the refresh fails.
+        }
+      }
+
       for (let i = 0; i < targets.length; i++) {
         const acct = targets[i]!;
-        const handle = acct.handle.replace(/^@/, '');
+        const liveAcct = credSource.find((a) => a.id === acct.id) ?? acct;
+        const handle = liveAcct.handle.replace(/^@/, '');
         setPostPublishProgress({ pushKey, done: i, total: targets.length, currentHandle: handle, kind: 'post' });
+        if (!(liveAcct.password ?? '').trim()) {
+          const msg = 'No saved password for this account.';
+          failures.push(`@${handle}: ${msg}`);
+          newPublishes.push({
+            accountId: liveAcct.id,
+            handle,
+            uri: '',
+            cid: '',
+            publishedAt: Date.now(),
+            error: msg,
+          });
+          setPostPublishProgress({ pushKey, done: i + 1, total: targets.length, kind: 'post' });
+          continue;
+        }
         try {
-          const published = await publishBskyMediaPost(credentialsForPublish(acct, proxyId || undefined), {
+          const published = await publishBskyMediaPost(credentialsForPublish(liveAcct, proxyId || undefined), {
             text: finalText,
             file: mediaBlob,
             mediaType,
@@ -1032,7 +1068,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
             },
           });
           newPublishes.push({
-            accountId: acct.id,
+            accountId: liveAcct.id,
             handle,
             uri: published.uri,
             cid: published.cid,
@@ -1043,7 +1079,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
           const msg = err instanceof Error ? err.message : 'Post failed';
           failures.push(`@${handle}: ${msg}`);
           newPublishes.push({
-            accountId: acct.id,
+            accountId: liveAcct.id,
             handle,
             uri: '',
             cid: '',
@@ -1071,14 +1107,15 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
       await loadAll();
       closePostCaptionModal();
 
+      // Stay on the current media tab so the same item can be posted again (to
+      // other accounts or repeatedly) without being bounced to the Engagement
+      // view after every publish. Engagement is still one tap away.
       if (failures.length === 0) {
         setSuccessMessage(`Posted to ${ok} account${ok === 1 ? '' : 's'}.`);
-        setPostMediaTab('engagement');
       } else if (ok > 0) {
         setError(
           `Posted to ${ok} account${ok === 1 ? '' : 's'}, but failed on ${failures.length}: ${failures.join(' · ')}`,
         );
-        setPostMediaTab('engagement');
       } else {
         setError(failures.join(' · '));
       }
@@ -2683,7 +2720,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
 
   const activePostPublishAccounts = useMemo(
     () => (postCaptionModal ? postableAccountsForPost(postCaptionModal.post) : []),
-    [postCaptionModal, pushableAccounts, employees, posts],
+    [postCaptionModal, savedAccounts, employees, posts],
   );
 
   const activePostProxies = useMemo(
