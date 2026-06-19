@@ -2522,22 +2522,6 @@ export default function App() {
 
           <button
             type="button"
-            className={view === 'api' ? 'nav-item nav-item--active' : 'nav-item'}
-            onClick={() => {
-              setSelectedEmployee(null);
-              setView('api');
-            }}
-          >
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M8 9h8M8 13h6" />
-              <rect x="3" y="4" width="18" height="16" rx="2" />
-              <path d="M7 4V2.5M17 4V2.5" />
-            </svg>
-            API
-          </button>
-
-          <button
-            type="button"
             className={view === 'content' ? 'nav-item nav-item--active' : 'nav-item'}
             onClick={() => {
               setSelectedEmployee(null);
