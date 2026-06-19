@@ -357,6 +357,11 @@ export default function App() {
   const [newStoryAll, setNewStoryAll] = useState(false);
   const [content, setContent] = useState<ContentReel[]>([]);
   const [contentTab, setContentTab] = useState<ContentMediaType>('reel');
+  // Files chosen for upload, held until the admin assigns employees in the popup.
+  const [pendingUpload, setPendingUpload] = useState<{
+    files: File[];
+    mediaType: ContentMediaType;
+  } | null>(null);
   const [scheduleFilterTab, setScheduleFilterTab] = useState<'all' | ContentMediaType>('all');
   const [newContentCaption, setNewContentCaption] = useState('');
   const [newContentEmployees, setNewContentEmployees] = useState<Set<string>>(() => new Set());
@@ -1263,7 +1268,9 @@ export default function App() {
     await loadStories();
   }
 
-  async function uploadContentFiles(files: File[]) {
+  // Validates the picked files, then opens the assignment popup so the admin can
+  // choose which employees the new content is assigned to before it uploads.
+  function requestContentUpload(files: File[]) {
     if (files.length === 0) return;
     if (contentTab === 'carousel') {
       if (files.length < MIN_CAROUSEL_ITEMS) {
@@ -1284,6 +1291,22 @@ export default function App() {
       return;
     }
 
+    setError(null);
+    setNewContentEmployees(new Set());
+    setNewContentAll(false);
+    setPendingUpload({ files, mediaType: contentTab });
+  }
+
+  function cancelContentUpload() {
+    setPendingUpload(null);
+    setNewContentEmployees(new Set());
+    setNewContentAll(false);
+  }
+
+  // Uploads the pending files with the employee assignment chosen in the popup.
+  async function confirmContentUpload() {
+    if (!pendingUpload) return;
+    const { files, mediaType } = pendingUpload;
     setUploadingContent(true);
     try {
       await addContent(
@@ -1291,16 +1314,17 @@ export default function App() {
           id: crypto.randomUUID(),
           caption: '',
           videoUrl: '',
-          mediaType: contentTab,
-          employees: [],
-          allEmployees: false,
+          mediaType,
+          employees: newContentAll ? [] : [...newContentEmployees],
+          allEmployees: newContentAll,
           targetAccount: undefined,
           scheduledAt: undefined,
           createdAt: Date.now(),
         },
-        contentTab === 'carousel' ? files : files[0],
+        mediaType === 'carousel' ? files : files[0],
       );
       await loadContent();
+      cancelContentUpload();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not upload content.');
     } finally {
@@ -2794,7 +2818,7 @@ export default function App() {
                 style={{ display: 'none' }}
                 onChange={(e) => {
                   const files = e.target.files ? Array.from(e.target.files) : [];
-                  if (files.length) void uploadContentFiles(files);
+                  if (files.length) requestContentUpload(files);
                   e.target.value = '';
                 }}
               />
@@ -4006,6 +4030,66 @@ export default function App() {
                   disabled={savingBioAssign || (!assignBioAll && assignBioEmployees.size === 0)}
                 >
                   {savingBioAssign ? 'Saving…' : 'Assign'}
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
+
+        {pendingUpload && (
+          <div className="modal" onClick={cancelContentUpload}>
+            <form
+              className="modal__card"
+              onClick={(e) => e.stopPropagation()}
+              onSubmit={(e) => {
+                e.preventDefault();
+                void confirmContentUpload();
+              }}
+            >
+              <div className="modal__head">
+                <h3>
+                  Assign {contentTabSingular(pendingUpload.mediaType)}
+                  {pendingUpload.mediaType === 'carousel'
+                    ? ` (${pendingUpload.files.length} items)`
+                    : ''}
+                </h3>
+                <button
+                  type="button"
+                  className="modal__close"
+                  onClick={cancelContentUpload}
+                  aria-label="Close"
+                  disabled={uploadingContent}
+                >
+                  ✕
+                </button>
+              </div>
+
+              <p className="cred-note">
+                Choose which employees this {contentTabSingular(pendingUpload.mediaType)} is assigned
+                to. You can pick multiple employees or select all.
+              </p>
+
+              <div className="schedule-modal__body">
+                <AssignmentPicker
+                  employees={employees}
+                  selected={newContentEmployees}
+                  all={newContentAll}
+                  onToggle={toggleContentEmployee}
+                  onAllChange={setNewContentAll}
+                />
+              </div>
+
+              <div className="schedule-modal__actions">
+                <button
+                  type="button"
+                  className="btn btn--ghost"
+                  onClick={cancelContentUpload}
+                  disabled={uploadingContent}
+                >
+                  Cancel
+                </button>
+                <button type="submit" disabled={uploadingContent}>
+                  {uploadingContent ? 'Uploading…' : 'Upload'}
                 </button>
               </div>
             </form>
