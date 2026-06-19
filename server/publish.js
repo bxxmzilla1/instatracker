@@ -1,5 +1,6 @@
 // Server-side Instagram Graph publishing (reels / images / carousels).
-// Uses the same relay as /api/graph so it can run from cron without a browser.
+// Routes through /api/graph when possible so scheduled cron publishes use the
+// exact same relay path as immediate browser posts.
 
 import { relayGraphRequest } from './graph.js';
 import { proxyRowToRelay } from './parseProxy.js';
@@ -9,8 +10,15 @@ const GRAPH_HOST = 'https://graph.instagram.com';
 const POLL_INTERVAL_MS = 3000;
 const MAX_POLL_ATTEMPTS = 60;
 
+function graphRelayUrl() {
+  if (process.env.GRAPH_RELAY_URL) return process.env.GRAPH_RELAY_URL;
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}/api/graph`;
+  const port = process.env.PORT || 3001;
+  return `http://127.0.0.1:${port}/api/graph`;
+}
+
 async function graphCall(method, path, accessToken, params = {}, proxy) {
-  const { status, data } = await relayGraphRequest({
+  const payload = {
     method,
     path,
     params,
@@ -18,11 +26,34 @@ async function graphCall(method, path, accessToken, params = {}, proxy) {
     host: GRAPH_HOST,
     version: GRAPH_API_VERSION,
     proxy,
-  });
-  if (status >= 400 || data?.error) {
-    throw new Error(data?.error?.message || `Instagram API error (${status})`);
+  };
+
+  // Prefer the HTTP relay so cron/scheduled publishes hit the same serverless
+  // handler (and fetch-based transport) as immediate posts from the browser.
+  const relayUrl = graphRelayUrl();
+  try {
+    const response = await fetch(relayUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (response.status >= 400 || data?.error) {
+      throw new Error(data?.error?.message || `Instagram API error (${response.status})`);
+    }
+    return data;
+  } catch (err) {
+    // Fall back to in-process relay (local dev without the API server, etc.).
+    if (!(err instanceof TypeError) && !(err?.cause instanceof TypeError)) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (!/fetch failed|ECONNREFUSED|ENOTFOUND/i.test(message)) throw err;
+    }
+    const { status, data } = await relayGraphRequest(payload);
+    if (status >= 400 || data?.error) {
+      throw new Error(data?.error?.message || `Instagram API error (${status})`);
+    }
+    return data;
   }
-  return data;
 }
 
 function trimCaption(value) {

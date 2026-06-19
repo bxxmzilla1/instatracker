@@ -33,7 +33,7 @@ function requestViaProxy(urlString, init, proxy) {
   const target = new URL(urlString);
   const method = init.method || 'GET';
   const body = init.body != null ? init.body : null;
-  const headers = { ...(init.headers || {}), Host: target.hostname };
+  const headers = { ...(init.headers || {}) };
 
   if (body != null) {
     headers['Content-Length'] = String(Buffer.byteLength(body));
@@ -70,9 +70,14 @@ function requestViaProxy(urlString, init, proxy) {
     );
     req.on('timeout', () => req.destroy(new Error('Graph proxy request timed out.')));
     req.on('error', (err) => reject(new Error(proxyErrorMessage(err))));
-    if (body != null) req.write(body);
-    req.end();
+    req.end(body ?? undefined);
   });
+}
+
+function appendQueryParams(url, params) {
+  for (const [key, value] of Object.entries(params)) {
+    if (value != null) url.searchParams.set(key, String(value));
+  }
 }
 
 export async function relayGraphRequest(payload = {}) {
@@ -94,6 +99,7 @@ export async function relayGraphRequest(payload = {}) {
     return { status: 400, data: { error: { message: 'path is required', type: 'BadRequest', code: 400 } } };
   }
   const base = ALLOWED_HOSTS.has(host) ? host : GRAPH_HOST;
+  const proxied = Boolean(proxy?.host && proxy?.port);
 
   const url = new URL(`${base}/${version}${path.startsWith('/') ? path : `/${path}`}`);
 
@@ -103,13 +109,9 @@ export async function relayGraphRequest(payload = {}) {
   };
 
   if (method === 'GET') {
-    // GET reads parameters from the query string (Meta's standard).
     url.searchParams.set('access_token', accessToken);
-    for (const [key, value] of Object.entries(params)) {
-      if (value != null) url.searchParams.set(key, String(value));
-    }
+    appendQueryParams(url, params);
   } else if (body != null) {
-    // Caller-provided body (unchanged).
     if (typeof body === 'string') {
       init.headers['Content-Type'] = 'application/x-www-form-urlencoded';
       init.body = body;
@@ -118,23 +120,33 @@ export async function relayGraphRequest(payload = {}) {
       init.body = JSON.stringify(body);
     }
     url.searchParams.set('access_token', accessToken);
-  } else {
-    // POST (media create, publish, …): use a form-urlencoded body with a short
-    // URL. Putting caption + media URLs in the query string makes the CONNECT
-    // request enormous and some proxies reject it with 407/502. Meta's publishing
-    // guide uses form bodies; the HTTPS tunnel keeps the body intact through
-    // proxies, so captions and media params arrive reliably.
+  } else if (proxied) {
+    // Proxied POST: keep the URL short (access_token + caption only) and send
+    // the full payload in a form body. Scheduled cron publishes use Node
+    // https.request through the proxy tunnel; mirroring caption in the query
+    // string ensures Meta receives it even if the body is mishandled. Immediate
+    // browser posts use fetch() to /api/graph and tolerate longer query strings,
+    // but both paths share this split for consistency.
+    url.searchParams.set('access_token', accessToken);
+    const caption = params.caption != null ? String(params.caption).trim() : '';
+    if (caption) url.searchParams.set('caption', caption);
+
     const form = new URLSearchParams();
     form.set('access_token', accessToken);
-    for (const [key, value] of Object.entries(params)) {
-      if (value != null) form.set(key, String(value));
-    }
+    appendQueryParams(form, params);
+    init.headers['Content-Type'] = 'application/x-www-form-urlencoded';
+    init.body = form.toString();
+  } else {
+    // Direct POST (no proxy): form body — same format Meta documents.
+    const form = new URLSearchParams();
+    form.set('access_token', accessToken);
+    appendQueryParams(form, params);
     init.headers['Content-Type'] = 'application/x-www-form-urlencoded';
     init.body = form.toString();
   }
 
   try {
-    if (proxy?.host && proxy?.port) {
+    if (proxied) {
       return await requestViaProxy(url.toString(), init, proxy);
     }
     const response = await fetch(url.toString(), init);
