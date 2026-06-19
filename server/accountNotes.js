@@ -40,13 +40,16 @@ export async function markScheduledPostSkipped(db, rowId, postId, message) {
 
   const posts = Array.isArray(row.scheduled_posts) ? row.scheduled_posts : [];
   const skipped = posts.find((post) => post.id === postId);
-  const noteText = noteTextForPublishError(message);
+  const rawMessage = String(message || '').trim();
+  const noteText = noteTextForPublishError(rawMessage);
   const updated = posts.map((post) =>
     post.id === postId
       ? {
           ...post,
           postError: SCHEDULE_ERROR_LABEL,
-          skipReason: noteText,
+          // Keep the real Instagram/transport error for diagnosis; fall back to
+          // the friendly note text only when no raw message is available.
+          skipReason: rawMessage || noteText,
           skippedAt: Date.now(),
           publishingAt: undefined,
           publishStage: undefined,
