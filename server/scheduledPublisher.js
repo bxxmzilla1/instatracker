@@ -374,6 +374,10 @@ export async function runScheduledPublisher() {
           }
         }
         const caption = trimCaption(claimedPost.caption) || resolvePublishCaption(claimedPost, claimedRow);
+        console.log(
+          `[publisher] publishing ${claimedRow.id}/${claimedPost.id} to @${claimedPost.account} ` +
+            `proxy=${proxyId || 'none'} captionLen=${caption.length} caption="${caption.slice(0, 60)}"`,
+        );
 
         const result = await publishContent(
           igUserId,

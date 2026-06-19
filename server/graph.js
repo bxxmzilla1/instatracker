@@ -93,16 +93,13 @@ export async function relayGraphRequest(payload = {}) {
     // Use the SAME request format for proxied and direct POSTs. The proxy is an
     // HTTPS CONNECT tunnel, so it can't read or alter the (encrypted) request —
     // the only intended difference is the exit IP, never the payload. Earlier we
-    // sent a JSON body for proxied requests, but Meta's /media endpoint doesn't
-    // reliably read `caption` from a JSON body, so proxied reels published with
-    // no caption while direct (form-body) posts worked. Sending a form-urlencoded
-    // body keeps captions intact everywhere; the query-string copy is a backstop.
-    const entries = Object.entries(params).filter(([, value]) => value != null);
+    // sent a JSON body only for proxied requests, but Meta's /media endpoint
+    // doesn't reliably read `caption` from a JSON body, so proxied reels
+    // published with no caption while direct (form-body) posts worked. Sending
+    // the exact same form-urlencoded body for both keeps captions intact.
     const form = new URLSearchParams();
-    for (const [key, value] of entries) {
-      const stringValue = String(value);
-      form.set(key, stringValue);
-      url.searchParams.set(key, stringValue);
+    for (const [key, value] of Object.entries(params)) {
+      if (value != null) form.set(key, String(value));
     }
     form.set('access_token', accessToken);
     init.headers['Content-Type'] = 'application/x-www-form-urlencoded';
