@@ -271,7 +271,7 @@ function ContentMediaPreview({
     );
   }
   return (
-    <HoverLoopVideo className={mediaClass} src={reel.videoUrl} />
+    <HoverLoopVideo className={mediaClass} src={reel.videoUrl} staticFrame={compact} />
   );
 }
 
