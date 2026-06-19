@@ -90,23 +90,15 @@ export async function relayGraphRequest(payload = {}) {
       init.body = JSON.stringify(body);
     }
   } else {
-    const entries = Object.entries(params).filter(([, value]) => value != null);
-    const stringParams = Object.fromEntries(entries.map(([key, value]) => [key, String(value)]));
-
-    if (proxy?.host && proxy?.port) {
-      // Scheduled publishes run through a proxy. Meta's content publishing guide
-      // uses a JSON POST body with Authorization Bearer — form bodies are often
-      // dropped or mangled by HTTP proxies, which posts the reel without a caption.
-      init.headers['Content-Type'] = 'application/json';
-      init.body = JSON.stringify(stringParams);
-    } else {
-      const form = new URLSearchParams();
-      for (const [key, value] of entries) {
-        form.set(key, String(value));
-      }
-      form.set('access_token', accessToken);
-      init.headers['Content-Type'] = 'application/x-www-form-urlencoded';
-      init.body = form.toString();
+    // Send Graph parameters (caption, media_type, video_url, …) in the query
+    // string for every POST — that's where the access_token already travels
+    // reliably, and Meta accepts all parameters there for any method. HTTP
+    // proxies (used by scheduled publishes) frequently drop or mangle POST
+    // request bodies, which silently strips the caption while the rest of the
+    // request still reaches Meta. Putting params in the query string keeps the
+    // caption intact for both proxied and direct requests.
+    for (const [key, value] of Object.entries(params)) {
+      if (value != null) url.searchParams.set(key, String(value));
     }
   }
 
