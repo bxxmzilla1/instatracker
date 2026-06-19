@@ -13,7 +13,18 @@ export function isAccessTokenError(message: string): boolean {
 
 /** Note text saved when a scheduled publish fails for an account. */
 export function noteTextForPublishError(message: string): string {
-  if (isAccessTokenError(message)) return TOKEN_UPDATE_NOTE;
-  const trimmed = message.trim();
-  return trimmed || 'Scheduled post failed';
+  const trimmed = (message || '').trim();
+  if (!trimmed || trimmed === SCHEDULE_ERROR_LABEL) return 'Scheduled post failed';
+  if (isAccessTokenError(trimmed)) return TOKEN_UPDATE_NOTE;
+  return trimmed;
+}
+
+/** Pull the raw failure message from a scheduled post before it is marked skipped. */
+export function resolveSkipNoteText(post: {
+  skipReason?: string;
+  postError?: string;
+}): string {
+  if (post.skipReason?.trim()) return post.skipReason;
+  if (post.postError?.trim() && post.postError !== SCHEDULE_ERROR_LABEL) return post.postError;
+  return 'Scheduled post failed';
 }

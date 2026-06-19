@@ -61,12 +61,8 @@ async function recoverStaleScheduledPublishes(db) {
           post.id,
           SCHEDULE_PUBLISH_TIMEOUT_MESSAGE,
         );
-        if (account) {
-          await upsertAccountNote(
-            db,
-            account,
-            noteTextForPublishError(SCHEDULE_PUBLISH_TIMEOUT_MESSAGE),
-          );
+        if (account?.account) {
+          await upsertAccountNote(db, account.account, account.noteText);
         }
         recovered += 1;
       }
@@ -420,9 +416,9 @@ export async function runScheduledPublisher() {
         });
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Publish failed';
-        const account = await markScheduledPostSkipped(db, claimedRow.id, claimedPost.id, message);
-        if (account) {
-          await upsertAccountNote(db, account, noteTextForPublishError(message));
+        const skipped = await markScheduledPostSkipped(db, claimedRow.id, claimedPost.id, message);
+        if (skipped?.account) {
+          await upsertAccountNote(db, skipped.account, skipped.noteText);
         }
         results.push({
           id: claimedRow.id,

@@ -93,6 +93,7 @@ import {
 import { latestByReel, withMonotonicReelViews } from './lib/dashboard';
 import {
   noteTextForPublishError,
+  resolveSkipNoteText,
   SCHEDULE_ERROR_LABEL,
   SCHEDULE_PUBLISH_STALE_MS,
   SCHEDULE_PUBLISH_TIMEOUT_MESSAGE,
@@ -653,24 +654,25 @@ export default function App() {
           skippedFailedPostsRef.current.add(`${reel.id}:${post.id}`);
         }
         const skipIds = new Set(toSkip.map((post) => post.id));
-        const nextPosts = posts.map((post) =>
-          skipIds.has(post.id)
-            ? {
-                ...post,
-                postError: SCHEDULE_ERROR_LABEL,
-                skippedAt: Date.now(),
-                publishingAt: undefined,
-                publishStage: undefined,
-              }
-            : post,
-        );
+        const nextPosts = posts.map((post) => {
+          if (!skipIds.has(post.id)) return post;
+          const noteText = noteTextForPublishError(resolveSkipNoteText(post));
+          return {
+            ...post,
+            postError: SCHEDULE_ERROR_LABEL,
+            skipReason: noteText,
+            skippedAt: Date.now(),
+            publishingAt: undefined,
+            publishStage: undefined,
+          };
+        });
         await updateContent({
           ...reel,
           scheduledPosts: nextPosts,
           postError: undefined,
         });
         for (const post of toSkip) {
-          await upsertAccountNote(post.account, noteTextForPublishError(post.postError!));
+          await upsertAccountNote(post.account, noteTextForPublishError(resolveSkipNoteText(post)));
         }
         changed = true;
       }
@@ -706,11 +708,13 @@ export default function App() {
           skippedFailedPostsRef.current.add(`stale:${reel.id}:${post.id}`);
         }
         const stuckIds = new Set(stuck.map((post) => post.id));
+        const timeoutNote = noteTextForPublishError(SCHEDULE_PUBLISH_TIMEOUT_MESSAGE);
         const nextPosts = posts.map((post) =>
           stuckIds.has(post.id)
             ? {
                 ...post,
                 postError: SCHEDULE_ERROR_LABEL,
+                skipReason: timeoutNote,
                 skippedAt: Date.now(),
                 publishingAt: undefined,
                 publishStage: undefined,
@@ -725,10 +729,7 @@ export default function App() {
           postError: undefined,
         });
         for (const post of stuck) {
-          await upsertAccountNote(
-            post.account,
-            noteTextForPublishError(SCHEDULE_PUBLISH_TIMEOUT_MESSAGE),
-          );
+          await upsertAccountNote(post.account, timeoutNote);
         }
         changed = true;
       }
@@ -1765,6 +1766,7 @@ export default function App() {
                 caption: entryCaption,
                 proxyId: newContentProxyId || undefined,
                 postError: undefined,
+                skipReason: undefined,
                 skippedAt: undefined,
                 publishingAt: undefined,
                 publishStage: undefined,

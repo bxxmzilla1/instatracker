@@ -316,6 +316,8 @@ export interface ScheduledPost {
   postedAt?: number;
   permalink?: string;
   postError?: string;
+  /** Human-readable failure detail saved to Notes (separate from the schedule label). */
+  skipReason?: string;
   /** Set when publish failed — post stays on schedule but is not retried. */
   skippedAt?: number;
   /** Proxy exit IP this post was published through. */

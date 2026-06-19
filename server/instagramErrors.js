@@ -11,7 +11,14 @@ export function isAccessTokenError(message) {
 }
 
 export function noteTextForPublishError(message) {
-  if (isAccessTokenError(message)) return TOKEN_UPDATE_NOTE;
   const trimmed = String(message || '').trim();
-  return trimmed || 'Scheduled post failed';
+  if (!trimmed || trimmed === SCHEDULE_ERROR_LABEL) return 'Scheduled post failed';
+  if (isAccessTokenError(trimmed)) return TOKEN_UPDATE_NOTE;
+  return trimmed;
+}
+
+export function resolveSkipNoteText(post) {
+  if (post.skipReason?.trim()) return post.skipReason;
+  if (post.postError?.trim() && post.postError !== SCHEDULE_ERROR_LABEL) return post.postError;
+  return 'Scheduled post failed';
 }
