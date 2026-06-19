@@ -8,6 +8,10 @@ export const INSTAGRAM_OAUTH_SCOPES = [
 
 const OAUTH_ACCOUNT_KEY = 'instagram_oauth_account';
 
+/** Dr. Bossing Meta app — used when VITE_INSTAGRAM_APP_ID is not set at build time. */
+export const DEFAULT_INSTAGRAM_APP_ID = '2210054946503834';
+export const DEFAULT_INSTAGRAM_OAUTH_REDIRECT_URI = 'https://www.drbossing.com/';
+
 export interface InstagramOAuthResult {
   userId: string;
   username?: string;
@@ -15,17 +19,25 @@ export interface InstagramOAuthResult {
   expiresIn?: number;
 }
 
+export function getInstagramAppId(): string {
+  return import.meta.env.VITE_INSTAGRAM_APP_ID?.trim() || DEFAULT_INSTAGRAM_APP_ID;
+}
+
 export function isInstagramOAuthConfigured(): boolean {
-  return Boolean(import.meta.env.VITE_INSTAGRAM_APP_ID);
+  return Boolean(getInstagramAppId());
 }
 
 export function getInstagramOAuthRedirectUri(): string {
   const configured = import.meta.env.VITE_INSTAGRAM_OAUTH_REDIRECT_URI?.trim();
   if (configured) return configured;
   if (typeof window !== 'undefined') {
+    const host = window.location.hostname.toLowerCase();
+    if (host === 'drbossing.com' || host === 'www.drbossing.com') {
+      return DEFAULT_INSTAGRAM_OAUTH_REDIRECT_URI;
+    }
     return `${window.location.origin}/`;
   }
-  return 'https://www.drbossing.com/';
+  return DEFAULT_INSTAGRAM_OAUTH_REDIRECT_URI;
 }
 
 export function buildInstagramOAuthState(accountUsername: string): string {
@@ -50,11 +62,7 @@ export function parseInstagramOAuthState(state: string | null): { account?: stri
 }
 
 export function buildInstagramAuthorizeUrl(accountUsername: string): string {
-  const clientId = import.meta.env.VITE_INSTAGRAM_APP_ID;
-  if (!clientId) {
-    throw new Error('Instagram login is not configured (missing VITE_INSTAGRAM_APP_ID).');
-  }
-
+  const clientId = getInstagramAppId();
   const redirectUri = getInstagramOAuthRedirectUri();
   const state = buildInstagramOAuthState(accountUsername);
   sessionStorage.setItem(OAUTH_ACCOUNT_KEY, accountUsername.trim().replace(/^@/, '').toLowerCase());

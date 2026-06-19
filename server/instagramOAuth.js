@@ -1,5 +1,8 @@
 const GRAPH_API_VERSION = 'v23.0';
 
+export const DEFAULT_INSTAGRAM_APP_ID = '2210054946503834';
+export const DEFAULT_INSTAGRAM_OAUTH_REDIRECT_URI = 'https://www.drbossing.com/';
+
 export const INSTAGRAM_OAUTH_SCOPES = [
   'instagram_business_basic',
   'instagram_business_manage_messages',
@@ -9,7 +12,11 @@ export const INSTAGRAM_OAUTH_SCOPES = [
 ].join(',');
 
 function getClientId() {
-  return process.env.INSTAGRAM_APP_ID || process.env.VITE_INSTAGRAM_APP_ID || '';
+  return (
+    process.env.INSTAGRAM_APP_ID ||
+    process.env.VITE_INSTAGRAM_APP_ID ||
+    DEFAULT_INSTAGRAM_APP_ID
+  );
 }
 
 function getClientSecret() {
@@ -17,7 +24,7 @@ function getClientSecret() {
 }
 
 export function getDefaultRedirectUri() {
-  return process.env.INSTAGRAM_OAUTH_REDIRECT_URI || 'https://www.drbossing.com/';
+  return process.env.INSTAGRAM_OAUTH_REDIRECT_URI || DEFAULT_INSTAGRAM_OAUTH_REDIRECT_URI;
 }
 
 export function isInstagramOAuthConfigured() {

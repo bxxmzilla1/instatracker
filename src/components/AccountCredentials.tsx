@@ -2,7 +2,6 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { Secret, TOTP } from 'otpauth';
 import type { TrackedAccount } from '../types';
 import {
-  isInstagramOAuthConfigured,
   startInstagramOAuth,
 } from '../lib/instagramOAuth';
 
@@ -219,20 +218,18 @@ export function AccountCredentials({ account, onSave }: Props) {
         <span>Analytics API (Instagram Graph)</span>
       </div>
 
-      {isInstagramOAuthConfigured() && (
-        <div className="cred-oauth">
-          <button
-            type="button"
-            className="cred-oauth__btn"
-            onClick={() => startInstagramOAuth(account.username)}
-          >
-            Connect Instagram API
-          </button>
-          <p className="cred-oauth__hint">
-            Log in with Instagram to fetch a long-lived API token and user ID automatically.
-          </p>
-        </div>
-      )}
+      <div className="cred-oauth">
+        <button
+          type="button"
+          className="cred-oauth__btn"
+          onClick={() => startInstagramOAuth(account.username)}
+        >
+          Connect Instagram API
+        </button>
+        <p className="cred-oauth__hint">
+          Log in with Instagram to fetch a long-lived API token and user ID automatically.
+        </p>
+      </div>
 
       <label className="cred-field">
         <span className="cred-field__label">IG User ID</span>
