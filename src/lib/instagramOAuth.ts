@@ -78,22 +78,53 @@ export function buildInstagramAuthorizeUrl(accountUsername: string): string {
 }
 
 export function startInstagramOAuth(accountUsername: string): void {
+  // Full-page redirect: ensure no stale popup flag makes the return trip look
+  // like a popup callback (which would close the main window).
+  try {
+    localStorage.removeItem('instagram_oauth_popup');
+    localStorage.removeItem('instagram_oauth_result');
+  } catch {
+    // ignore
+  }
   window.location.assign(buildInstagramAuthorizeUrl(accountUsername));
 }
 
 const INSTAGRAM_OAUTH_MESSAGE = 'instagram-oauth-result';
+const OAUTH_POPUP_FLAG_KEY = 'instagram_oauth_popup';
+const OAUTH_RESULT_KEY = 'instagram_oauth_result';
+const OAUTH_CHANNEL = 'instagram_oauth';
+const OAUTH_POPUP_TIMEOUT_MS = 3 * 60 * 1000;
 
-interface InstagramOAuthPopupMessage {
+interface InstagramOAuthResultPayload {
   type: typeof INSTAGRAM_OAUTH_MESSAGE;
   code?: string;
   state?: string;
   error?: string;
   errorDescription?: string;
+  ts: number;
+}
+
+function safeBroadcastChannel(): BroadcastChannel | null {
+  try {
+    return typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel(OAUTH_CHANNEL) : null;
+  } catch {
+    return null;
+  }
+}
+
+function clearOAuthPopupArtifacts(): void {
+  try {
+    localStorage.removeItem(OAUTH_RESULT_KEY);
+    localStorage.removeItem(OAUTH_POPUP_FLAG_KEY);
+  } catch {
+    // ignore
+  }
 }
 
 /** Opens the Instagram login in a centered native popup window. */
 export function openInstagramOAuthPopup(accountUsername: string): Window | null {
   const url = buildInstagramAuthorizeUrl(accountUsername);
+  clearOAuthPopupArtifacts();
   const width = 600;
   const height = 760;
   const dualLeft = window.screenLeft ?? window.screenX ?? 0;
@@ -115,38 +146,87 @@ export function openInstagramOAuthPopup(accountUsername: string): Window | null 
     'resizable=yes',
     'scrollbars=yes',
   ].join(',');
-  return window.open(url, 'instagram_oauth', features);
+  const popup = window.open(url, 'instagram_oauth', features);
+  if (popup) {
+    // Marks this origin as expecting an OAuth popup. Set only after the popup
+    // actually opens so the full-page redirect fallback isn't mistaken for one.
+    try {
+      localStorage.setItem(
+        OAUTH_POPUP_FLAG_KEY,
+        JSON.stringify({ account: accountUsername, ts: Date.now() }),
+      );
+    } catch {
+      // ignore
+    }
+  }
+  return popup;
 }
 
 /**
- * Runs inside the OAuth popup after Instagram redirects back. If this window was
- * opened by our app and carries an auth `code`/`error`, it forwards the result
- * to the opener via postMessage and closes itself. Returns true when handled so
- * the main app doesn't render inside the popup.
+ * Runs inside the OAuth popup after Instagram redirects back. If this page is the
+ * OAuth callback (carries `code`/`error` and was opened as our popup), it stores
+ * the result via channels that survive COOP (localStorage + BroadcastChannel,
+ * plus postMessage when the opener link is intact) and closes itself. Returns
+ * true when handled so the main app never renders inside the popup.
  */
 export function completeInstagramOAuthPopupIfNeeded(): boolean {
   if (typeof window === 'undefined') return false;
-  const opener = window.opener as Window | null;
-  if (!opener || opener === window) return false;
 
   const params = new URLSearchParams(window.location.search);
   const code = params.get('code');
   const error = params.get('error');
   if (!code && !error) return false;
 
-  const message: InstagramOAuthPopupMessage = {
+  const opener = window.opener as Window | null;
+  const hasOpener = Boolean(opener && opener !== window);
+  let hasPopupFlag = false;
+  try {
+    hasPopupFlag = Boolean(localStorage.getItem(OAUTH_POPUP_FLAG_KEY));
+  } catch {
+    hasPopupFlag = false;
+  }
+  // Only treat this as the popup callback when we have evidence it was opened as
+  // one. Otherwise it's the full-page redirect fallback, handled by the app.
+  if (!hasOpener && !hasPopupFlag) return false;
+
+  const payload: InstagramOAuthResultPayload = {
     type: INSTAGRAM_OAUTH_MESSAGE,
     code: code ?? undefined,
     state: params.get('state') ?? undefined,
     error: error ?? undefined,
     errorDescription:
       params.get('error_description') ?? params.get('error_reason') ?? undefined,
+    ts: Date.now(),
   };
 
+  // localStorage is the reliable, COOP-proof channel: it persists even after the
+  // popup closes, and fires a `storage` event in the opener window.
   try {
-    opener.postMessage(message, window.location.origin);
+    localStorage.setItem(OAUTH_RESULT_KEY, JSON.stringify(payload));
   } catch {
-    // ignore — opener may be gone
+    // ignore
+  }
+
+  const channel = safeBroadcastChannel();
+  if (channel) {
+    try {
+      channel.postMessage(payload);
+    } catch {
+      // ignore
+    }
+    try {
+      channel.close();
+    } catch {
+      // ignore
+    }
+  }
+
+  if (hasOpener) {
+    try {
+      opener!.postMessage(payload, window.location.origin);
+    } catch {
+      // ignore — opener link severed by COOP
+    }
   }
 
   try {
@@ -159,48 +239,113 @@ export function completeInstagramOAuthPopupIfNeeded(): boolean {
 
 /** Resolves with the auth code once the OAuth popup reports back. */
 export function awaitInstagramOAuthPopupResult(
-  popup: Window,
+  popup: Window | null,
 ): Promise<{ code: string; state: string | null }> {
   return new Promise((resolve, reject) => {
     let settled = false;
+    let closedSince = 0;
+    const startedAt = Date.now();
+    const channel = safeBroadcastChannel();
 
     const cleanup = () => {
+      window.removeEventListener('storage', onStorage);
       window.removeEventListener('message', onMessage);
-      clearInterval(closedTimer);
+      if (channel) {
+        try {
+          channel.close();
+        } catch {
+          // ignore
+        }
+      }
+      clearInterval(poll);
     };
 
-    const finish = (fn: () => void) => {
+    const settle = (fn: () => void) => {
       if (settled) return;
       settled = true;
       cleanup();
+      clearOAuthPopupArtifacts();
       try {
-        if (!popup.closed) popup.close();
+        if (popup && !popup.closed) popup.close();
       } catch {
         // ignore
       }
       fn();
     };
 
-    const onMessage = (event: MessageEvent) => {
-      if (event.origin !== window.location.origin) return;
-      const data = event.data as InstagramOAuthPopupMessage | undefined;
+    const consume = (raw: unknown) => {
+      if (settled || raw == null) return;
+      let data: InstagramOAuthResultPayload | null = null;
+      try {
+        data = typeof raw === 'string' ? JSON.parse(raw) : (raw as InstagramOAuthResultPayload);
+      } catch {
+        return;
+      }
       if (!data || data.type !== INSTAGRAM_OAUTH_MESSAGE) return;
       if (data.error) {
-        finish(() =>
-          reject(new Error(data.errorDescription || data.error || 'Instagram login was cancelled.')),
+        settle(() =>
+          reject(new Error(data!.errorDescription || data!.error || 'Instagram login was cancelled.')),
         );
       } else if (data.code) {
-        finish(() => resolve({ code: data.code as string, state: data.state ?? null }));
+        settle(() => resolve({ code: data!.code as string, state: data!.state ?? null }));
       } else {
-        finish(() => reject(new Error('Instagram did not return an authorization code.')));
+        settle(() => reject(new Error('Instagram did not return an authorization code.')));
       }
     };
 
-    window.addEventListener('message', onMessage);
+    const readStored = (): string | null => {
+      try {
+        return localStorage.getItem(OAUTH_RESULT_KEY);
+      } catch {
+        return null;
+      }
+    };
 
-    const closedTimer = window.setInterval(() => {
-      if (popup.closed && !settled) {
-        finish(() => reject(new Error('Instagram login window was closed before completing.')));
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === OAUTH_RESULT_KEY && event.newValue) consume(event.newValue);
+    };
+    const onMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
+      consume(event.data);
+    };
+
+    window.addEventListener('storage', onStorage);
+    window.addEventListener('message', onMessage);
+    if (channel) channel.onmessage = (event) => consume(event.data);
+
+    const poll = window.setInterval(() => {
+      const stored = readStored();
+      if (stored) {
+        consume(stored);
+        return;
+      }
+
+      let closed = false;
+      try {
+        closed = Boolean(popup && popup.closed);
+      } catch {
+        closed = false;
+      }
+      if (closed) {
+        if (!closedSince) {
+          closedSince = Date.now();
+        } else if (Date.now() - closedSince > 1500) {
+          // Give the stored result one last chance before giving up.
+          const last = readStored();
+          if (last) {
+            consume(last);
+            return;
+          }
+          settle(() =>
+            reject(new Error('Instagram login window was closed before completing.')),
+          );
+        }
+      } else {
+        closedSince = 0;
+      }
+
+      if (Date.now() - startedAt > OAUTH_POPUP_TIMEOUT_MS) {
+        settle(() => reject(new Error('Instagram login timed out. Please try again.')));
       }
     }, 500);
   });
