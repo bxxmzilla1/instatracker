@@ -384,6 +384,10 @@ create table if not exists bsky_follow_events (
   count bigint,
   captured_at bigint
 );
+-- Owner of the account that performed the follows ('all', an employee
+-- username, or 'admin'). Lets the dashboard keep counting historical follows
+-- after the account is banned or deleted.
+alter table bsky_follow_events add column if not exists owner text;
 
 -- Live run status per follow account, shared across sessions/devices.
 create table if not exists bsky_account_runs (

@@ -460,7 +460,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   const cancelRef = useRef<Record<string, boolean>>({});
   // Buffers successful follows so they can be flushed to storage once per second
   // (keeps the dashboard "Follows" count + graph live without a write per follow).
-  const followBufferRef = useRef<{ accountId: string }[]>([]);
+  const followBufferRef = useRef<{ accountId: string; owner: string }[]>([]);
   // Running cumulative follow count per `${accountId}:${dayKey}` so each tick
   // updates a single row instead of inserting a new one.
   const dayCountRef = useRef<Record<string, number>>({});
@@ -629,7 +629,11 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     const now = Date.now();
     const key = dayKey(new Date(now));
     const deltas = new Map<string, number>();
-    for (const b of buf) deltas.set(b.accountId, (deltas.get(b.accountId) ?? 0) + 1);
+    const owners = new Map<string, string>();
+    for (const b of buf) {
+      deltas.set(b.accountId, (deltas.get(b.accountId) ?? 0) + 1);
+      if (b.owner) owners.set(b.accountId, b.owner);
+    }
     const events: BskyFollowEvent[] = [];
     for (const [accountId, delta] of deltas) {
       const id = `${accountId}:${key}`;
@@ -640,7 +644,10 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
       }
       const next = dayCountRef.current[id] + delta;
       dayCountRef.current[id] = next;
-      events.push({ id, accountId, count: next, capturedAt: now });
+      const owner =
+        owners.get(accountId) ??
+        followEventsRef.current.find((e) => e.id === id)?.owner;
+      events.push({ id, accountId, count: next, capturedAt: now, owner });
     }
     try {
       await addFollowEvents(events);
@@ -2999,6 +3006,9 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   async function runOne(account: BskyAccount) {
     cancelRef.current[account.id] = false;
     setActiveJobs((n) => n + 1);
+    // Stamp every recorded follow with the account's owner so the dashboard can
+    // keep counting them even after the account is banned or deleted.
+    const followOwner = account.allEmployees ? 'all' : account.employees[0] ?? 'admin';
     // Local snapshot mirrored to the DB so other sessions can see this run.
     const snap = {
       state: 'auth',
@@ -3060,7 +3070,8 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
             writeRun(state !== 'done' && state !== 'error');
           },
           onProgress: (d) => {
-            if (d.status === 'followed') followBufferRef.current.push({ accountId: account.id });
+            if (d.status === 'followed')
+              followBufferRef.current.push({ accountId: account.id, owner: followOwner });
             snap.done = d.done;
             snap.total = d.total;
             snap.success = d.success;
@@ -3945,12 +3956,21 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
 
   const bannedCount = savedAccounts.filter((a) => a.banned).length;
 
-  // Only count follows belonging to accounts the current user can see.
+  // Only count follows belonging to accounts the current user can see. We match
+  // on the live account list first, then fall back to the owner stamped on the
+  // event — so historical follows still count after an account is banned or
+  // deleted (its id leaves `accounts`, but the owner stays on the record).
   const visibleAccountIds = useMemo(() => new Set(accounts.map((a) => a.id)), [accounts]);
-  const visibleFollowEvents = useMemo(
-    () => followEvents.filter((e) => visibleAccountIds.has(e.accountId)),
-    [followEvents, visibleAccountIds],
-  );
+  const visibleFollowEvents = useMemo(() => {
+    // Admin's global view (no owner filter) counts every follow.
+    if (ownerFilter === undefined) return followEvents;
+    const scope = ownerFilter.trim().toLowerCase();
+    return followEvents.filter((e) => {
+      if (visibleAccountIds.has(e.accountId)) return true;
+      const owner = (e.owner ?? '').trim().toLowerCase();
+      return owner === scope || owner === 'all';
+    });
+  }, [followEvents, visibleAccountIds, ownerFilter]);
   const totalFollows = useMemo(
     () => visibleFollowEvents.reduce((sum, e) => sum + Number(e.count || 0), 0),
     [visibleFollowEvents],

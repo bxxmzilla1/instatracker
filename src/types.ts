@@ -147,6 +147,10 @@ export interface BskyFollowEvent {
   accountId: string;
   count: number;
   capturedAt: number;
+  // Who the followed-with account belongs to ('all', an employee username, or
+  // 'admin'). Stored so historical follow stats survive the account being
+  // banned or deleted, instead of disappearing when it leaves the live list.
+  owner?: string;
 }
 
 /** A Bluesky account configured for the mass-follow tool. */

@@ -582,6 +582,7 @@ interface FollowEventRow {
   account_id: string | null;
   count: number | null;
   captured_at: number | null;
+  owner?: string | null;
 }
 
 function toFollowEvent(row: FollowEventRow): BskyFollowEvent {
@@ -592,6 +593,7 @@ function toFollowEvent(row: FollowEventRow): BskyFollowEvent {
     // these values adds instead of concatenating.
     count: Number(row.count ?? 0),
     capturedAt: Number(row.captured_at ?? 0),
+    owner: row.owner ?? undefined,
   };
 }
 
@@ -615,28 +617,43 @@ export async function getFollowEvents(): Promise<BskyFollowEvent[]> {
   return out;
 }
 
+// True when an error looks like the `owner` column hasn't been migrated yet, so
+// callers can transparently retry without it instead of dropping the write.
+function isMissingOwnerColumn(message: string): boolean {
+  return /owner/i.test(message) && /column|schema|does not exist|could not find/i.test(message);
+}
+
 export async function addFollowEvent(event: BskyFollowEvent): Promise<void> {
-  const { error } = await client().from('bsky_follow_events').upsert({
+  const base = {
     id: event.id,
     account_id: event.accountId,
     count: event.count,
     captured_at: event.capturedAt,
-  });
+  };
+  let { error } = await client()
+    .from('bsky_follow_events')
+    .upsert({ ...base, owner: event.owner ?? null });
+  if (error && isMissingOwnerColumn(error.message)) {
+    ({ error } = await client().from('bsky_follow_events').upsert(base));
+  }
   if (error) throw new Error(error.message);
 }
 
 export async function addFollowEvents(events: BskyFollowEvent[]): Promise<void> {
   if (events.length === 0) return;
-  const { error } = await client()
+  const base = events.map((e) => ({
+    id: e.id,
+    account_id: e.accountId,
+    count: e.count,
+    captured_at: e.capturedAt,
+  }));
+  let { error } = await client()
     .from('bsky_follow_events')
-    .upsert(
-      events.map((e) => ({
-        id: e.id,
-        account_id: e.accountId,
-        count: e.count,
-        captured_at: e.capturedAt,
-      })),
-    );
+    .upsert(events.map((e, i) => ({ ...base[i], owner: e.owner ?? null })));
+  // Fall back gracefully if the schema migration adding `owner` hasn't run yet.
+  if (error && isMissingOwnerColumn(error.message)) {
+    ({ error } = await client().from('bsky_follow_events').upsert(base));
+  }
   if (error) throw new Error(error.message);
 }
 
