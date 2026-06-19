@@ -2973,6 +2973,28 @@ button:disabled {
   background: var(--accent-soft);
 }
 
+.content-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  margin: 0 0 1rem;
+}
+
+.content-pagination__btn {
+  min-width: 2.5rem;
+  padding: 0.35rem 0.75rem;
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.content-pagination__info {
+  font-size: 0.85rem;
+  color: var(--muted);
+  min-width: 7rem;
+  text-align: center;
+}
+
 .content-filter__date {
   padding: 0.4rem 0.6rem;
   border-radius: 8px;

@@ -84,6 +84,7 @@ import {
   isVideoFile,
   MAX_CAROUSEL_ITEMS,
   MIN_CAROUSEL_ITEMS,
+  CONTENT_PAGE_SIZE,
 } from './lib/content';
 import { latestByReel, withMonotonicReelViews } from './lib/dashboard';
 import { cacheImage, imgKey } from './lib/media';
@@ -397,6 +398,7 @@ export default function App() {
   const [scheduleViewDate, setScheduleViewDate] = useState<string>(() => toDateKey(Date.now()));
   const timezoneLabel = getTimezoneLabel();
   const [contentEmployeeFilter, setContentEmployeeFilter] = useState('');
+  const [contentPage, setContentPage] = useState(0);
   const [openAddForms, setOpenAddForms] = useState<Set<string>>(() => new Set());
 
   const isAdmin = session?.role === 'admin';
@@ -1979,6 +1981,31 @@ export default function App() {
     [uploadPreviews],
   );
 
+  const displayedContent = useMemo(() => {
+    let list = content.filter((reel) => (reel.mediaType ?? 'reel') === contentTab);
+    if (isAdmin && contentEmployeeFilter) {
+      list = list.filter(
+        (reel) => reel.allEmployees || reel.employees.includes(contentEmployeeFilter),
+      );
+    }
+    return list;
+  }, [content, contentTab, contentEmployeeFilter, isAdmin]);
+
+  const contentTotalPages = Math.max(1, Math.ceil(displayedContent.length / CONTENT_PAGE_SIZE));
+  const safeContentPage = Math.min(contentPage, contentTotalPages - 1);
+  const paginatedContent = useMemo(() => {
+    const start = safeContentPage * CONTENT_PAGE_SIZE;
+    return displayedContent.slice(start, start + CONTENT_PAGE_SIZE);
+  }, [displayedContent, safeContentPage]);
+
+  useEffect(() => {
+    setContentPage(0);
+  }, [contentTab, contentEmployeeFilter]);
+
+  useEffect(() => {
+    setContentPage((page) => Math.min(page, Math.max(0, contentTotalPages - 1)));
+  }, [contentTotalPages]);
+
   if (!session) {
     return (
       <Login
@@ -2055,16 +2082,6 @@ export default function App() {
     ? getAssignedOwnersForContent(activeScheduleReel, knownEmployeeUsernames)
     : null;
   const scheduleReelHasEmployeeAssignment = scheduleAssignedOwners !== null;
-
-  const displayedContent = (() => {
-    let list = content.filter((reel) => (reel.mediaType ?? 'reel') === contentTab);
-    if (isAdmin && contentEmployeeFilter) {
-      list = list.filter(
-        (reel) => reel.allEmployees || reel.employees.includes(contentEmployeeFilter),
-      );
-    }
-    return list;
-  })();
 
   const scheduledForDate = (() => {
     let scheduled = getScheduledPostsForDate(content, scheduleViewDate);
@@ -2875,8 +2892,38 @@ export default function App() {
                     : `No ${contentTabSingular(contentTab)} assigned to you yet.`}
                 </p>
               ) : (
-                <div className="reels-grid">
-                  {displayedContent.map((reel) => (
+                <>
+                  {displayedContent.length > CONTENT_PAGE_SIZE && (
+                    <div className="content-pagination">
+                      <button
+                        type="button"
+                        className="btn btn--ghost content-pagination__btn"
+                        disabled={safeContentPage === 0}
+                        onClick={() => setContentPage((page) => Math.max(0, page - 1))}
+                        aria-label="Previous page"
+                      >
+                        ←
+                      </button>
+                      <span className="content-pagination__info">
+                        {safeContentPage * CONTENT_PAGE_SIZE + 1}–
+                        {Math.min((safeContentPage + 1) * CONTENT_PAGE_SIZE, displayedContent.length)}{' '}
+                        of {displayedContent.length}
+                      </span>
+                      <button
+                        type="button"
+                        className="btn btn--ghost content-pagination__btn"
+                        disabled={safeContentPage >= contentTotalPages - 1}
+                        onClick={() =>
+                          setContentPage((page) => Math.min(contentTotalPages - 1, page + 1))
+                        }
+                        aria-label="Next page"
+                      >
+                        →
+                      </button>
+                    </div>
+                  )}
+                  <div className="reels-grid">
+                    {paginatedContent.map((reel) => (
                     <div key={reel.id} className="reel-cell">
                       <ContentMediaPreview reel={reel} />
                       <div className="reel-cell__overlay">
@@ -2955,7 +3002,8 @@ export default function App() {
                       )}
                     </div>
                   ))}
-                </div>
+                  </div>
+                </>
               )}
             </section>
           </>

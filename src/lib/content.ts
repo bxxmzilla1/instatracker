@@ -2,6 +2,7 @@ import type { ContentMediaType, ContentReel } from '../types';
 
 export const MIN_CAROUSEL_ITEMS = 2;
 export const MAX_CAROUSEL_ITEMS = 10;
+export const CONTENT_PAGE_SIZE = 10;
 
 const VIDEO_EXT = /\.(mp4|mov|webm|m4v|mkv|avi)(\?|$)/i;
 
