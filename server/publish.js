@@ -10,13 +10,6 @@ const GRAPH_HOST = 'https://graph.instagram.com';
 const POLL_INTERVAL_MS = 3000;
 const MAX_POLL_ATTEMPTS = 60;
 
-function graphRelayUrl() {
-  if (process.env.GRAPH_RELAY_URL) return process.env.GRAPH_RELAY_URL;
-  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}/api/graph`;
-  const port = process.env.PORT || 3001;
-  return `http://127.0.0.1:${port}/api/graph`;
-}
-
 async function graphCall(method, path, accessToken, params = {}, proxy) {
   const payload = {
     method,
@@ -28,32 +21,16 @@ async function graphCall(method, path, accessToken, params = {}, proxy) {
     proxy,
   };
 
-  // Prefer the HTTP relay so cron/scheduled publishes hit the same serverless
-  // handler (and fetch-based transport) as immediate posts from the browser.
-  const relayUrl = graphRelayUrl();
-  try {
-    const response = await fetch(relayUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    const data = await response.json().catch(() => ({}));
-    if (response.status >= 400 || data?.error) {
-      throw new Error(data?.error?.message || `Instagram API error (${response.status})`);
-    }
-    return data;
-  } catch (err) {
-    // Fall back to in-process relay (local dev without the API server, etc.).
-    if (!(err instanceof TypeError) && !(err?.cause instanceof TypeError)) {
-      const message = err instanceof Error ? err.message : String(err);
-      if (!/fetch failed|ECONNREFUSED|ENOTFOUND/i.test(message)) throw err;
-    }
-    const { status, data } = await relayGraphRequest(payload);
-    if (status >= 400 || data?.error) {
-      throw new Error(data?.error?.message || `Instagram API error (${status})`);
-    }
-    return data;
+  // Call the relay in-process. We must NOT self-fetch the deployment URL: on
+  // Vercel that URL can sit behind Deployment Protection and returns 401, which
+  // silently looked like an Instagram token error. relayGraphRequest performs
+  // the exact same transport (direct fetch or proxy tunnel) as the browser
+  // route, so calling it directly is equivalent and avoids the auth wall.
+  const { status, data } = await relayGraphRequest(payload);
+  if (status >= 400 || data?.error) {
+    throw new Error(data?.error?.message || `Instagram API error (${status})`);
   }
+  return data;
 }
 
 function trimCaption(value) {
