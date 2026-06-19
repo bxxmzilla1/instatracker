@@ -2,6 +2,7 @@
 // Uses the same relay as /api/graph so it can run from cron without a browser.
 
 import { relayGraphRequest } from './graph.js';
+import { proxyRowToRelay } from './parseProxy.js';
 
 const GRAPH_API_VERSION = 'v23.0';
 const GRAPH_HOST = 'https://graph.instagram.com';
@@ -22,17 +23,6 @@ async function graphCall(method, path, accessToken, params = {}, proxy) {
     throw new Error(data?.error?.message || `Instagram API error (${status})`);
   }
   return data;
-}
-
-function proxyRowToRelay(row) {
-  if (!row?.host || !row?.port) return undefined;
-  return {
-    type: row.type || 'http',
-    host: row.host,
-    port: row.port,
-    user: row.username || undefined,
-    pass: row.password || undefined,
-  };
 }
 
 function trimCaption(value) {

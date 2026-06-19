@@ -10,23 +10,20 @@ export interface GraphRelayProxy {
 }
 
 export function proxyToRelayConfig(proxy: Proxy): GraphRelayProxy | undefined {
-  if (proxy.host && proxy.port) {
-    return {
-      type: proxy.type || 'http',
-      host: proxy.host,
-      port: proxy.port,
-      user: proxy.username || undefined,
-      pass: proxy.password || undefined,
-    };
-  }
   const parsed = parseProxyString(proxy.raw || '');
-  if (!parsed?.host || !parsed.port) return undefined;
+  const host = proxy.host || parsed?.host || '';
+  const port = proxy.port || parsed?.port || '';
+  if (!host || !port) return undefined;
+
+  const user = proxy.username || parsed?.user || undefined;
+  const pass = proxy.password || parsed?.pass || undefined;
+
   return {
-    type: proxy.type || 'http',
-    host: parsed.host,
-    port: parsed.port,
-    user: parsed.user || undefined,
-    pass: parsed.pass || undefined,
+    type: proxy.type || parsed?.type || 'http',
+    host,
+    port,
+    user: user || undefined,
+    pass: pass || undefined,
   };
 }
 
