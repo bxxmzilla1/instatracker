@@ -96,7 +96,8 @@ export function getDueScheduledPosts(reel: ContentReel, now: number): ScheduledP
     (post) =>
       post.scheduledAt <= now &&
       !post.postedAt &&
-      !post.publishingAt,
+      !post.publishingAt &&
+      !post.skippedAt,
   );
 }
 

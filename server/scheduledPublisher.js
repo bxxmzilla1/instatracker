@@ -12,9 +12,13 @@ import {
 } from './contentSchedule.js';
 import { publishContent, proxyRowToRelay } from './publish.js';
 import { lookupExitIp } from './ipinfo.js';
-import { noteTextForPublishError, skipScheduledPost, upsertAccountNote } from './accountNotes.js';
+import { markScheduledPostSkipped, noteTextForPublishError, upsertAccountNote } from './accountNotes.js';
+import {
+  SCHEDULE_PUBLISH_STALE_MS,
+  SCHEDULE_PUBLISH_TIMEOUT_MS,
+  SCHEDULE_PUBLISH_TIMEOUT_MESSAGE,
+} from './instagramErrors.js';
 
-const STALE_PUBLISH_MS = 15 * 60 * 1000;
 const LOCK_KEY = 'scheduled-publisher';
 const LOCK_TTL_MS = 10 * 60 * 1000;
 const PUBLISH_GAP_MS = 4000;
@@ -32,8 +36,9 @@ function getSupabaseAdmin() {
   return createClient(url, key);
 }
 
-async function clearStaleLocks(db) {
-  const staleBefore = Date.now() - STALE_PUBLISH_MS;
+async function recoverStaleScheduledPublishes(db) {
+  const staleBefore = Date.now() - SCHEDULE_PUBLISH_STALE_MS;
+  let recovered = 0;
 
   await db
     .from('content')
@@ -41,26 +46,55 @@ async function clearStaleLocks(db) {
     .lt('publishing_at', staleBefore)
     .is('posted_at', null);
 
-  const { data: rows, error } = await db
-    .from('content')
-    .select('*')
-    .not('scheduled_posts', 'eq', '[]');
-  if (error) throw new Error(error.message);
-
-  for (const row of rows ?? []) {
-    const posts = normalizeScheduledPosts(row);
-    let changed = false;
-    const updated = posts.map((post) => {
-      if (post.publishingAt && post.publishingAt < staleBefore && !post.postedAt) {
-        changed = true;
-        return { ...post, publishingAt: undefined, publishStage: undefined };
+  const rows = await loadRowsWithSchedules(db);
+  for (const row of rows) {
+    for (const post of normalizeScheduledPosts(row)) {
+      if (
+        post.publishingAt &&
+        post.publishingAt < staleBefore &&
+        !post.postedAt &&
+        !post.skippedAt
+      ) {
+        const account = await markScheduledPostSkipped(
+          db,
+          row.id,
+          post.id,
+          SCHEDULE_PUBLISH_TIMEOUT_MESSAGE,
+        );
+        if (account) {
+          await upsertAccountNote(
+            db,
+            account,
+            noteTextForPublishError(SCHEDULE_PUBLISH_TIMEOUT_MESSAGE),
+          );
+        }
+        recovered += 1;
       }
-      return post;
-    });
-    if (changed) {
-      await db.from('content').update({ scheduled_posts: updated }).eq('id', row.id);
     }
   }
+
+  return recovered;
+}
+
+async function publishWithTimeout(igUserId, igAccessToken, payload, onProgress) {
+  let timer;
+  try {
+    return await Promise.race([
+      publishContent(igUserId, igAccessToken, payload, onProgress),
+      new Promise((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(SCHEDULE_PUBLISH_TIMEOUT_MESSAGE)),
+          SCHEDULE_PUBLISH_TIMEOUT_MS,
+        );
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function clearStaleLocks(db) {
+  return recoverStaleScheduledPublishes(db);
 }
 
 async function acquirePublisherLock(db) {
@@ -290,6 +324,7 @@ export async function runScheduledPublisher() {
 
     while (Date.now() < deadline) {
       await extendPublisherLock(db, lockHolder);
+      await recoverStaleScheduledPublishes(db);
 
       let rows;
       try {
@@ -302,6 +337,8 @@ export async function runScheduledPublisher() {
       const dueItems = collectDueScheduledItems(rows, Date.now());
       if (dueItems.length === 0) {
         if (anyActiveScheduledPublish(rows)) {
+          const recovered = await recoverStaleScheduledPublishes(db);
+          if (recovered > 0) continue;
           await sleep(WAIT_FOR_PUBLISH_MS);
           continue;
         }
@@ -309,6 +346,8 @@ export async function runScheduledPublisher() {
       }
 
       if (anyActiveScheduledPublish(rows)) {
+        const recovered = await recoverStaleScheduledPublishes(db);
+        if (recovered > 0) continue;
         await sleep(WAIT_FOR_PUBLISH_MS);
         continue;
       }
@@ -321,6 +360,8 @@ export async function runScheduledPublisher() {
 
       if (!claimed) {
         if (anyActiveScheduledPublish(rows)) {
+          const recovered = await recoverStaleScheduledPublishes(db);
+          if (recovered > 0) continue;
           await sleep(WAIT_FOR_PUBLISH_MS);
           continue;
         }
@@ -354,7 +395,7 @@ export async function runScheduledPublisher() {
             `proxy=${proxyId || 'none'} captionLen=${caption.length} caption="${caption.slice(0, 60)}"`,
         );
 
-        const result = await publishContent(
+        const result = await publishWithTimeout(
           igUserId,
           igAccessToken,
           {
@@ -379,7 +420,7 @@ export async function runScheduledPublisher() {
         });
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Publish failed';
-        const account = await skipScheduledPost(db, claimedRow.id, claimedPost.id);
+        const account = await markScheduledPostSkipped(db, claimedRow.id, claimedPost.id, message);
         if (account) {
           await upsertAccountNote(db, account, noteTextForPublishError(message));
         }

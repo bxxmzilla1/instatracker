@@ -58,7 +58,8 @@ export function anyActiveScheduledPublish(rows) {
 export function getDueScheduledPosts(row, now) {
   if (rowHasActiveScheduledPublish(row)) return [];
   return normalizeScheduledPosts(row).filter(
-    (post) => post.scheduledAt <= now && !post.postedAt && !post.publishingAt,
+    (post) =>
+      post.scheduledAt <= now && !post.postedAt && !post.publishingAt && !post.skippedAt,
   );
 }
 

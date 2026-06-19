@@ -3987,6 +3987,11 @@ button:disabled {
   background: rgba(34, 197, 94, 0.12);
 }
 
+.schedule-card__type--error {
+  color: #e5484d;
+  background: rgba(229, 72, 77, 0.12);
+}
+
 .schedule-card__caption {
   margin: 0;
   font-size: 0.85rem;

@@ -91,7 +91,12 @@ import {
   CONTENT_PAGE_SIZE,
 } from './lib/content';
 import { latestByReel, withMonotonicReelViews } from './lib/dashboard';
-import { noteTextForPublishError } from './lib/instagramErrors';
+import {
+  noteTextForPublishError,
+  SCHEDULE_ERROR_LABEL,
+  SCHEDULE_PUBLISH_STALE_MS,
+  SCHEDULE_PUBLISH_TIMEOUT_MESSAGE,
+} from './lib/instagramErrors';
 import { cacheImage, imgKey } from './lib/media';
 import { formatCount, formatDate, proxiedImage } from './lib/format';
 import type {
@@ -629,7 +634,7 @@ export default function App() {
     [accountNotes],
   );
 
-  // Drop failed scheduled posts and add account notes so the queue moves on.
+  // Mark failed scheduled posts as skipped (kept on schedule) and add account notes.
   useEffect(() => {
     if (!session || content.length === 0) return;
     let cancelled = false;
@@ -639,20 +644,91 @@ export default function App() {
         const posts = normalizeScheduledPosts(reel);
         const toSkip = posts.filter(
           (post) =>
-            post.postError && !skippedFailedPostsRef.current.has(`${reel.id}:${post.id}`),
+            post.postError &&
+            !post.skippedAt &&
+            !skippedFailedPostsRef.current.has(`${reel.id}:${post.id}`),
         );
         if (toSkip.length === 0) continue;
         for (const post of toSkip) {
           skippedFailedPostsRef.current.add(`${reel.id}:${post.id}`);
         }
-        const remaining = posts.filter((post) => !toSkip.some((skip) => skip.id === post.id));
+        const skipIds = new Set(toSkip.map((post) => post.id));
+        const nextPosts = posts.map((post) =>
+          skipIds.has(post.id)
+            ? {
+                ...post,
+                postError: SCHEDULE_ERROR_LABEL,
+                skippedAt: Date.now(),
+                publishingAt: undefined,
+                publishStage: undefined,
+              }
+            : post,
+        );
         await updateContent({
           ...reel,
-          scheduledPosts: remaining,
+          scheduledPosts: nextPosts,
           postError: undefined,
         });
         for (const post of toSkip) {
           await upsertAccountNote(post.account, noteTextForPublishError(post.postError!));
+        }
+        changed = true;
+      }
+      if (changed && !cancelled) {
+        await loadContent();
+        await loadAccountNotes();
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [content, session, loadContent, loadAccountNotes]);
+
+  // Recover scheduled posts stuck in "Preparing media…" so the queue can move on.
+  useEffect(() => {
+    if (!session || content.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      const staleBefore = Date.now() - SCHEDULE_PUBLISH_STALE_MS;
+      let changed = false;
+      for (const reel of content) {
+        const posts = normalizeScheduledPosts(reel);
+        const stuck = posts.filter(
+          (post) =>
+            post.publishingAt &&
+            !post.postedAt &&
+            !post.skippedAt &&
+            post.publishingAt < staleBefore &&
+            !skippedFailedPostsRef.current.has(`stale:${reel.id}:${post.id}`),
+        );
+        if (stuck.length === 0) continue;
+        for (const post of stuck) {
+          skippedFailedPostsRef.current.add(`stale:${reel.id}:${post.id}`);
+        }
+        const stuckIds = new Set(stuck.map((post) => post.id));
+        const nextPosts = posts.map((post) =>
+          stuckIds.has(post.id)
+            ? {
+                ...post,
+                postError: SCHEDULE_ERROR_LABEL,
+                skippedAt: Date.now(),
+                publishingAt: undefined,
+                publishStage: undefined,
+              }
+            : post,
+        );
+        await updateContent({
+          ...reel,
+          scheduledPosts: nextPosts,
+          publishingAt: undefined,
+          publishStage: undefined,
+          postError: undefined,
+        });
+        for (const post of stuck) {
+          await upsertAccountNote(
+            post.account,
+            noteTextForPublishError(SCHEDULE_PUBLISH_TIMEOUT_MESSAGE),
+          );
         }
         changed = true;
       }
@@ -1689,6 +1765,7 @@ export default function App() {
                 caption: entryCaption,
                 proxyId: newContentProxyId || undefined,
                 postError: undefined,
+                skippedAt: undefined,
                 publishingAt: undefined,
                 publishStage: undefined,
               }
@@ -3199,6 +3276,11 @@ export default function App() {
                                   Posted
                                 </span>
                               )}
+                              {scheduledPost.skippedAt && (
+                                <span className="schedule-card__type schedule-card__type--error">
+                                  Skipped
+                                </span>
+                              )}
                             </div>
                             {(scheduledPost.caption ?? reel.caption) ? (
                               <p className="schedule-card__caption">
@@ -3246,9 +3328,9 @@ export default function App() {
                                   </>
                                 )}
                               </p>
-                            ) : scheduledPost.postError ? (
+                            ) : scheduledPost.skippedAt || scheduledPost.postError ? (
                               <p className="schedule-card__status schedule-card__status--error">
-                                ⚠ {scheduledPost.postError}
+                                ⚠ {SCHEDULE_ERROR_LABEL}
                               </p>
                             ) : (
                               <p className="schedule-card__status">
