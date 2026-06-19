@@ -74,9 +74,12 @@ function requestViaProxy(urlString, init, proxy) {
   });
 }
 
-function appendQueryParams(url, params) {
+// `target` is a URLSearchParams (either `url.searchParams` or a standalone
+// form body). Both expose `.set`, so callers must pass the params object
+// directly — never a URL instance.
+function appendQueryParams(target, params) {
   for (const [key, value] of Object.entries(params)) {
-    if (value != null) url.searchParams.set(key, String(value));
+    if (value != null) target.set(key, String(value));
   }
 }
 
@@ -110,7 +113,7 @@ export async function relayGraphRequest(payload = {}) {
 
   if (method === 'GET') {
     url.searchParams.set('access_token', accessToken);
-    appendQueryParams(url, params);
+    appendQueryParams(url.searchParams, params);
   } else if (body != null) {
     if (typeof body === 'string') {
       init.headers['Content-Type'] = 'application/x-www-form-urlencoded';
