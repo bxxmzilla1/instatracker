@@ -3508,6 +3508,10 @@ button:disabled {
   margin-top: 1rem;
 }
 
+.schedule-modal__error {
+  margin: 0;
+}
+
 .publish-progress {
   margin-top: 1rem;
   display: flex;

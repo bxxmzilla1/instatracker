@@ -62,7 +62,7 @@ import { parseProxyString } from './lib/proxy';
 import { proxyOptionLabel, proxyToRelayConfig } from './lib/proxyRelay';
 import type { GraphRelayProxy } from './lib/proxyRelay';
 import { fetchProxyIp, formatIpInfo } from './lib/ipinfo';
-import { publishContent } from './lib/igGraph';
+import { InstagramApiError, publishContent, validateAccount } from './lib/igGraph';
 import type { PublishProgress } from './lib/igGraph';
 import {
   formatDateLocal,
@@ -92,6 +92,7 @@ import {
 } from './lib/content';
 import { latestByReel, withMonotonicReelViews } from './lib/dashboard';
 import {
+  displayPublishErrorMessage,
   noteTextForPublishError,
   resolveSkipNoteText,
   SCHEDULE_ERROR_LABEL,
@@ -397,6 +398,7 @@ export default function App() {
   const [uploadingContent, setUploadingContent] = useState(false);
   const [scheduleReel, setScheduleReel] = useState<ContentReel | null>(null);
   const [scheduleMode, setScheduleMode] = useState<'post' | 'schedule'>('schedule');
+  const [scheduleModalError, setScheduleModalError] = useState<string | null>(null);
   // When set, the schedule modal edits this existing scheduled post in place.
   const [editingScheduledPost, setEditingScheduledPost] = useState<{
     reelId: string;
@@ -1612,6 +1614,7 @@ export default function App() {
     const fresh = content.find((c) => c.id === reel.id) ?? reel;
     setScheduleReel(fresh);
     setScheduleMode(mode);
+    setScheduleModalError(null);
     setEditingScheduledPost(null);
     // Always start from a blank caption box so a new post/schedule never inherits
     // the previously published caption — each scheduled post owns its own caption.
@@ -1647,6 +1650,7 @@ export default function App() {
 
   function closeScheduleModal() {
     setScheduleReel(null);
+    setScheduleModalError(null);
     setNewContentCaption('');
     setNewContentTarget('');
     setNewContentProxyId('');
@@ -1715,14 +1719,23 @@ export default function App() {
 
     if (scheduleMode === 'post') {
       if (!newContentTarget) {
-        setError('Select an Instagram account to post to.');
+        setScheduleModalError('Select an Instagram account to post to.');
         return;
       }
       if (!allowedAccounts.some((a) => a.username === newContentTarget)) {
-        setError('Select an account added by the assigned employee.');
+        setScheduleModalError('Select an account added by the assigned employee.');
+        return;
+      }
+      const account = accounts.find((a) => a.username === newContentTarget);
+      if (!account?.igUserId || !account?.igAccessToken) {
+        setScheduleModalError(
+          'This account has no saved API token or User ID. Open Accounts → credentials → Connect Instagram API.',
+        );
         return;
       }
       setSavingSchedule(true);
+      setScheduleModalError(null);
+      setError(null);
       setPublishProgress({ stage: 'creating' });
       const publishingReel: ContentReel = {
         ...scheduleReel,
@@ -1736,6 +1749,8 @@ export default function App() {
       try {
         await updateContent(publishingReel);
         await loadContent();
+
+        await validateAccount(account.igAccessToken, account.igUserId);
 
         const result = await publishReelToAccount(
           publishingReel,
@@ -1796,8 +1811,19 @@ export default function App() {
         await loadContent();
         closeScheduleModal();
       } catch (err) {
-        const message = err instanceof Error ? err.message : 'Could not publish to Instagram.';
-        await upsertAccountNote(newContentTarget, noteTextForPublishError(message));
+        const raw =
+          err instanceof InstagramApiError
+            ? err.toDisplayString()
+            : err instanceof Error
+              ? err.message
+              : 'Could not publish to Instagram.';
+        const message = displayPublishErrorMessage(raw);
+        setScheduleModalError(message);
+        setError(message);
+        await upsertAccountNote(
+          newContentTarget,
+          noteTextForPublishError(raw, 'Post failed'),
+        );
         await loadAccountNotes();
         await updateContent({
           ...publishingReel,
@@ -4278,6 +4304,10 @@ export default function App() {
 
               {scheduleMode === 'post' && modalPublishProgress && (
                 <PublishProgressBar stage={modalPublishProgress.stage} />
+              )}
+
+              {scheduleModalError && (
+                <p className="cred-auth__error schedule-modal__error">{scheduleModalError}</p>
               )}
 
               <div className="schedule-modal__actions">

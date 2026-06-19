@@ -11,11 +11,24 @@ export function isAccessTokenError(message: string): boolean {
   );
 }
 
-/** Note text saved when a scheduled publish fails for an account. */
-export function noteTextForPublishError(message: string): string {
+/** Note text saved when a publish fails for an account. */
+export function noteTextForPublishError(
+  message: string,
+  fallback = 'Scheduled post failed',
+): string {
   const trimmed = (message || '').trim();
-  if (!trimmed || trimmed === SCHEDULE_ERROR_LABEL) return 'Scheduled post failed';
+  if (!trimmed || trimmed === SCHEDULE_ERROR_LABEL) return fallback;
   if (isAccessTokenError(trimmed)) return TOKEN_UPDATE_NOTE;
+  return trimmed;
+}
+
+/** User-facing message when an immediate or scheduled publish fails. */
+export function displayPublishErrorMessage(message: string): string {
+  const trimmed = (message || '').trim();
+  if (!trimmed) return 'Could not publish to Instagram.';
+  if (isAccessTokenError(trimmed)) {
+    return `${TOKEN_UPDATE_NOTE}. Open Accounts → credentials → Connect Instagram API to refresh the token.`;
+  }
   return trimmed;
 }
 
