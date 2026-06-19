@@ -2808,18 +2808,33 @@ export default function App() {
                     : `Your ${contentTabSingular(contentTab)}s`}
                 </h2>
                 {isAdmin && (
-                  <button
-                    type="button"
-                    className="btn"
-                    onClick={() => contentFileRef.current?.click()}
-                    disabled={uploadingContent}
-                  >
-                    {uploadingContent
-                      ? 'Uploading…'
-                      : contentTab === 'carousel'
-                        ? 'Add carousel'
-                        : `Add ${contentTabSingular(contentTab)}`}
-                  </button>
+                  <div className="schedule-controls">
+                    <select
+                      className="content-filter__date"
+                      value={contentEmployeeFilter}
+                      onChange={(e) => setContentEmployeeFilter(e.target.value)}
+                      title="Filter by employee"
+                    >
+                      <option value="">All employees</option>
+                      {employees.map((emp) => (
+                        <option key={emp.username} value={emp.username}>
+                          {emp.username}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      className="btn"
+                      onClick={() => contentFileRef.current?.click()}
+                      disabled={uploadingContent}
+                    >
+                      {uploadingContent
+                        ? 'Uploading…'
+                        : contentTab === 'carousel'
+                          ? 'Add carousel'
+                          : `Add ${contentTabSingular(contentTab)}`}
+                    </button>
+                  </div>
                 )}
               </div>
               {displayedContent.length === 0 ? (
