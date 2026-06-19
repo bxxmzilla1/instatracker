@@ -3,6 +3,7 @@
 
 import { createClient } from '@supabase/supabase-js';
 import {
+  anyActiveScheduledPublish,
   backfillScheduledPostCaptions,
   collectDueScheduledItems,
   normalizeScheduledPosts,
@@ -19,6 +20,7 @@ const LOCK_KEY = 'scheduled-publisher';
 const LOCK_TTL_MS = 10 * 60 * 1000;
 const PUBLISH_GAP_MS = 4000;
 const RUN_BUDGET_MS = 280_000;
+const WAIT_FOR_PUBLISH_MS = 3000;
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -104,6 +106,16 @@ async function releasePublisherLock(db, holder) {
 }
 
 async function claimScheduledPost(db, rowId, postId) {
+  const allRows = await loadRowsWithSchedules(db);
+  for (const row of allRows) {
+    if (row.publishing_at && !row.posted_at && row.id !== rowId) return null;
+    for (const post of normalizeScheduledPosts(row)) {
+      if (post.publishingAt && !post.postedAt && !(row.id === rowId && post.id === postId)) {
+        return null;
+      }
+    }
+  }
+
   const { data: row, error } = await db.from('content').select('*').eq('id', rowId).maybeSingle();
   if (error) throw new Error(error.message);
   if (!row) return null;
@@ -138,6 +150,8 @@ async function claimScheduledPost(db, rowId, postId) {
       scheduled_at: null,
       target_account: null,
       post_error: null,
+      publishing_at: Date.now(),
+      publish_stage: 'creating',
     })
     .eq('id', rowId)
     .select('*')
@@ -245,7 +259,16 @@ async function markScheduledFailed(db, rowId, postId, message) {
       ? { ...post, postError: message, publishingAt: undefined, publishStage: undefined }
       : post,
   );
-  await db.from('content').update({ scheduled_posts: updated, post_error: message }).eq('id', rowId);
+  const stillPublishing = updated.some((post) => post.publishingAt && !post.postedAt);
+  await db
+    .from('content')
+    .update({
+      scheduled_posts: updated,
+      post_error: message,
+      publishing_at: stillPublishing ? row.publishing_at : null,
+      publish_stage: stillPublishing ? row.publish_stage : null,
+    })
+    .eq('id', rowId);
 }
 
 async function getProxyRelay(db, proxyId) {
@@ -301,11 +324,30 @@ export async function runScheduledPublisher() {
       }
 
       const dueItems = collectDueScheduledItems(rows, Date.now());
-      if (dueItems.length === 0) break;
+      if (dueItems.length === 0) {
+        if (anyActiveScheduledPublish(rows)) {
+          await sleep(WAIT_FOR_PUBLISH_MS);
+          continue;
+        }
+        break;
+      }
 
-      const { row, post } = dueItems[0];
-      const claimed = await claimScheduledPost(db, row.id, post.id);
+      if (anyActiveScheduledPublish(rows)) {
+        await sleep(WAIT_FOR_PUBLISH_MS);
+        continue;
+      }
+
+      let claimed = null;
+      for (const item of dueItems) {
+        claimed = await claimScheduledPost(db, item.row.id, item.post.id);
+        if (claimed) break;
+      }
+
       if (!claimed) {
+        if (anyActiveScheduledPublish(rows)) {
+          await sleep(WAIT_FOR_PUBLISH_MS);
+          continue;
+        }
         staleClaims += 1;
         if (staleClaims >= 5) break;
         await sleep(500);

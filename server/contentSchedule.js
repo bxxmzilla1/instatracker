@@ -46,7 +46,13 @@ export function normalizeScheduledPosts(row) {
 }
 
 export function rowHasActiveScheduledPublish(row) {
+  if (row.publishing_at && !row.posted_at) return true;
   return normalizeScheduledPosts(row).some((post) => post.publishingAt && !post.postedAt);
+}
+
+/** True when any content row currently has a scheduled publish in flight. */
+export function anyActiveScheduledPublish(rows) {
+  return rows.some(rowHasActiveScheduledPublish);
 }
 
 export function getDueScheduledPosts(row, now) {

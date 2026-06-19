@@ -101,7 +101,16 @@ export function getDueScheduledPosts(reel: ContentReel, now: number): ScheduledP
 }
 
 export function rowHasActiveScheduledPublish(
-  reel: Pick<ContentReel, 'scheduledPosts' | 'scheduledAt' | 'targetAccount' | 'postedAt' | 'id'>,
+  reel: Pick<
+    ContentReel,
+    'scheduledPosts' | 'scheduledAt' | 'targetAccount' | 'postedAt' | 'id' | 'publishingAt'
+  >,
 ): boolean {
+  if (reel.publishingAt && !reel.postedAt) return true;
   return normalizeScheduledPosts(reel).some((post) => post.publishingAt && !post.postedAt);
+}
+
+/** True when any content row currently has a scheduled publish in flight. */
+export function anyActiveScheduledPublish(reels: ContentReel[]): boolean {
+  return reels.some(rowHasActiveScheduledPublish);
 }
