@@ -72,16 +72,24 @@ export async function relayGraphRequest(payload = {}) {
   // requests still authenticate even if a proxy mishandles Authorization.
   url.searchParams.set('access_token', accessToken);
 
+  // Put ALL Graph parameters (caption, media_type, video_url, …) in the query
+  // string for every method. This is the relay's original, proven-working
+  // behavior. It was changed to send params in a POST body (commit 94c689a),
+  // which silently dropped captions on proxied scheduled publishes — Meta's
+  // /media endpoint does not reliably read `caption` from a request body. The
+  // query string carries every parameter reliably for both proxied and direct
+  // requests, so captions publish correctly regardless of proxy.
+  for (const [key, value] of Object.entries(params)) {
+    if (value != null) url.searchParams.set(key, String(value));
+  }
+
   const init = {
     method,
     headers: { Authorization: `Bearer ${accessToken}` },
   };
 
-  if (method === 'GET') {
-    for (const [key, value] of Object.entries(params)) {
-      if (value != null) url.searchParams.set(key, String(value));
-    }
-  } else if (body != null) {
+  // Only attach a request body when the caller explicitly provides one.
+  if (method !== 'GET' && body != null) {
     if (typeof body === 'string') {
       init.headers['Content-Type'] = 'application/x-www-form-urlencoded';
       init.body = body;
@@ -89,21 +97,6 @@ export async function relayGraphRequest(payload = {}) {
       init.headers['Content-Type'] = 'application/json';
       init.body = JSON.stringify(body);
     }
-  } else {
-    // Use the SAME request format for proxied and direct POSTs. The proxy is an
-    // HTTPS CONNECT tunnel, so it can't read or alter the (encrypted) request —
-    // the only intended difference is the exit IP, never the payload. Earlier we
-    // sent a JSON body only for proxied requests, but Meta's /media endpoint
-    // doesn't reliably read `caption` from a JSON body, so proxied reels
-    // published with no caption while direct (form-body) posts worked. Sending
-    // the exact same form-urlencoded body for both keeps captions intact.
-    const form = new URLSearchParams();
-    for (const [key, value] of Object.entries(params)) {
-      if (value != null) form.set(key, String(value));
-    }
-    form.set('access_token', accessToken);
-    init.headers['Content-Type'] = 'application/x-www-form-urlencoded';
-    init.body = form.toString();
   }
 
   try {
