@@ -1610,6 +1610,35 @@ export default function App() {
     await loadContent();
   }
 
+  // Re-arm a skipped/failed scheduled post: clear the failure flags and make it
+  // due now so the scheduled publisher picks it up again on its next run.
+  async function handleRetryScheduledPost(reel: ContentReel, scheduledPostId: string) {
+    const next = normalizeScheduledPosts(reel).map((post) =>
+      post.id === scheduledPostId
+        ? {
+            ...post,
+            scheduledAt: Date.now(),
+            skippedAt: undefined,
+            skipReason: undefined,
+            postError: undefined,
+            publishingAt: undefined,
+            publishStage: undefined,
+          }
+        : post,
+    );
+    // Let the local failure watcher re-mark this post if it fails again.
+    skippedFailedPostsRef.current.delete(`${reel.id}:${scheduledPostId}`);
+    skippedFailedPostsRef.current.delete(`stale:${reel.id}:${scheduledPostId}`);
+    await updateContent({
+      ...reel,
+      scheduledPosts: next,
+      postError: undefined,
+      publishingAt: undefined,
+      publishStage: undefined,
+    });
+    await loadContent();
+  }
+
   function openScheduleModal(reel: ContentReel, mode: 'post' | 'schedule') {
     const fresh = content.find((c) => c.id === reel.id) ?? reel;
     setScheduleReel(fresh);
@@ -3457,6 +3486,18 @@ export default function App() {
                                 Scheduled for {formatDateTimeLocal(scheduledPost.scheduledAt)}
                               </p>
                             )}
+                            {(scheduledPost.skippedAt || scheduledPost.postError) &&
+                              !scheduledPost.postedAt &&
+                              !scheduledPost.publishingAt && (
+                                <button
+                                  type="button"
+                                  className="schedule-card__retry"
+                                  onClick={() => handleRetryScheduledPost(reel, scheduledPost.id)}
+                                  title="Retry posting now"
+                                >
+                                  ↻ Retry post
+                                </button>
+                              )}
                             <div className="schedule-card__assign">
                               {reel.allEmployees ? (
                                 <span className="owner-tag">All employees</span>
