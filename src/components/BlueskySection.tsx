@@ -348,6 +348,13 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   const [newAcctNotes, setNewAcctNotes] = useState('');
   const [newAcctOwner, setNewAcctOwner] = useState('admin');
   const [showAddSavedAccount, setShowAddSavedAccount] = useState(false);
+  // Inline editing of an existing saved account (handle, email, password, notes).
+  const [editSavedAccount, setEditSavedAccount] = useState<BskySavedAccount | null>(null);
+  const [editAcctHandle, setEditAcctHandle] = useState('');
+  const [editAcctEmail, setEditAcctEmail] = useState('');
+  const [editAcctPassword, setEditAcctPassword] = useState('');
+  const [editAcctNotes, setEditAcctNotes] = useState('');
+  const [savingEditAccount, setSavingEditAccount] = useState(false);
 
   // Generic add-form assignment state, scoped per form key.
   const [assign, setAssign] = useState<Record<string, { set: Set<string>; all: boolean }>>({});
@@ -3188,6 +3195,56 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     }
   }
 
+  function startEditSavedAccount(acct: BskySavedAccount) {
+    setEditSavedAccount(acct);
+    setEditAcctHandle(acct.handle);
+    setEditAcctEmail(acct.email ?? '');
+    setEditAcctPassword(acct.password ?? '');
+    setEditAcctNotes(acct.notes ?? '');
+    setShowAddSavedAccount(false);
+  }
+
+  function cancelEditSavedAccount() {
+    setEditSavedAccount(null);
+    setEditAcctHandle('');
+    setEditAcctEmail('');
+    setEditAcctPassword('');
+    setEditAcctNotes('');
+  }
+
+  async function saveEditSavedAccount(e: FormEvent) {
+    e.preventDefault();
+    if (!editSavedAccount || !editAcctHandle.trim()) return;
+    setSavingEditAccount(true);
+    try {
+      // Preserve the stored password when the field is left blank (e.g. the row
+      // was hydrated from the password-stripped cache) so editing the handle
+      // never wipes saved credentials.
+      let password = editAcctPassword.trim() || undefined;
+      if (!password) {
+        try {
+          const fresh = await getSavedAccounts(ownerFilter);
+          password = fresh.find((a) => a.id === editSavedAccount.id)?.password || undefined;
+        } catch {
+          password = editSavedAccount.password || undefined;
+        }
+      }
+      await addSavedAccount({
+        ...editSavedAccount,
+        handle: editAcctHandle.trim().replace(/^@/, ''),
+        email: editAcctEmail.trim() || undefined,
+        password,
+        notes: editAcctNotes.trim() || undefined,
+      });
+      cancelEditSavedAccount();
+      await loadAll();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not update account.');
+    } finally {
+      setSavingEditAccount(false);
+    }
+  }
+
   async function handleDeleteSavedAccount(id: string) {
     await deleteSavedAccount(id);
     await loadAll();
@@ -4377,43 +4434,102 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                   </p>
                 ) : (
                   <div className="proxy-list">
-                    {savedAccounts.map((acct) => (
-                      <div key={acct.id} className="proxy-row">
-                        <div className="proxy-row__body">
-                          <div className="proxy-row__top">
-                            <strong>@{acct.handle}</strong>
-                            {acct.banned && <span className="owner-tag owner-tag--banned">Banned</span>}
-                            {isAdmin && acct.owner && acct.owner !== 'admin' && (
-                              <span className="owner-tag">Added by {acct.owner}</span>
-                            )}
-                          </div>
-                          <div className="proxy-row__fields">
-                            <CopyField label="Handle" value={acct.handle} />
-                            {acct.email && <CopyField label="Email" value={acct.email} />}
-                            {acct.password && <CopyField label="Password" value={acct.password} />}
-                          </div>
-                          {acct.notes && <p className="bio-row__text">{acct.notes}</p>}
+                    {savedAccounts.map((acct) =>
+                      editSavedAccount?.id === acct.id ? (
+                        <div key={acct.id} className="proxy-row">
+                          <form className="bio-form proxy-row__body" onSubmit={saveEditSavedAccount}>
+                            <input
+                              className="cred-form__input"
+                              placeholder="Handle (e.g. name.bsky.social)"
+                              value={editAcctHandle}
+                              onChange={(e) => setEditAcctHandle(e.target.value)}
+                              autoComplete="off"
+                              spellCheck={false}
+                            />
+                            <input
+                              className="cred-form__input"
+                              placeholder="Email (optional)"
+                              value={editAcctEmail}
+                              onChange={(e) => setEditAcctEmail(e.target.value)}
+                              autoComplete="off"
+                              spellCheck={false}
+                            />
+                            <input
+                              className="cred-form__input"
+                              type="text"
+                              placeholder="Password / app password (optional)"
+                              value={editAcctPassword}
+                              onChange={(e) => setEditAcctPassword(e.target.value)}
+                              autoComplete="off"
+                            />
+                            <textarea
+                              className="bio-form__textarea"
+                              placeholder="Notes (optional)"
+                              value={editAcctNotes}
+                              onChange={(e) => setEditAcctNotes(e.target.value)}
+                              rows={2}
+                            />
+                            <div className="row-actions">
+                              <button type="submit" disabled={savingEditAccount || !editAcctHandle.trim()}>
+                                {savingEditAccount ? 'Saving…' : 'Save changes'}
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn--ghost"
+                                onClick={cancelEditSavedAccount}
+                                disabled={savingEditAccount}
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </form>
                         </div>
-                        <div className="row-actions">
-                          <button
-                            type="button"
-                            className="row-edit"
-                            onClick={() => toggleSavedAccountBanned(acct)}
-                            title={acct.banned ? 'Mark as active' : 'Mark as banned'}
-                          >
-                            {acct.banned ? '↩' : '⊘'}
-                          </button>
-                          <button
-                            type="button"
-                            className="license-row__delete"
-                            onClick={() => handleDeleteSavedAccount(acct.id)}
-                            title="Delete account"
-                          >
-                            ✕
-                          </button>
+                      ) : (
+                        <div key={acct.id} className="proxy-row">
+                          <div className="proxy-row__body">
+                            <div className="proxy-row__top">
+                              <strong>@{acct.handle}</strong>
+                              {acct.banned && <span className="owner-tag owner-tag--banned">Banned</span>}
+                              {isAdmin && acct.owner && acct.owner !== 'admin' && (
+                                <span className="owner-tag">Added by {acct.owner}</span>
+                              )}
+                            </div>
+                            <div className="proxy-row__fields">
+                              <CopyField label="Handle" value={acct.handle} />
+                              {acct.email && <CopyField label="Email" value={acct.email} />}
+                              {acct.password && <CopyField label="Password" value={acct.password} />}
+                            </div>
+                            {acct.notes && <p className="bio-row__text">{acct.notes}</p>}
+                          </div>
+                          <div className="row-actions">
+                            <button
+                              type="button"
+                              className="row-edit"
+                              onClick={() => startEditSavedAccount(acct)}
+                              title="Edit account"
+                            >
+                              ✎
+                            </button>
+                            <button
+                              type="button"
+                              className="row-edit"
+                              onClick={() => toggleSavedAccountBanned(acct)}
+                              title={acct.banned ? 'Mark as active' : 'Mark as banned'}
+                            >
+                              {acct.banned ? '↩' : '⊘'}
+                            </button>
+                            <button
+                              type="button"
+                              className="license-row__delete"
+                              onClick={() => handleDeleteSavedAccount(acct.id)}
+                              title="Delete account"
+                            >
+                              ✕
+                            </button>
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      ),
+                    )}
                   </div>
                 )}
               </section>
