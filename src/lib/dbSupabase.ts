@@ -757,19 +757,24 @@ export async function getAccountNotes(): Promise<AccountNote[]> {
   return (data as AccountNoteRow[]).map(toAccountNote);
 }
 
-export async function upsertTokenUpdateNote(account: string): Promise<void> {
+export async function upsertAccountNote(account: string, text: string): Promise<void> {
   const normalized = account.trim().replace(/^@/, '').toLowerCase();
-  if (!normalized) return;
-  const id = `token-${normalized}`;
+  const noteText = text.trim();
+  if (!normalized || !noteText) return;
+  const id = `schedule-${normalized}`;
   const now = Date.now();
   const { error } = await client().from('account_notes').upsert({
     id,
     account: normalized,
-    text: TOKEN_UPDATE_NOTE,
+    text: noteText,
     seen: false,
     created_at: now,
   });
   if (error) throw new Error(error.message);
+}
+
+export async function upsertTokenUpdateNote(account: string): Promise<void> {
+  await upsertAccountNote(account, TOKEN_UPDATE_NOTE);
 }
 
 export async function deleteAccountNote(id: string): Promise<void> {

@@ -41,6 +41,7 @@ export const {
   getApiLink,
   saveApiLink,
   getAccountNotes,
+  upsertAccountNote,
   upsertTokenUpdateNote,
   deleteAccountNote,
   markAccountNotesSeen,

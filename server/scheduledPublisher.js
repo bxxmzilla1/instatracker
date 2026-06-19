@@ -12,8 +12,7 @@ import {
 } from './contentSchedule.js';
 import { publishContent, proxyRowToRelay } from './publish.js';
 import { lookupExitIp } from './ipinfo.js';
-import { isAccessTokenError } from './instagramErrors.js';
-import { skipScheduledPost, upsertTokenUpdateNote } from './accountNotes.js';
+import { noteTextForPublishError, skipScheduledPost, upsertAccountNote } from './accountNotes.js';
 
 const STALE_PUBLISH_MS = 15 * 60 * 1000;
 const LOCK_KEY = 'scheduled-publisher';
@@ -248,29 +247,6 @@ async function markScheduledPosted(db, rowId, postId, result, ipInfo, publishedC
   if (updateError) throw new Error(updateError.message);
 }
 
-async function markScheduledFailed(db, rowId, postId, message) {
-  const { data: row, error } = await db.from('content').select('*').eq('id', rowId).maybeSingle();
-  if (error) throw new Error(error.message);
-  if (!row) return;
-
-  const posts = normalizeScheduledPosts(row);
-  const updated = posts.map((post) =>
-    post.id === postId
-      ? { ...post, postError: message, publishingAt: undefined, publishStage: undefined }
-      : post,
-  );
-  const stillPublishing = updated.some((post) => post.publishingAt && !post.postedAt);
-  await db
-    .from('content')
-    .update({
-      scheduled_posts: updated,
-      post_error: message,
-      publishing_at: stillPublishing ? row.publishing_at : null,
-      publish_stage: stillPublishing ? row.publish_stage : null,
-    })
-    .eq('id', rowId);
-}
-
 async function getProxyRelay(db, proxyId) {
   if (!proxyId) return undefined;
   const { data, error } = await db.from('proxies').select('*').eq('id', proxyId).maybeSingle();
@@ -403,11 +379,9 @@ export async function runScheduledPublisher() {
         });
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Publish failed';
-        if (isAccessTokenError(message)) {
-          const account = await skipScheduledPost(db, claimedRow.id, claimedPost.id);
-          if (account) await upsertTokenUpdateNote(db, account);
-        } else {
-          await markScheduledFailed(db, claimedRow.id, claimedPost.id, message);
+        const account = await skipScheduledPost(db, claimedRow.id, claimedPost.id);
+        if (account) {
+          await upsertAccountNote(db, account, noteTextForPublishError(message));
         }
         results.push({
           id: claimedRow.id,

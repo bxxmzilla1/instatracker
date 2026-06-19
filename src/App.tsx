@@ -45,7 +45,7 @@ import {
   getApiLink,
   saveApiLink,
   getAccountNotes,
-  upsertTokenUpdateNote,
+  upsertAccountNote,
   deleteAccountNote,
   markAccountNotesSeen,
   removeAccount,
@@ -91,7 +91,7 @@ import {
   CONTENT_PAGE_SIZE,
 } from './lib/content';
 import { latestByReel, withMonotonicReelViews } from './lib/dashboard';
-import { isAccessTokenError } from './lib/instagramErrors';
+import { noteTextForPublishError } from './lib/instagramErrors';
 import { cacheImage, imgKey } from './lib/media';
 import { formatCount, formatDate, proxiedImage } from './lib/format';
 import type {
@@ -365,7 +365,7 @@ export default function App() {
   const [newStoryAll, setNewStoryAll] = useState(false);
   const [content, setContent] = useState<ContentReel[]>([]);
   const [accountNotes, setAccountNotes] = useState<AccountNote[]>([]);
-  const skippedTokenPostsRef = useRef(new Set<string>());
+  const skippedFailedPostsRef = useRef(new Set<string>());
   const [contentTab, setContentTab] = useState<ContentMediaType>('reel');
   // Files chosen for upload, held until the admin assigns employees in the popup.
   const [pendingUpload, setPendingUpload] = useState<{
@@ -629,7 +629,7 @@ export default function App() {
     [accountNotes],
   );
 
-  // Drop scheduled posts that failed with an invalid/expired token and add account notes.
+  // Drop failed scheduled posts and add account notes so the queue moves on.
   useEffect(() => {
     if (!session || content.length === 0) return;
     let cancelled = false;
@@ -639,13 +639,11 @@ export default function App() {
         const posts = normalizeScheduledPosts(reel);
         const toSkip = posts.filter(
           (post) =>
-            post.postError &&
-            isAccessTokenError(post.postError) &&
-            !skippedTokenPostsRef.current.has(`${reel.id}:${post.id}`),
+            post.postError && !skippedFailedPostsRef.current.has(`${reel.id}:${post.id}`),
         );
         if (toSkip.length === 0) continue;
         for (const post of toSkip) {
-          skippedTokenPostsRef.current.add(`${reel.id}:${post.id}`);
+          skippedFailedPostsRef.current.add(`${reel.id}:${post.id}`);
         }
         const remaining = posts.filter((post) => !toSkip.some((skip) => skip.id === post.id));
         await updateContent({
@@ -654,7 +652,7 @@ export default function App() {
           postError: undefined,
         });
         for (const post of toSkip) {
-          await upsertTokenUpdateNote(post.account);
+          await upsertAccountNote(post.account, noteTextForPublishError(post.postError!));
         }
         changed = true;
       }
@@ -1447,28 +1445,6 @@ export default function App() {
     await loadContent();
   }
 
-  async function handleRetryScheduledPost(reel: ContentReel, scheduledPost: ScheduledPost) {
-    const next = normalizeScheduledPosts(reel).map((post) =>
-      post.id === scheduledPost.id
-        ? {
-            ...post,
-            postError: undefined,
-            publishingAt: undefined,
-            publishStage: undefined,
-            scheduledAt: Date.now(),
-          }
-        : post,
-    );
-    await updateContent({
-      ...reel,
-      scheduledPosts: next,
-      postError: undefined,
-      publishingAt: undefined,
-      publishStage: undefined,
-    });
-    await loadContent();
-  }
-
   function openScheduleModal(reel: ContentReel, mode: 'post' | 'schedule') {
     const fresh = content.find((c) => c.id === reel.id) ?? reel;
     setScheduleReel(fresh);
@@ -1658,20 +1634,17 @@ export default function App() {
         closeScheduleModal();
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Could not publish to Instagram.';
-        if (isAccessTokenError(message)) {
-          await upsertTokenUpdateNote(newContentTarget);
-          await loadAccountNotes();
-        }
+        await upsertAccountNote(newContentTarget, noteTextForPublishError(message));
+        await loadAccountNotes();
         await updateContent({
           ...publishingReel,
           postedAt: scheduleReel.postedAt,
           permalink: scheduleReel.permalink,
           publishingAt: undefined,
           publishStage: undefined,
-          postError: isAccessTokenError(message) ? undefined : message,
+          postError: undefined,
         });
         await loadContent();
-        if (!isAccessTokenError(message)) setError(message);
       } finally {
         setSavingSchedule(false);
         setPublishProgress(null);
@@ -3274,20 +3247,9 @@ export default function App() {
                                 )}
                               </p>
                             ) : scheduledPost.postError ? (
-                              <>
-                                <p className="schedule-card__status schedule-card__status--error">
-                                  ⚠ {scheduledPost.postError}
-                                </p>
-                                {!isAccessTokenError(scheduledPost.postError) && (
-                                  <button
-                                    type="button"
-                                    className="schedule-card__retry"
-                                    onClick={() => handleRetryScheduledPost(reel, scheduledPost)}
-                                  >
-                                    Retry now
-                                  </button>
-                                )}
-                              </>
+                              <p className="schedule-card__status schedule-card__status--error">
+                                ⚠ {scheduledPost.postError}
+                              </p>
                             ) : (
                               <p className="schedule-card__status">
                                 Scheduled for {formatDateTimeLocal(scheduledPost.scheduledAt)}

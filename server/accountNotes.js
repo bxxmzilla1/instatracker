@@ -1,4 +1,4 @@
-import { TOKEN_UPDATE_NOTE } from './instagramErrors.js';
+import { TOKEN_UPDATE_NOTE, noteTextForPublishError } from './instagramErrors.js';
 
 function normalizeAccount(username) {
   return String(username || '')
@@ -7,22 +7,30 @@ function normalizeAccount(username) {
     .toLowerCase();
 }
 
-/** Upsert a token-expired note for an account and mark it unseen (badge). */
-export async function upsertTokenUpdateNote(db, username) {
+/** Upsert a scheduler error note for an account and mark it unseen (badge). */
+export async function upsertAccountNote(db, username, text) {
   const account = normalizeAccount(username);
-  if (!account) return;
+  const noteText = String(text || '').trim();
+  if (!account || !noteText) return;
 
-  const id = `token-${account}`;
+  const id = `schedule-${account}`;
   const now = Date.now();
   const { error } = await db.from('account_notes').upsert({
     id,
     account,
-    text: TOKEN_UPDATE_NOTE,
+    text: noteText,
     seen: false,
     created_at: now,
   });
   if (error) throw new Error(error.message);
 }
+
+/** Upsert a token-expired note for an account and mark it unseen (badge). */
+export async function upsertTokenUpdateNote(db, username) {
+  await upsertAccountNote(db, username, TOKEN_UPDATE_NOTE);
+}
+
+export { noteTextForPublishError };
 
 /** Remove a scheduled post from the queue (skip permanently). */
 export async function skipScheduledPost(db, rowId, postId) {

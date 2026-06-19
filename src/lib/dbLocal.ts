@@ -482,18 +482,23 @@ export async function getAccountNotes(): Promise<AccountNote[]> {
   return rows.sort((a, b) => b.createdAt - a.createdAt);
 }
 
-export async function upsertTokenUpdateNote(account: string): Promise<void> {
+export async function upsertAccountNote(account: string, text: string): Promise<void> {
   const normalized = account.trim().replace(/^@/, '').toLowerCase();
-  if (!normalized) return;
+  const noteText = text.trim();
+  if (!normalized || !noteText) return;
   const db = await getDb();
   const note: AccountNote = {
-    id: `token-${normalized}`,
+    id: `schedule-${normalized}`,
     account: normalized,
-    text: TOKEN_UPDATE_NOTE,
+    text: noteText,
     createdAt: Date.now(),
     seen: false,
   };
   await db.put('accountNotes', note);
+}
+
+export async function upsertTokenUpdateNote(account: string): Promise<void> {
+  await upsertAccountNote(account, TOKEN_UPDATE_NOTE);
 }
 
 export async function deleteAccountNote(id: string): Promise<void> {
