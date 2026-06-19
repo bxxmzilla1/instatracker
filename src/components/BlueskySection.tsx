@@ -195,29 +195,98 @@ const DEFAULT_DELAY_MS = 1500;
 const DEFAULT_DELAY_MIN = 800;
 const DEFAULT_DELAY_MAX = 2500;
 
+// Locally-cached snapshot of the last successful load so the dashboard can
+// render the previously-saved data instantly on the next visit (employees
+// included) while a fresh copy is fetched in the background.
+const BSKY_CACHE_PREFIX = 'drbossing_bsky_cache_v1_';
+
+interface BskyCacheData {
+  banners: ImageAsset[];
+  profilePics: ImageAsset[];
+  bios: Bio[];
+  posts: BskyPost[];
+  proxies: Proxy[];
+  accounts: BskyAccount[];
+  savedAccounts: BskySavedAccount[];
+  targets: BskyTarget[];
+  followEvents: BskyFollowEvent[];
+  slaveAccounts: BskySlaveAccount[];
+  employees: Employee[];
+}
+
+function bskyCacheKey(session: Session, ownerFilter: string | undefined): string {
+  return `${BSKY_CACHE_PREFIX}${session.role}_${session.username.toLowerCase()}_${
+    ownerFilter ? ownerFilter.toLowerCase() : 'all'
+  }`;
+}
+
+function readBskyCache(key: string): Partial<BskyCacheData> | null {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    return JSON.parse(raw) as Partial<BskyCacheData>;
+  } catch {
+    return null;
+  }
+}
+
+function writeBskyCache(key: string, data: BskyCacheData) {
+  try {
+    localStorage.setItem(key, JSON.stringify(data));
+  } catch {
+    // Ignore quota / serialization errors — the cache is a best-effort optimisation.
+  }
+}
+
 export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagram, onLock }: Props) {
+  // The initial dashboard view always loads with this owner filter, so we can
+  // hydrate from its cache synchronously before any state is initialised.
+  const initialOwnerFilter = session.role === 'employee' ? session.username : undefined;
+  const bootCacheRef = useRef<Partial<BskyCacheData> | null>(null);
+  if (bootCacheRef.current === null) {
+    bootCacheRef.current = readBskyCache(bskyCacheKey(session, initialOwnerFilter)) ?? {};
+  }
+  const boot = bootCacheRef.current;
+  const hasBootData = Boolean(
+    boot.accounts?.length ||
+      boot.savedAccounts?.length ||
+      boot.followEvents?.length ||
+      boot.banners?.length ||
+      boot.posts?.length ||
+      boot.profilePics?.length ||
+      boot.bios?.length ||
+      boot.targets?.length ||
+      boot.proxies?.length ||
+      boot.employees?.length,
+  );
   const [view, setView] = useState<View>('dashboard');
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!hasBootData);
   const [refreshing, setRefreshing] = useState(false);
-  const hasLoadedOnceRef = useRef(false);
+  const hasLoadedOnceRef = useRef(hasBootData);
 
-  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [employees, setEmployees] = useState<Employee[]>(boot.employees ?? []);
+  // Mirror of `employees` so the data-cache write inside loadAll always sees
+  // the latest list without forcing loadAll to re-create on every change.
+  const employeesRef = useRef<Employee[]>(boot.employees ?? []);
+  useEffect(() => {
+    employeesRef.current = employees;
+  }, [employees]);
   const [employeeCounts, setEmployeeCounts] = useState<Record<string, number>>({});
   const [selectedEmployee, setSelectedEmployee] = useState<string | null>(null);
   const [showAddEmployee, setShowAddEmployee] = useState(false);
   const [newEmpUsername, setNewEmpUsername] = useState('');
   const [newEmpPassword, setNewEmpPassword] = useState('');
 
-  const [banners, setBanners] = useState<ImageAsset[]>([]);
-  const [profilePics, setProfilePics] = useState<ImageAsset[]>([]);
-  const [bios, setBios] = useState<Bio[]>([]);
-  const [posts, setPosts] = useState<BskyPost[]>([]);
-  const [proxies, setProxies] = useState<Proxy[]>([]);
-  const [accounts, setAccounts] = useState<BskyAccount[]>([]);
-  const [savedAccounts, setSavedAccounts] = useState<BskySavedAccount[]>([]);
-  const [slaveAccounts, setSlaveAccounts] = useState<BskySlaveAccount[]>([]);
+  const [banners, setBanners] = useState<ImageAsset[]>(boot.banners ?? []);
+  const [profilePics, setProfilePics] = useState<ImageAsset[]>(boot.profilePics ?? []);
+  const [bios, setBios] = useState<Bio[]>(boot.bios ?? []);
+  const [posts, setPosts] = useState<BskyPost[]>(boot.posts ?? []);
+  const [proxies, setProxies] = useState<Proxy[]>(boot.proxies ?? []);
+  const [accounts, setAccounts] = useState<BskyAccount[]>(boot.accounts ?? []);
+  const [savedAccounts, setSavedAccounts] = useState<BskySavedAccount[]>(boot.savedAccounts ?? []);
+  const [slaveAccounts, setSlaveAccounts] = useState<BskySlaveAccount[]>(boot.slaveAccounts ?? []);
   const [showAddSlave, setShowAddSlave] = useState(false);
   const [newSlaveHandle, setNewSlaveHandle] = useState('');
   const [newSlavePassword, setNewSlavePassword] = useState('');
@@ -264,8 +333,8 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   >({});
   // Label of the in-flight mass action, keyed by post id (null when idle).
   const [massActionStatus, setMassActionStatus] = useState<Record<string, string>>({});
-  const [targets, setTargets] = useState<BskyTarget[]>([]);
-  const [followEvents, setFollowEvents] = useState<BskyFollowEvent[]>([]);
+  const [targets, setTargets] = useState<BskyTarget[]>(boot.targets ?? []);
+  const [followEvents, setFollowEvents] = useState<BskyFollowEvent[]>(boot.followEvents ?? []);
   const [chartMonthOffset, setChartMonthOffset] = useState(0);
   const [selectedFollowDay, setSelectedFollowDay] = useState<number | null>(null);
 
@@ -465,7 +534,24 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     setTargets(tg);
     setFollowEvents(fe);
     setSlaveAccounts(sl);
-  }, [ownerFilter, isAdmin]);
+    // Persist this snapshot so the next visit can render it instantly while a
+    // fresh copy loads in the background (employees are kept via their ref).
+    // Passwords are stripped so credentials are never written to disk — the
+    // background refresh restores the full records before any publish action.
+    writeBskyCache(bskyCacheKey(session, ownerFilter), {
+      banners: bn,
+      profilePics: pp,
+      bios: bi,
+      posts: po,
+      proxies: px,
+      accounts: ac.map(({ password: _pw, ...rest }) => ({ ...rest, password: '' })),
+      savedAccounts: sa.map(({ password: _pw, ...rest }) => rest),
+      targets: tg,
+      followEvents: fe,
+      slaveAccounts: sl.map(({ password: _pw, ...rest }) => ({ ...rest, password: '' })),
+      employees: employeesRef.current,
+    });
+  }, [ownerFilter, isAdmin, session]);
 
   useEffect(() => {
     let active = true;
@@ -476,6 +562,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
         if (isAdmin) {
           const emps = await getEmployees();
           if (!active) return;
+          employeesRef.current = emps;
           setEmployees(emps);
         }
         await loadAll();
@@ -967,17 +1054,19 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
         setPostPublishProgress({ pushKey, done: i + 1, total: targets.length, kind: 'post' });
       }
 
-      // Merge by account so a re-attempt replaces that account's previous record
-      // (a successful publish clears its old error; a new error replaces the old one)
-      // instead of piling up duplicate rows in the engagement view.
-      const mergedByAccount = new Map<string, BskyPostPublish>();
-      for (const pub of post.publishes ?? []) mergedByAccount.set(pub.accountId, pub);
-      for (const pub of newPublishes) mergedByAccount.set(pub.accountId, pub);
+      // Keep prior records so the same media can be posted to the same account
+      // multiple times (each successful publish is tracked separately). We only
+      // drop previous *failed* records for the accounts we just re-attempted, so
+      // a retry clears its stale error instead of piling up duplicate failures.
+      const attemptedAccountIds = new Set(targets.map((a) => a.id));
+      const retained = (post.publishes ?? []).filter(
+        (pub) => !(pub.error && attemptedAccountIds.has(pub.accountId)),
+      );
 
       await updatePost({
         ...post,
         text: finalText,
-        publishes: [...mergedByAccount.values()],
+        publishes: [...retained, ...newPublishes],
       });
       await loadAll();
       closePostCaptionModal();
@@ -3894,11 +3983,17 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   ].filter((c) => c.show);
 
   const hasCachedData =
+    hasLoadedOnceRef.current ||
     accounts.length > 0 ||
     savedAccounts.length > 0 ||
     followEvents.length > 0 ||
     employees.length > 0 ||
-    banners.length > 0;
+    banners.length > 0 ||
+    posts.length > 0 ||
+    profilePics.length > 0 ||
+    bios.length > 0 ||
+    targets.length > 0 ||
+    proxies.length > 0;
   const showInitialLoading = loading && !hasCachedData;
 
   return (
