@@ -291,6 +291,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   const [newSlaveHandle, setNewSlaveHandle] = useState('');
   const [newSlavePassword, setNewSlavePassword] = useState('');
   const [newSlaveProxyId, setNewSlaveProxyId] = useState('');
+  const [newSlaveNote, setNewSlaveNote] = useState('');
   const [savingSlave, setSavingSlave] = useState(false);
   // Multi-select for bulk-deleting slave accounts.
   const [selectedSlaveIds, setSelectedSlaveIds] = useState<Set<string>>(() => new Set());
@@ -1310,11 +1311,13 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
         handle,
         password: newSlavePassword.trim(),
         proxyId: newSlaveProxyId || undefined,
+        note: newSlaveNote.trim() || undefined,
         createdAt: Date.now(),
       });
       setNewSlaveHandle('');
       setNewSlavePassword('');
       setNewSlaveProxyId('');
+      setNewSlaveNote('');
       setShowAddSlave(false);
       await loadAll();
       setSuccessMessage(`Slave account @${handle} verified and added.`);
@@ -4641,6 +4644,14 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                       label="Proxy (optional)"
                       optionLabel={proxyOptionLabel}
                     />
+                    <input
+                      className="cred-form__input"
+                      type="text"
+                      placeholder="Note (optional)"
+                      value={newSlaveNote}
+                      onChange={(e) => setNewSlaveNote(e.target.value)}
+                      autoComplete="off"
+                    />
                     <button
                       type="submit"
                       disabled={!newSlaveHandle.trim() || !newSlavePassword.trim() || savingSlave}
@@ -4688,6 +4699,9 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                             <CopyField label="Handle" value={acct.handle} />
                             <CopyField label="Password" value={acct.password} />
                           </div>
+                          {acct.note && (
+                            <p className="slave-row__note">📝 {acct.note}</p>
+                          )}
                           <div className="slave-row__proxy">
                             <ProxyPicker
                               proxies={proxies}

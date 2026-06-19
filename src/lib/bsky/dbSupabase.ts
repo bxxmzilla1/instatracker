@@ -491,6 +491,7 @@ interface SlaveAccountRow {
   handle: string | null;
   password: string | null;
   proxy_id: string | null;
+  note: string | null;
   created_at: number | null;
 }
 
@@ -500,8 +501,15 @@ function toSlaveAccount(row: SlaveAccountRow): BskySlaveAccount {
     handle: row.handle ?? '',
     password: row.password ?? '',
     proxyId: row.proxy_id ?? undefined,
+    note: row.note ?? undefined,
     createdAt: row.created_at ?? 0,
   };
+}
+
+// True when an error looks like the `note` column hasn't been migrated yet, so
+// callers can transparently retry without it instead of dropping the write.
+function isMissingNoteColumn(message: string): boolean {
+  return /note/i.test(message) && /column|schema|does not exist|could not find/i.test(message);
 }
 
 export async function getSlaveAccounts(): Promise<BskySlaveAccount[]> {
@@ -514,13 +522,20 @@ export async function getSlaveAccounts(): Promise<BskySlaveAccount[]> {
 }
 
 export async function addSlaveAccount(account: BskySlaveAccount): Promise<void> {
-  const { error } = await client().from('bsky_slave_accounts').upsert({
+  const base = {
     id: account.id,
     handle: account.handle,
     password: account.password,
     proxy_id: account.proxyId ?? null,
     created_at: account.createdAt,
-  });
+  };
+  let { error } = await client()
+    .from('bsky_slave_accounts')
+    .upsert({ ...base, note: account.note ?? null });
+  // Fall back gracefully if the schema migration adding `note` hasn't run yet.
+  if (error && isMissingNoteColumn(error.message)) {
+    ({ error } = await client().from('bsky_slave_accounts').upsert(base));
+  }
   if (error) throw new Error(error.message);
 }
 

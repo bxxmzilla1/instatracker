@@ -367,6 +367,7 @@ create table if not exists bsky_slave_accounts (
 );
 
 alter table bsky_slave_accounts add column if not exists proxy_id text;
+alter table bsky_slave_accounts add column if not exists note text;
 
 create table if not exists bsky_targets (
   id text primary key,

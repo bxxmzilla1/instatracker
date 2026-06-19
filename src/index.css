@@ -3656,6 +3656,13 @@ button:disabled {
   max-width: 420px;
 }
 
+.slave-row__note {
+  margin: 0.5rem 0 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+  word-break: break-word;
+}
+
 .proxy-row--selected {
   border-color: var(--accent);
   background: rgba(29, 155, 240, 0.1);

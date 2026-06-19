@@ -68,6 +68,8 @@ export interface BskySlaveAccount {
   password: string;
   /** Optional Bluesky proxy to route mass like/repost actions through. */
   proxyId?: string;
+  /** Optional free-text note for this slave account. */
+  note?: string;
   createdAt: number;
 }
 
