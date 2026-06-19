@@ -98,6 +98,14 @@ import {
   SCHEDULE_PUBLISH_STALE_MS,
   SCHEDULE_PUBLISH_TIMEOUT_MESSAGE,
 } from './lib/instagramErrors';
+import {
+  clearInstagramOAuthQueryParams,
+  clearPendingInstagramOAuthAccount,
+  exchangeInstagramOAuthCode,
+  getInstagramOAuthRedirectUri,
+  parseInstagramOAuthState,
+  readPendingInstagramOAuthAccount,
+} from './lib/instagramOAuth';
 import { cacheImage, imgKey } from './lib/media';
 import { formatCount, formatDate, proxiedImage } from './lib/format';
 import type {
@@ -372,6 +380,7 @@ export default function App() {
   const [content, setContent] = useState<ContentReel[]>([]);
   const [accountNotes, setAccountNotes] = useState<AccountNote[]>([]);
   const skippedFailedPostsRef = useRef(new Set<string>());
+  const instagramOAuthHandledRef = useRef(false);
   const [contentTab, setContentTab] = useState<ContentMediaType>('reel');
   // Files chosen for upload, held until the admin assigns employees in the popup.
   const [pendingUpload, setPendingUpload] = useState<{
@@ -607,6 +616,83 @@ export default function App() {
       active = false;
     };
   }, [session, ownerFilter, loadDashboardData]);
+
+  useEffect(() => {
+    if (!session) return;
+
+    const params = new URLSearchParams(window.location.search);
+    const oauthError = params.get('error');
+    if (oauthError) {
+      clearInstagramOAuthQueryParams();
+      clearPendingInstagramOAuthAccount();
+      setError(
+        params.get('error_description') ||
+          params.get('error_reason') ||
+          'Instagram login was cancelled.',
+      );
+      return;
+    }
+
+    const code = params.get('code');
+    if (!code || instagramOAuthHandledRef.current) return;
+    instagramOAuthHandledRef.current = true;
+
+    let active = true;
+    (async () => {
+      try {
+        setError(null);
+        const result = await exchangeInstagramOAuthCode(code, getInstagramOAuthRedirectUri());
+        const stateAccount =
+          parseInstagramOAuthState(params.get('state'))?.account ??
+          readPendingInstagramOAuthAccount();
+        clearPendingInstagramOAuthAccount();
+        clearInstagramOAuthQueryParams();
+
+        if (!stateAccount) {
+          throw new Error('Could not determine which Dr. Bossing account to connect.');
+        }
+
+        const filter = session.role === 'employee' ? session.username : undefined;
+        const rows = await getAccounts(filter);
+        const account = rows.find((row) => row.username === stateAccount);
+        if (!account) {
+          throw new Error(`Tracked account @${stateAccount} was not found.`);
+        }
+
+        const updated: TrackedAccount = {
+          ...account,
+          igUserId: result.userId,
+          igAccessToken: result.accessToken,
+        };
+        await updateAccount(updated);
+        if (!active) return;
+
+        setAccounts(rows.map((row) => (row.username === updated.username ? updated : row)));
+        setSelectedUsername(updated.username);
+        setView('accounts');
+        setShowCredentials(true);
+
+        if (
+          result.username &&
+          result.username.toLowerCase() !== updated.username.toLowerCase()
+        ) {
+          setWarning(
+            `Connected @${result.username} on Instagram to tracked account @${updated.username}.`,
+          );
+        }
+      } catch (err) {
+        if (!active) return;
+        clearInstagramOAuthQueryParams();
+        clearPendingInstagramOAuthAccount();
+        setError(err instanceof Error ? err.message : 'Instagram login failed.');
+        instagramOAuthHandledRef.current = false;
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [session]);
 
   useEffect(() => {
     if (selectedUsername) {

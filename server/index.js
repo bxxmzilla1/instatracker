@@ -16,6 +16,7 @@ import { relayGraphRequest } from './graph.js';
 import { runScheduledPublisher } from './scheduledPublisher.js';
 import { processWarmupQueue } from './warmupWorker.js';
 import { lookupExitIp, lookupIp } from './ipinfo.js';
+import { exchangeAuthorizationCode, getDefaultRedirectUri } from './instagramOAuth.js';
 dotenv.config();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -131,6 +132,22 @@ app.get('/api/image', async (req, res) => {
     res.send(buffer);
   } catch (err) {
     res.status(err.statusCode || 502).json({ error: err.message });
+  }
+});
+
+app.post('/api/instagram-oauth/exchange', async (req, res) => {
+  try {
+    const { code, redirectUri } = req.body ?? {};
+    if (!code || typeof code !== 'string') {
+      return res.status(400).json({ error: 'Authorization code is required.' });
+    }
+    const result = await exchangeAuthorizationCode(
+      code,
+      typeof redirectUri === 'string' && redirectUri.trim() ? redirectUri.trim() : getDefaultRedirectUri(),
+    );
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    res.status(502).json({ error: err.message });
   }
 });
 

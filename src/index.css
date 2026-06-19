@@ -4360,6 +4360,34 @@ button:disabled {
   background: var(--border);
 }
 
+.cred-oauth {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.cred-oauth__btn {
+  align-self: flex-start;
+  background: linear-gradient(135deg, #f58529, #dd2a7b, #8134af);
+  color: #fff;
+  border: 0;
+  border-radius: 10px;
+  padding: 0.65rem 1rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.cred-oauth__btn:hover {
+  filter: brightness(1.05);
+}
+
+.cred-oauth__hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
 .insight-panel__head {
   display: flex;
   flex-wrap: wrap;
