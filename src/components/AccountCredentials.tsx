@@ -2,6 +2,9 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { Secret, TOTP } from 'otpauth';
 import type { TrackedAccount } from '../types';
 import {
+  awaitInstagramOAuthPopupResult,
+  exchangeInstagramOAuthCode,
+  openInstagramOAuthPopup,
   startInstagramOAuth,
 } from '../lib/instagramOAuth';
 
@@ -47,6 +50,9 @@ export function AccountCredentials({ account, onSave }: Props) {
   const [saved, setSaved] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const [copied, setCopied] = useState(false);
+  const [connecting, setConnecting] = useState(false);
+  const [connectError, setConnectError] = useState<string | null>(null);
+  const [connectSuccess, setConnectSuccess] = useState<string | null>(null);
 
   useEffect(() => {
     setLoginUsername(account.loginUsername || account.username);
@@ -57,6 +63,8 @@ export function AccountCredentials({ account, onSave }: Props) {
     setIgUserId(account.igUserId ?? '');
     setIgAccessToken(account.igAccessToken ?? '');
     setSaved(false);
+    setConnectError(null);
+    setConnectSuccess(null);
   }, [
     account.username,
     account.loginUsername,
@@ -114,6 +122,46 @@ export function AccountCredentials({ account, onSave }: Props) {
       setTimeout(() => setCopied(false), 1500);
     } catch {
       // clipboard not available
+    }
+  }
+
+  async function handleConnectInstagram() {
+    setConnectError(null);
+    setConnectSuccess(null);
+    setConnecting(true);
+    try {
+      const popup = openInstagramOAuthPopup(account.username);
+      if (!popup) {
+        // Popup blocked — fall back to a full-page redirect (handled in App).
+        startInstagramOAuth(account.username);
+        return;
+      }
+
+      const { code: authCode } = await awaitInstagramOAuthPopupResult(popup);
+      const result = await exchangeInstagramOAuthCode(authCode);
+      const newUserId = result.userId.trim();
+      const newToken = result.accessToken.trim();
+
+      setIgUserId(newUserId);
+      setIgAccessToken(newToken);
+
+      await onSave({
+        loginUsername: loginUsername.trim(),
+        loginEmail: loginEmail.trim(),
+        loginPhone: loginPhone.trim(),
+        loginPassword,
+        authSecret: authSecret.trim(),
+        igUserId: newUserId,
+        igAccessToken: newToken,
+      });
+
+      setSaved(true);
+      const connectedAs = result.username ? ` as @${result.username}` : '';
+      setConnectSuccess(`Instagram API connected${connectedAs}. Token and User ID saved.`);
+    } catch (err) {
+      setConnectError(err instanceof Error ? err.message : 'Could not connect Instagram API.');
+    } finally {
+      setConnecting(false);
     }
   }
 
@@ -222,13 +270,16 @@ export function AccountCredentials({ account, onSave }: Props) {
         <button
           type="button"
           className="cred-oauth__btn"
-          onClick={() => startInstagramOAuth(account.username)}
+          onClick={handleConnectInstagram}
+          disabled={connecting}
         >
-          Connect Instagram API
+          {connecting ? 'Connecting…' : 'Connect Instagram API'}
         </button>
         <p className="cred-oauth__hint">
           Log in with Instagram to fetch a long-lived API token and user ID automatically.
         </p>
+        {connectError && <p className="cred-auth__error">{connectError}</p>}
+        {connectSuccess && <p className="cred-oauth__success">{connectSuccess}</p>}
       </div>
 
       <label className="cred-field">
