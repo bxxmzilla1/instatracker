@@ -20,17 +20,68 @@ export class InstagramApiError extends Error {
   readonly graphError: GraphApiError;
 
   constructor(graphError: GraphApiError) {
-    super(graphError.message);
+    super(graphError.message || 'Instagram API request failed');
     this.name = 'InstagramApiError';
     this.graphError = graphError;
   }
 
   toDisplayString(): string {
     const e = this.graphError;
-    const parts = [e.message, `Code: ${e.code}`];
+    const parts = [e.message?.trim() || 'Instagram API request failed'];
+    if (e.code != null && !Number.isNaN(e.code)) parts.push(`Code: ${e.code}`);
     if (e.error_subcode != null) parts.push(`Subcode: ${e.error_subcode}`);
     return parts.join(' · ');
   }
+}
+
+function parseGraphRelayError(data: unknown, status: number): GraphApiError {
+  if (typeof data === 'string' && data.trim()) {
+    return { message: data.trim(), type: 'RelayError', code: status };
+  }
+
+  if (data && typeof data === 'object') {
+    const record = data as Record<string, unknown>;
+    const nested = record.error;
+
+    if (typeof nested === 'string' && nested.trim()) {
+      return { message: nested.trim(), type: 'RelayError', code: status };
+    }
+
+    if (nested && typeof nested === 'object') {
+      const err = nested as Record<string, unknown>;
+      const message =
+        String(err.message ?? err.error_user_msg ?? err.error_user_title ?? '').trim() ||
+        `Instagram API error (${status})`;
+      return {
+        message,
+        type: String(err.type ?? 'GraphApiError'),
+        code: typeof err.code === 'number' ? err.code : status,
+        error_subcode: typeof err.error_subcode === 'number' ? err.error_subcode : undefined,
+        fbtrace_id: typeof err.fbtrace_id === 'string' ? err.fbtrace_id : undefined,
+      };
+    }
+
+    const topMessage = record.message ?? record.error_message;
+    if (typeof topMessage === 'string' && topMessage.trim()) {
+      return {
+        message: topMessage.trim(),
+        type: String(record.type ?? record.error_type ?? 'GraphApiError'),
+        code: typeof record.code === 'number' ? record.code : status,
+      };
+    }
+  }
+
+  return {
+    message: `Instagram API request failed (${status})`,
+    type: 'HttpError',
+    code: status,
+  };
+}
+
+export function graphApiErrorText(err: unknown): string {
+  if (err instanceof InstagramApiError) return err.toDisplayString();
+  if (err instanceof Error && err.message.trim()) return err.message.trim();
+  return 'Could not publish to Instagram.';
 }
 
 export interface IgAccountProfile {
@@ -140,19 +191,24 @@ async function graphRequest<T>(
   });
 
   const data = await response.json().catch(() => ({}));
-  const err = (data as { error?: GraphApiError }).error;
+  const err = (data as { error?: GraphApiError | string }).error;
   if (!response.ok || err) {
-    throw new InstagramApiError(
-      err ?? { message: `HTTP ${response.status}`, type: 'HttpError', code: response.status },
-    );
+    throw new InstagramApiError(parseGraphRelayError(data, response.status));
   }
   return data as T;
 }
 
-export async function validateAccount(accessToken: string, igUserId?: string) {
-  const me = await graphRequest<IgMeResponse>('/me', accessToken, {
-    fields: 'user_id,username,profile_picture_url',
-  });
+export async function validateAccount(
+  accessToken: string,
+  igUserId?: string,
+  proxy?: GraphRelayProxy,
+) {
+  const me = await graphRequest<IgMeResponse>(
+    '/me',
+    accessToken,
+    { fields: 'user_id,username,profile_picture_url' },
+    { proxy },
+  );
   if (igUserId && igUserId !== me.user_id) {
     throw new InstagramApiError({
       message: `Token belongs to @${me.username} (ID: ${me.user_id}), not ${igUserId}`,

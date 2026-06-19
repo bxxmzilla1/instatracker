@@ -62,7 +62,7 @@ import { parseProxyString } from './lib/proxy';
 import { proxyOptionLabel, proxyToRelayConfig } from './lib/proxyRelay';
 import type { GraphRelayProxy } from './lib/proxyRelay';
 import { fetchProxyIp, formatIpInfo } from './lib/ipinfo';
-import { InstagramApiError, publishContent, validateAccount } from './lib/igGraph';
+import { graphApiErrorText, publishContent, validateAccount } from './lib/igGraph';
 import type { PublishProgress } from './lib/igGraph';
 import {
   formatDateLocal,
@@ -1733,6 +1733,17 @@ export default function App() {
         );
         return;
       }
+      let relayProxy: GraphRelayProxy | undefined;
+      if (newContentProxyId) {
+        const proxyRecord = proxies.find((p) => p.id === newContentProxyId);
+        relayProxy = proxyRecord ? proxyToRelayConfig(proxyRecord) : undefined;
+        if (!relayProxy) {
+          setScheduleModalError(
+            'The selected proxy could not be parsed. Check host, port, and credentials.',
+          );
+          return;
+        }
+      }
       setSavingSchedule(true);
       setScheduleModalError(null);
       setError(null);
@@ -1750,7 +1761,7 @@ export default function App() {
         await updateContent(publishingReel);
         await loadContent();
 
-        await validateAccount(account.igAccessToken, account.igUserId);
+        await validateAccount(account.igAccessToken, account.igUserId, relayProxy);
 
         const result = await publishReelToAccount(
           publishingReel,
@@ -1811,12 +1822,7 @@ export default function App() {
         await loadContent();
         closeScheduleModal();
       } catch (err) {
-        const raw =
-          err instanceof InstagramApiError
-            ? err.toDisplayString()
-            : err instanceof Error
-              ? err.message
-              : 'Could not publish to Instagram.';
+        const raw = graphApiErrorText(err);
         const message = displayPublishErrorMessage(raw);
         setScheduleModalError(message);
         setError(message);

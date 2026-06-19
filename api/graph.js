@@ -11,6 +11,12 @@ export default async function handler(req, res) {
     const { status, data } = await relayGraphRequest(req.body ?? {});
     res.status(status).json(data);
   } catch (err) {
-    res.status(502).json({ error: err.message });
+    res.status(502).json({
+      error: {
+        message: err?.message || 'Graph proxy request failed',
+        type: 'RelayError',
+        code: 502,
+      },
+    });
   }
 }
