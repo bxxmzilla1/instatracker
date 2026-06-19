@@ -13,19 +13,46 @@ const DEFAULT_VERSION = 'v23.0';
 
 const ALLOWED_HOSTS = new Set([GRAPH_HOST, FACEBOOK_GRAPH_HOST]);
 
-function requestViaProxy(url, init, proxy) {
+function proxyErrorMessage(err) {
+  const code = err && typeof err === 'object' && 'code' in err ? String(err.code) : '';
+  const message = err instanceof Error ? err.message : String(err);
+  if (/407|proxy auth|unexpected proxy auth|auth/i.test(message)) {
+    return 'Proxy authentication failed. Check the proxy username and password.';
+  }
+  if (code === 'ECONNRESET') {
+    return 'Proxy connection was reset — try again or switch proxy.';
+  }
+  if (code === 'ETIMEDOUT' || code === 'ESOCKETTIMEDOUT') {
+    return 'Proxy request timed out.';
+  }
+  return message || 'Graph proxy request failed';
+}
+
+function requestViaProxy(urlString, init, proxy) {
   const agent = buildProxyAgent(proxy);
-  const target = new URL(url);
+  const target = new URL(urlString);
   const method = init.method || 'GET';
-  const headers = { ...(init.headers || {}) };
-  if (init.body != null && headers['Content-Length'] == null) {
-    headers['Content-Length'] = Buffer.byteLength(init.body);
+  const body = init.body != null ? init.body : null;
+  const headers = { ...(init.headers || {}), Host: target.hostname };
+
+  if (body != null) {
+    headers['Content-Length'] = String(Buffer.byteLength(body));
+  } else if (method !== 'GET' && method !== 'HEAD') {
+    headers['Content-Length'] = '0';
   }
 
   return new Promise((resolve, reject) => {
     const req = https.request(
-      target,
-      { method, headers, agent, timeout: 90000 },
+      {
+        protocol: target.protocol,
+        hostname: target.hostname,
+        port: target.port || 443,
+        path: `${target.pathname}${target.search}`,
+        method,
+        headers,
+        agent,
+        timeout: 90000,
+      },
       (resp) => {
         const chunks = [];
         resp.on('data', (chunk) => chunks.push(chunk));
@@ -42,8 +69,9 @@ function requestViaProxy(url, init, proxy) {
       },
     );
     req.on('timeout', () => req.destroy(new Error('Graph proxy request timed out.')));
-    req.on('error', reject);
-    req.end(init.body ?? undefined);
+    req.on('error', (err) => reject(new Error(proxyErrorMessage(err))));
+    if (body != null) req.write(body);
+    req.end();
   });
 }
 
@@ -68,28 +96,20 @@ export async function relayGraphRequest(payload = {}) {
   const base = ALLOWED_HOSTS.has(host) ? host : GRAPH_HOST;
 
   const url = new URL(`${base}/${version}${path.startsWith('/') ? path : `/${path}`}`);
-  // Meta accepts access_token in the query string; keep it there so proxied
-  // requests still authenticate even if a proxy mishandles Authorization.
-  url.searchParams.set('access_token', accessToken);
-
-  // Put ALL Graph parameters (caption, media_type, video_url, …) in the query
-  // string for every method. This is the relay's original, proven-working
-  // behavior. It was changed to send params in a POST body (commit 94c689a),
-  // which silently dropped captions on proxied scheduled publishes — Meta's
-  // /media endpoint does not reliably read `caption` from a request body. The
-  // query string carries every parameter reliably for both proxied and direct
-  // requests, so captions publish correctly regardless of proxy.
-  for (const [key, value] of Object.entries(params)) {
-    if (value != null) url.searchParams.set(key, String(value));
-  }
 
   const init = {
     method,
     headers: { Authorization: `Bearer ${accessToken}` },
   };
 
-  // Only attach a request body when the caller explicitly provides one.
-  if (method !== 'GET' && body != null) {
+  if (method === 'GET') {
+    // GET reads parameters from the query string (Meta's standard).
+    url.searchParams.set('access_token', accessToken);
+    for (const [key, value] of Object.entries(params)) {
+      if (value != null) url.searchParams.set(key, String(value));
+    }
+  } else if (body != null) {
+    // Caller-provided body (unchanged).
     if (typeof body === 'string') {
       init.headers['Content-Type'] = 'application/x-www-form-urlencoded';
       init.body = body;
@@ -97,6 +117,20 @@ export async function relayGraphRequest(payload = {}) {
       init.headers['Content-Type'] = 'application/json';
       init.body = JSON.stringify(body);
     }
+    url.searchParams.set('access_token', accessToken);
+  } else {
+    // POST (media create, publish, …): use a form-urlencoded body with a short
+    // URL. Putting caption + media URLs in the query string makes the CONNECT
+    // request enormous and some proxies reject it with 407/502. Meta's publishing
+    // guide uses form bodies; the HTTPS tunnel keeps the body intact through
+    // proxies, so captions and media params arrive reliably.
+    const form = new URLSearchParams();
+    form.set('access_token', accessToken);
+    for (const [key, value] of Object.entries(params)) {
+      if (value != null) form.set(key, String(value));
+    }
+    init.headers['Content-Type'] = 'application/x-www-form-urlencoded';
+    init.body = form.toString();
   }
 
   try {
@@ -109,7 +143,7 @@ export async function relayGraphRequest(payload = {}) {
   } catch (err) {
     return {
       status: 502,
-      data: { error: { message: err?.message || 'Graph relay failed', type: 'RelayError', code: 502 } },
+      data: { error: { message: proxyErrorMessage(err), type: 'RelayError', code: 502 } },
     };
   }
 }
