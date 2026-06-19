@@ -140,6 +140,17 @@ create table if not exists api_links (
   updated_at bigint
 );
 
+-- Admin notes about Instagram accounts (e.g. expired API tokens).
+create table if not exists account_notes (
+  id text primary key,
+  account text not null,
+  text text not null,
+  seen boolean not null default false,
+  created_at bigint not null
+);
+
+create index if not exists account_notes_account_idx on account_notes (account);
+
 -- Lightweight distributed locks for server-side jobs (e.g. scheduled publishing).
 create table if not exists app_locks (
   key text primary key,
@@ -193,6 +204,7 @@ alter table ctas enable row level security;
 alter table stories enable row level security;
 alter table content enable row level security;
 alter table api_links enable row level security;
+alter table account_notes enable row level security;
 alter table app_locks enable row level security;
 
 drop policy if exists "allow anon all" on accounts;
@@ -207,6 +219,7 @@ drop policy if exists "allow anon all" on ctas;
 drop policy if exists "allow anon all" on stories;
 drop policy if exists "allow anon all" on content;
 drop policy if exists "allow anon all" on api_links;
+drop policy if exists "allow anon all" on account_notes;
 drop policy if exists "allow anon all" on app_locks;
 
 create policy "allow anon all" on accounts
@@ -232,6 +245,8 @@ create policy "allow anon all" on stories
 create policy "allow anon all" on content
   for all to anon using (true) with check (true);
 create policy "allow anon all" on api_links
+  for all to anon using (true) with check (true);
+create policy "allow anon all" on account_notes
   for all to anon using (true) with check (true);
 create policy "allow anon all" on app_locks
   for all to anon using (true) with check (true);

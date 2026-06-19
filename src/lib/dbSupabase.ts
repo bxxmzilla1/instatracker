@@ -4,6 +4,7 @@ import { matchesEmployee } from './assignment';
 import { extForContentFile, isImageFile } from './content';
 import { normalizeScheduledPosts } from './contentSchedule';
 import type {
+  AccountNote,
   ApiLink,
   Bio,
   ContentReel,
@@ -17,6 +18,7 @@ import type {
   StoryNote,
   TrackedAccount,
 } from '../types';
+import { TOKEN_UPDATE_NOTE } from './instagramErrors';
 
 function client() {
   if (!supabase) throw new Error('Supabase is not configured.');
@@ -723,4 +725,62 @@ export async function getReelHistories(username: string): Promise<ReelHistory[]>
     .eq('username', username.toLowerCase());
   if (error) throw new Error(error.message);
   return groupReelHistories((data as ReelRow[]).map(toReelSnapshot));
+}
+
+interface AccountNoteRow {
+  id: string;
+  account: string;
+  text: string;
+  created_at: number;
+  seen: boolean;
+}
+
+function toAccountNote(row: AccountNoteRow): AccountNote {
+  return {
+    id: row.id,
+    account: row.account,
+    text: row.text,
+    createdAt: row.created_at,
+    seen: row.seen,
+  };
+}
+
+export async function getAccountNotes(): Promise<AccountNote[]> {
+  const { data, error } = await client()
+    .from('account_notes')
+    .select('*')
+    .order('created_at', { ascending: false });
+  if (error) {
+    if (/account_notes|schema cache|does not exist/i.test(error.message)) return [];
+    throw new Error(error.message);
+  }
+  return (data as AccountNoteRow[]).map(toAccountNote);
+}
+
+export async function upsertTokenUpdateNote(account: string): Promise<void> {
+  const normalized = account.trim().replace(/^@/, '').toLowerCase();
+  if (!normalized) return;
+  const id = `token-${normalized}`;
+  const now = Date.now();
+  const { error } = await client().from('account_notes').upsert({
+    id,
+    account: normalized,
+    text: TOKEN_UPDATE_NOTE,
+    seen: false,
+    created_at: now,
+  });
+  if (error) throw new Error(error.message);
+}
+
+export async function deleteAccountNote(id: string): Promise<void> {
+  const { error } = await client().from('account_notes').delete().eq('id', id);
+  if (error) throw new Error(error.message);
+}
+
+export async function markAccountNotesSeen(): Promise<void> {
+  const { error } = await client()
+    .from('account_notes')
+    .update({ seen: true })
+    .eq('seen', false);
+  if (error) throw new Error(error.message);
 }

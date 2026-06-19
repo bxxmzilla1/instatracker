@@ -44,6 +44,10 @@ import {
   deleteContent,
   getApiLink,
   saveApiLink,
+  getAccountNotes,
+  upsertTokenUpdateNote,
+  deleteAccountNote,
+  markAccountNotesSeen,
   removeAccount,
   saveFollowerSnapshot,
   saveReelSnapshots,
@@ -87,9 +91,11 @@ import {
   CONTENT_PAGE_SIZE,
 } from './lib/content';
 import { latestByReel, withMonotonicReelViews } from './lib/dashboard';
+import { isAccessTokenError } from './lib/instagramErrors';
 import { cacheImage, imgKey } from './lib/media';
 import { formatCount, formatDate, proxiedImage } from './lib/format';
 import type {
+  AccountNote,
   ApiLink,
   Bio,
   ContentMediaType,
@@ -298,6 +304,7 @@ export default function App() {
     | 'cta'
     | 'content'
     | 'schedule'
+    | 'notes'
   >('dashboard');
   const [showCredentials, setShowCredentials] = useState(false);
   const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
@@ -357,6 +364,8 @@ export default function App() {
   const [newStoryEmployees, setNewStoryEmployees] = useState<Set<string>>(() => new Set());
   const [newStoryAll, setNewStoryAll] = useState(false);
   const [content, setContent] = useState<ContentReel[]>([]);
+  const [accountNotes, setAccountNotes] = useState<AccountNote[]>([]);
+  const skippedTokenPostsRef = useRef(new Set<string>());
   const [contentTab, setContentTab] = useState<ContentMediaType>('reel');
   // Files chosen for upload, held until the admin assigns employees in the popup.
   const [pendingUpload, setPendingUpload] = useState<{
@@ -473,6 +482,11 @@ export default function App() {
     setContent(await getContent(filter));
   }, [session]);
 
+  const loadAccountNotes = useCallback(async () => {
+    if (!session) return;
+    setAccountNotes(await getAccountNotes());
+  }, [session]);
+
   const loadMetaSessionsLink = useCallback(async () => {
     try {
       const [link1, link2, link3] = await Promise.all([
@@ -527,6 +541,7 @@ export default function App() {
         await loadCtas();
         await loadStories();
         await loadContent();
+        await loadAccountNotes();
         void loadMetaSessionsLink();
         if (session?.role === 'admin') {
           const [emps, allAccts] = await Promise.all([getEmployees(), getAccounts()]);
@@ -554,6 +569,7 @@ export default function App() {
     loadCtas,
     loadStories,
     loadContent,
+    loadAccountNotes,
     loadMetaSessionsLink,
   ]);
 
@@ -600,9 +616,65 @@ export default function App() {
     if (!session) return;
 
     void loadContent();
-    const id = setInterval(() => void loadContent(), 2000);
+    void loadAccountNotes();
+    const id = setInterval(() => {
+      void loadContent();
+      void loadAccountNotes();
+    }, 2000);
     return () => clearInterval(id);
-  }, [session, loadContent]);
+  }, [session, loadContent, loadAccountNotes]);
+
+  const unseenNoteCount = useMemo(
+    () => accountNotes.filter((note) => !note.seen).length,
+    [accountNotes],
+  );
+
+  // Drop scheduled posts that failed with an invalid/expired token and add account notes.
+  useEffect(() => {
+    if (!session || content.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      let changed = false;
+      for (const reel of content) {
+        const posts = normalizeScheduledPosts(reel);
+        const toSkip = posts.filter(
+          (post) =>
+            post.postError &&
+            isAccessTokenError(post.postError) &&
+            !skippedTokenPostsRef.current.has(`${reel.id}:${post.id}`),
+        );
+        if (toSkip.length === 0) continue;
+        for (const post of toSkip) {
+          skippedTokenPostsRef.current.add(`${reel.id}:${post.id}`);
+        }
+        const remaining = posts.filter((post) => !toSkip.some((skip) => skip.id === post.id));
+        await updateContent({
+          ...reel,
+          scheduledPosts: remaining,
+          postError: undefined,
+        });
+        for (const post of toSkip) {
+          await upsertTokenUpdateNote(post.account);
+        }
+        changed = true;
+      }
+      if (changed && !cancelled) {
+        await loadContent();
+        await loadAccountNotes();
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [content, session, loadContent, loadAccountNotes]);
+
+  useEffect(() => {
+    if (view !== 'notes' || !session) return;
+    (async () => {
+      await markAccountNotesSeen();
+      await loadAccountNotes();
+    })();
+  }, [view, session, loadAccountNotes]);
 
   const publishingContent = content.filter((c) => isContentPublishing(c));
 
@@ -1105,6 +1177,11 @@ export default function App() {
     await loadCtas();
   }
 
+  async function handleDeleteAccountNote(id: string) {
+    await deleteAccountNote(id);
+    await loadAccountNotes();
+  }
+
   function startEditMetaSessionsLink() {
     setMetaSessionsDraft(metaSessionsLink?.url ?? '');
     setEditingMetaSessionsLink(true);
@@ -1581,16 +1658,20 @@ export default function App() {
         closeScheduleModal();
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Could not publish to Instagram.';
+        if (isAccessTokenError(message)) {
+          await upsertTokenUpdateNote(newContentTarget);
+          await loadAccountNotes();
+        }
         await updateContent({
           ...publishingReel,
           postedAt: scheduleReel.postedAt,
           permalink: scheduleReel.permalink,
           publishingAt: undefined,
           publishStage: undefined,
-          postError: message,
+          postError: isAccessTokenError(message) ? undefined : message,
         });
         await loadContent();
-        setError(message);
+        if (!isAccessTokenError(message)) setError(message);
       } finally {
         setSavingSchedule(false);
         setPublishProgress(null);
@@ -2062,6 +2143,8 @@ export default function App() {
                     ? 'Content'
                     : view === 'schedule'
                       ? 'Schedule'
+                      : view === 'notes'
+                        ? 'Notes'
                       : 'Accounts';
 
   const showAddForm = view === 'accounts';
@@ -2283,6 +2366,27 @@ export default function App() {
               <path d="M8 3v4M16 3v4" />
             </svg>
             Schedule
+          </button>
+
+          <button
+            type="button"
+            className={view === 'notes' ? 'nav-item nav-item--active' : 'nav-item'}
+            onClick={() => {
+              setSelectedEmployee(null);
+              setView('notes');
+            }}
+          >
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
+              <path d="M14 3v5h5" />
+              <path d="M9 13h6M9 17h4" />
+            </svg>
+            Notes
+            {unseenNoteCount > 0 && (
+              <span className="nav-item__badge" aria-label={`${unseenNoteCount} new notes`}>
+                {unseenNoteCount}
+              </span>
+            )}
           </button>
 
           {isAdmin && (
@@ -3174,13 +3278,15 @@ export default function App() {
                                 <p className="schedule-card__status schedule-card__status--error">
                                   ⚠ {scheduledPost.postError}
                                 </p>
-                                <button
-                                  type="button"
-                                  className="schedule-card__retry"
-                                  onClick={() => handleRetryScheduledPost(reel, scheduledPost)}
-                                >
-                                  Retry now
-                                </button>
+                                {!isAccessTokenError(scheduledPost.postError) && (
+                                  <button
+                                    type="button"
+                                    className="schedule-card__retry"
+                                    onClick={() => handleRetryScheduledPost(reel, scheduledPost)}
+                                  >
+                                    Retry now
+                                  </button>
+                                )}
                               </>
                             ) : (
                               <p className="schedule-card__status">
@@ -3225,6 +3331,38 @@ export default function App() {
                       ))}
                   </div>
                 </div>
+              </div>
+            )}
+          </section>
+        )}
+
+        {view === 'notes' && (
+          <section className="panel">
+            <div className="panel-head">
+              <h2>Notes ({accountNotes.length})</h2>
+            </div>
+            {accountNotes.length === 0 ? (
+              <p className="empty-note">No notes yet. Token errors will appear here automatically.</p>
+            ) : (
+              <div className="note-list">
+                {accountNotes.map((note) => (
+                  <div key={note.id} className="note-row">
+                    <div className="note-row__body">
+                      <p className="note-row__account">@{note.account}</p>
+                      <p className="note-row__text">{note.text}</p>
+                      <p className="note-row__meta">{formatDateTimeLocal(note.createdAt)}</p>
+                    </div>
+                    <button
+                      type="button"
+                      className="license-row__delete"
+                      onClick={() => handleDeleteAccountNote(note.id)}
+                      title="Delete note"
+                      aria-label="Delete note"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
               </div>
             )}
           </section>

@@ -1,6 +1,7 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
 import { matchesEmployee } from './assignment';
 import type {
+  AccountNote,
   ApiLink,
   Bio,
   ContentReel,
@@ -14,6 +15,7 @@ import type {
   StoryNote,
   TrackedAccount,
 } from '../types';
+import { TOKEN_UPDATE_NOTE } from './instagramErrors';
 
 type ContentRecord = Omit<ContentReel, 'videoUrl'> & {
   videoUrl?: string;
@@ -58,6 +60,10 @@ interface InstatrackerDB extends DBSchema {
     key: string;
     value: ApiLink;
   };
+  accountNotes: {
+    key: string;
+    value: AccountNote;
+  };
   followerHistory: {
     key: number;
     value: FollowerSnapshot;
@@ -74,7 +80,7 @@ let dbPromise: Promise<IDBPDatabase<InstatrackerDB>> | null = null;
 
 function getDb() {
   if (!dbPromise) {
-    dbPromise = openDB<InstatrackerDB>('instatracker-v1', 10, {
+    dbPromise = openDB<InstatrackerDB>('instatracker-v1', 11, {
       upgrade(db, oldVersion) {
         if (!db.objectStoreNames.contains('accounts')) {
           db.createObjectStore('accounts', { keyPath: 'username' });
@@ -110,6 +116,10 @@ function getDb() {
 
         if (!db.objectStoreNames.contains('apiLinks')) {
           db.createObjectStore('apiLinks', { keyPath: 'id' });
+        }
+
+        if (oldVersion < 11 && !db.objectStoreNames.contains('accountNotes')) {
+          db.createObjectStore('accountNotes', { keyPath: 'id' });
         }
 
         if (oldVersion < 2) {
@@ -464,4 +474,37 @@ export function groupReelHistories(rows: ReelSnapshot[]): ReelHistory[] {
     ...history,
     snapshots: history.snapshots.sort((a, b) => a.capturedAt - b.capturedAt),
   }));
+}
+
+export async function getAccountNotes(): Promise<AccountNote[]> {
+  const db = await getDb();
+  const rows = await db.getAll('accountNotes');
+  return rows.sort((a, b) => b.createdAt - a.createdAt);
+}
+
+export async function upsertTokenUpdateNote(account: string): Promise<void> {
+  const normalized = account.trim().replace(/^@/, '').toLowerCase();
+  if (!normalized) return;
+  const db = await getDb();
+  const note: AccountNote = {
+    id: `token-${normalized}`,
+    account: normalized,
+    text: TOKEN_UPDATE_NOTE,
+    createdAt: Date.now(),
+    seen: false,
+  };
+  await db.put('accountNotes', note);
+}
+
+export async function deleteAccountNote(id: string): Promise<void> {
+  const db = await getDb();
+  await db.delete('accountNotes', id);
+}
+
+export async function markAccountNotesSeen(): Promise<void> {
+  const db = await getDb();
+  const rows = await db.getAll('accountNotes');
+  await Promise.all(
+    rows.map((row) => (row.seen ? null : db.put('accountNotes', { ...row, seen: true }))),
+  );
 }

@@ -11,6 +11,8 @@ import {
 } from './contentSchedule.js';
 import { publishContent, proxyRowToRelay } from './publish.js';
 import { lookupExitIp } from './ipinfo.js';
+import { isAccessTokenError } from './instagramErrors.js';
+import { skipScheduledPost, upsertTokenUpdateNote } from './accountNotes.js';
 
 const STALE_PUBLISH_MS = 15 * 60 * 1000;
 const LOCK_KEY = 'scheduled-publisher';
@@ -359,7 +361,12 @@ export async function runScheduledPublisher() {
         });
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Publish failed';
-        await markScheduledFailed(db, claimedRow.id, claimedPost.id, message);
+        if (isAccessTokenError(message)) {
+          const account = await skipScheduledPost(db, claimedRow.id, claimedPost.id);
+          if (account) await upsertTokenUpdateNote(db, account);
+        } else {
+          await markScheduledFailed(db, claimedRow.id, claimedPost.id, message);
+        }
         results.push({
           id: claimedRow.id,
           scheduledPostId: claimedPost.id,

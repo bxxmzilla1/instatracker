@@ -322,6 +322,15 @@ export interface ScheduledPost {
   publishedIpCountry?: string;
 }
 
+/** Admin note about an Instagram account (e.g. expired API token). */
+export interface AccountNote {
+  id: string;
+  account: string;
+  text: string;
+  createdAt: number;
+  seen: boolean;
+}
+
 export interface TrackedAccount {
   username: string;
   addedAt: number;

@@ -40,4 +40,8 @@ export const {
   deleteContent,
   getApiLink,
   saveApiLink,
+  getAccountNotes,
+  upsertTokenUpdateNote,
+  deleteAccountNote,
+  markAccountNotesSeen,
 } = impl;

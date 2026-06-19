@@ -154,6 +154,22 @@ code {
   color: var(--on-accent);
 }
 
+.nav-item__badge {
+  margin-left: auto;
+  background: #e5484d;
+  color: #fff;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  min-width: 1.25rem;
+  height: 1.25rem;
+  padding: 0 0.35rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
 .sidebar__lock {
   margin-top: auto;
 }
@@ -1049,6 +1065,49 @@ code {
   white-space: pre-wrap;
   line-height: 1.5;
   word-break: break-word;
+}
+
+.note-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.note-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.85rem 1rem;
+}
+
+.note-row__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.note-row__account {
+  margin: 0;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.note-row__text {
+  margin: 0;
+  color: var(--text);
+  line-height: 1.45;
+}
+
+.note-row__meta {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--muted);
 }
 
 .bio-row__assign {
