@@ -90,16 +90,23 @@ export async function relayGraphRequest(payload = {}) {
       init.body = JSON.stringify(body);
     }
   } else {
-    // Send Graph parameters (caption, media_type, video_url, …) in the query
-    // string for every POST — that's where the access_token already travels
-    // reliably, and Meta accepts all parameters there for any method. HTTP
-    // proxies (used by scheduled publishes) frequently drop or mangle POST
-    // request bodies, which silently strips the caption while the rest of the
-    // request still reaches Meta. Putting params in the query string keeps the
-    // caption intact for both proxied and direct requests.
-    for (const [key, value] of Object.entries(params)) {
-      if (value != null) url.searchParams.set(key, String(value));
+    // Use the SAME request format for proxied and direct POSTs. The proxy is an
+    // HTTPS CONNECT tunnel, so it can't read or alter the (encrypted) request —
+    // the only intended difference is the exit IP, never the payload. Earlier we
+    // sent a JSON body for proxied requests, but Meta's /media endpoint doesn't
+    // reliably read `caption` from a JSON body, so proxied reels published with
+    // no caption while direct (form-body) posts worked. Sending a form-urlencoded
+    // body keeps captions intact everywhere; the query-string copy is a backstop.
+    const entries = Object.entries(params).filter(([, value]) => value != null);
+    const form = new URLSearchParams();
+    for (const [key, value] of entries) {
+      const stringValue = String(value);
+      form.set(key, stringValue);
+      url.searchParams.set(key, stringValue);
     }
+    form.set('access_token', accessToken);
+    init.headers['Content-Type'] = 'application/x-www-form-urlencoded';
+    init.body = form.toString();
   }
 
   try {
