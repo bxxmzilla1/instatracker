@@ -370,7 +370,6 @@ export default function App() {
   const [newContentProxyId, setNewContentProxyId] = useState('');
   const [newContentScheduledAt, setNewContentScheduledAt] = useState('');
   const [uploadingContent, setUploadingContent] = useState(false);
-  const contentFileRef = useRef<HTMLInputElement>(null);
   const [scheduleReel, setScheduleReel] = useState<ContentReel | null>(null);
   const [scheduleMode, setScheduleMode] = useState<'post' | 'schedule'>('schedule');
   // When set, the schedule modal edits this existing scheduled post in place.
@@ -1268,21 +1267,18 @@ export default function App() {
     await loadStories();
   }
 
-  // Validates the picked files, then opens the assignment popup so the admin can
-  // choose which employees the new content is assigned to before it uploads.
-  function requestContentUpload(files: File[]) {
-    if (files.length === 0) return;
-    if (contentTab === 'carousel') {
-      if (files.length < MIN_CAROUSEL_ITEMS) {
-        setError(`Carousels need at least ${MIN_CAROUSEL_ITEMS} items.`);
-        return;
-      }
-      if (files.length > MAX_CAROUSEL_ITEMS) {
-        setError(`Carousels can have at most ${MAX_CAROUSEL_ITEMS} items.`);
-        return;
-      }
-    }
+  // Opens the upload popup (empty) so the admin can pick the file(s) and choose
+  // which employees the new content is assigned to before it uploads.
+  function openUploadModal() {
+    setError(null);
+    setNewContentEmployees(new Set());
+    setNewContentAll(false);
+    setPendingUpload({ files: [], mediaType: contentTab });
+  }
 
+  // Validates and stores the file(s) chosen inside the upload popup.
+  function handlePendingUploadFiles(files: File[]) {
+    if (files.length === 0) return;
     const invalid = files.find(
       (file) => !isImageFile(file, file.name) && !isVideoFile(file, file.name),
     );
@@ -1290,11 +1286,8 @@ export default function App() {
       setError(`Unsupported file type: ${invalid.name || 'unknown'}`);
       return;
     }
-
     setError(null);
-    setNewContentEmployees(new Set());
-    setNewContentAll(false);
-    setPendingUpload({ files, mediaType: contentTab });
+    setPendingUpload((prev) => (prev ? { ...prev, files } : prev));
   }
 
   function cancelContentUpload() {
@@ -1307,6 +1300,20 @@ export default function App() {
   async function confirmContentUpload() {
     if (!pendingUpload) return;
     const { files, mediaType } = pendingUpload;
+    if (files.length === 0) {
+      setError('Choose content to upload first.');
+      return;
+    }
+    if (mediaType === 'carousel') {
+      if (files.length < MIN_CAROUSEL_ITEMS) {
+        setError(`Carousels need at least ${MIN_CAROUSEL_ITEMS} items.`);
+        return;
+      }
+      if (files.length > MAX_CAROUSEL_ITEMS) {
+        setError(`Carousels can have at most ${MAX_CAROUSEL_ITEMS} items.`);
+        return;
+      }
+    }
     setUploadingContent(true);
     try {
       await addContent(
@@ -2042,6 +2049,22 @@ export default function App() {
     }
     return list;
   })();
+
+  // Object URLs for previewing the files chosen in the upload popup. Created when
+  // the selected files change and revoked on cleanup to avoid memory leaks.
+  const uploadPreviews = useMemo(
+    () =>
+      (pendingUpload?.files ?? []).map((file) => ({
+        url: URL.createObjectURL(file),
+        isVideo: isVideoFile(file, file.name),
+        name: file.name,
+      })),
+    [pendingUpload?.files],
+  );
+  useEffect(
+    () => () => uploadPreviews.forEach((p) => URL.revokeObjectURL(p.url)),
+    [uploadPreviews],
+  );
 
   const scheduledForDate = (() => {
     let scheduled = getScheduledPostsForDate(content, scheduleViewDate);
@@ -2799,30 +2822,12 @@ export default function App() {
                   key={tab}
                   type="button"
                   className={`toggle ${contentTab === tab ? 'toggle--active' : ''}`}
-                  onClick={() => {
-                    setContentTab(tab);
-                    if (contentFileRef.current) contentFileRef.current.value = '';
-                  }}
+                  onClick={() => setContentTab(tab)}
                 >
                   {contentTabLabel(tab)}
                 </button>
               ))}
             </div>
-
-            {isAdmin && (
-              <input
-                ref={contentFileRef}
-                type="file"
-                accept={ALL_MEDIA_ACCEPT}
-                multiple={contentTab === 'carousel'}
-                style={{ display: 'none' }}
-                onChange={(e) => {
-                  const files = e.target.files ? Array.from(e.target.files) : [];
-                  if (files.length) requestContentUpload(files);
-                  e.target.value = '';
-                }}
-              />
-            )}
 
             <section className="panel">
               <div className="panel-head">
@@ -2849,7 +2854,7 @@ export default function App() {
                     <button
                       type="button"
                       className="btn"
-                      onClick={() => contentFileRef.current?.click()}
+                      onClick={openUploadModal}
                       disabled={uploadingContent}
                     >
                       {uploadingContent
@@ -4048,10 +4053,9 @@ export default function App() {
             >
               <div className="modal__head">
                 <h3>
-                  Assign {contentTabSingular(pendingUpload.mediaType)}
                   {pendingUpload.mediaType === 'carousel'
-                    ? ` (${pendingUpload.files.length} items)`
-                    : ''}
+                    ? 'Add carousel'
+                    : `Add ${contentTabSingular(pendingUpload.mediaType)}`}
                 </h3>
                 <button
                   type="button"
@@ -4064,12 +4068,44 @@ export default function App() {
                 </button>
               </div>
 
-              <p className="cred-note">
-                Choose which employees this {contentTabSingular(pendingUpload.mediaType)} is assigned
-                to. You can pick multiple employees or select all.
-              </p>
-
               <div className="schedule-modal__body">
+                <label className="cred-field">
+                  <span className="cred-field__label">
+                    {pendingUpload.mediaType === 'carousel'
+                      ? `Upload content (${MIN_CAROUSEL_ITEMS}–${MAX_CAROUSEL_ITEMS} items)`
+                      : 'Upload content'}
+                  </span>
+                  <input
+                    type="file"
+                    className="cred-form__input"
+                    accept={ALL_MEDIA_ACCEPT}
+                    multiple={pendingUpload.mediaType === 'carousel'}
+                    disabled={uploadingContent}
+                    onChange={(e) => {
+                      const files = e.target.files ? Array.from(e.target.files) : [];
+                      handlePendingUploadFiles(files);
+                    }}
+                  />
+                </label>
+
+                {uploadPreviews.length > 0 && (
+                  <div className="upload-preview">
+                    {uploadPreviews.map((preview, i) => (
+                      <div className="upload-preview__item" key={`${preview.name}-${i}`}>
+                        {preview.isVideo ? (
+                          <video className="upload-preview__media" src={preview.url} muted />
+                        ) : (
+                          <img
+                            className="upload-preview__media"
+                            src={preview.url}
+                            alt={preview.name}
+                          />
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
                 <AssignmentPicker
                   employees={employees}
                   selected={newContentEmployees}
@@ -4088,7 +4124,10 @@ export default function App() {
                 >
                   Cancel
                 </button>
-                <button type="submit" disabled={uploadingContent}>
+                <button
+                  type="submit"
+                  disabled={uploadingContent || pendingUpload.files.length === 0}
+                >
                   {uploadingContent ? 'Uploading…' : 'Upload'}
                 </button>
               </div>
