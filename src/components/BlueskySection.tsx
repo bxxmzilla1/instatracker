@@ -1994,6 +1994,28 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
       return null;
     }
 
+    // Cross-device guard: if another PC is already actively warming this exact
+    // account, skip it. Two devices logging into and acting on the same Bluesky
+    // account at once is what triggers "RateLimitExceeded".
+    const liveRemote = remoteWarmupRunsRef.current[row.key];
+    if (
+      liveRemote &&
+      liveRemote.status === 'running' &&
+      liveRemote.claimedBy &&
+      liveRemote.claimedBy !== warmupClientIdRef.current &&
+      Date.now() - liveRemote.updatedAt < RUN_STALE_MS
+    ) {
+      // Drop only our local card; leave the owning device's run untouched.
+      warmupExecutorKeysRef.current.delete(row.key);
+      setWarmupCardProgress((prev) => {
+        if (!(row.key in prev)) return prev;
+        const next = { ...prev };
+        delete next[row.key];
+        return next;
+      });
+      return null;
+    }
+
     const remote = remoteWarmupRuns[row.key];
     const creds = warmupCredentialsForRow(row);
     if (!creds) {
