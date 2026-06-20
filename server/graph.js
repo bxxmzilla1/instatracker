@@ -83,6 +83,27 @@ function appendQueryParams(target, params) {
   }
 }
 
+/**
+ * Build a Graph API POST for the same transport regardless of proxy. Meta's
+ * /media endpoint has historically dropped `caption` depending on whether it
+ * arrives in the query string or the request body, so we send EVERY param —
+ * caption included — in BOTH places. This is a strict superset of the previously
+ * working behavior (proxied: both, direct: body only) and protects both paths.
+ */
+function buildMediaPostRequest(url, accessToken, params) {
+  url.searchParams.set('access_token', accessToken);
+  appendQueryParams(url.searchParams, params);
+
+  const form = new URLSearchParams();
+  form.set('access_token', accessToken);
+  appendQueryParams(form, params);
+
+  return {
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: form.toString(),
+  };
+}
+
 export async function relayGraphRequest(payload = {}) {
   const {
     method = 'GET',
@@ -123,29 +144,10 @@ export async function relayGraphRequest(payload = {}) {
       init.body = JSON.stringify(body);
     }
     url.searchParams.set('access_token', accessToken);
-  } else if (proxied) {
-    // Proxied POST: keep the URL short (access_token + caption only) and send
-    // the full payload in a form body. Scheduled cron publishes use Node
-    // https.request through the proxy tunnel; mirroring caption in the query
-    // string ensures Meta receives it even if the body is mishandled. Immediate
-    // browser posts use fetch() to /api/graph and tolerate longer query strings,
-    // but both paths share this split for consistency.
-    url.searchParams.set('access_token', accessToken);
-    const caption = params.caption != null ? String(params.caption).trim() : '';
-    if (caption) url.searchParams.set('caption', caption);
-
-    const form = new URLSearchParams();
-    form.set('access_token', accessToken);
-    appendQueryParams(form, params);
-    init.headers['Content-Type'] = 'application/x-www-form-urlencoded';
-    init.body = form.toString();
   } else {
-    // Direct POST (no proxy): form body — same format Meta documents.
-    const form = new URLSearchParams();
-    form.set('access_token', accessToken);
-    appendQueryParams(form, params);
-    init.headers['Content-Type'] = 'application/x-www-form-urlencoded';
-    init.body = form.toString();
+    const post = buildMediaPostRequest(url, accessToken, params);
+    init.headers['Content-Type'] = post.headers['Content-Type'];
+    init.body = post.body;
   }
 
   try {

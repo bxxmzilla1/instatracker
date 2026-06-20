@@ -310,6 +310,8 @@ export interface ScheduledPost {
   account: string;
   scheduledAt: number;
   caption?: string;
+  /** Caption that was sent on the last successful publish attempt. */
+  publishedCaption?: string;
   proxyId?: string;
   publishingAt?: number;
   publishStage?: 'creating' | 'processing' | 'publishing';

@@ -55,6 +55,7 @@ import {
 } from './lib/db';
 import { assignedEmployees } from './lib/assignment';
 import {
+  backfillScheduledPostCaptions,
   getScheduledPostsForDate,
   normalizeScheduledPosts,
 } from './lib/contentSchedule';
@@ -1897,9 +1898,12 @@ export default function App() {
       // `normalizeScheduledPosts` first bakes any previously-inherited caption
       // onto the existing posts, so clearing the shared caption below can't strip
       // captions from posts already queued.
-      const existing = normalizeScheduledPosts(scheduleReel);
+      const existing = normalizeScheduledPosts(activeReel);
       const scheduledAtMs = parseDatetimeLocal(newContentScheduledAt);
       const entryCaption = trimmedCaption || undefined;
+      // Reel-level caption is a silent fallback for the cron publisher only —
+      // the modal still opens blank so each schedule entry owns its caption.
+      const reelCaption = trimmedCaption || activeReel.caption?.trim() || '';
 
       let nextScheduledPosts;
       if (editingScheduledPost) {
@@ -1933,9 +1937,11 @@ export default function App() {
         ];
       }
 
+      nextScheduledPosts = backfillScheduledPostCaptions(nextScheduledPosts, reelCaption);
+
       await updateContent({
-        ...scheduleReel,
-        caption: '',
+        ...activeReel,
+        caption: reelCaption,
         scheduledPosts: nextScheduledPosts,
         scheduledAt: undefined,
         targetAccount: undefined,

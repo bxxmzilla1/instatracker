@@ -37,12 +37,14 @@ export function backfillScheduledPostCaptions(
 
 /** Caption for a scheduled publish: per-post caption, then reel-level fallback. */
 export function resolvePublishCaption(
-  post: Pick<ScheduledPost, 'caption'> | undefined,
+  post: Pick<ScheduledPost, 'caption' | 'publishedCaption'> | undefined,
   source: Pick<ScheduleSource, 'caption' | 'mediaType'>,
 ): string {
   if (source.mediaType === 'story') return '';
   const fromPost = trimCaption(post?.caption);
   if (fromPost) return fromPost;
+  const fromPublished = trimCaption(post?.publishedCaption);
+  if (fromPublished) return fromPublished;
   return trimCaption(source.caption);
 }
 

@@ -164,7 +164,11 @@ async function claimScheduledPost(db, rowId, postId) {
     i === idx
       ? {
           ...post,
-          caption: resolvedCaption || trimCaption(post.caption) || undefined,
+          caption:
+            resolvedCaption ||
+            trimCaption(post.caption) ||
+            trimCaption(post.publishedCaption) ||
+            undefined,
           publishingAt: Date.now(),
           publishStage: 'creating',
           postError: undefined,
@@ -385,7 +389,10 @@ export async function runScheduledPublisher() {
         } catch {
           ipInfo = undefined;
         }
-        const caption = trimCaption(claimedPost.caption) || resolvePublishCaption(claimedPost, claimedRow);
+        const caption =
+          trimCaption(claimedPost.caption) ||
+          trimCaption(claimedPost.publishedCaption) ||
+          resolvePublishCaption(claimedPost, claimedRow);
         console.log(
           `[publisher] publishing ${claimedRow.id}/${claimedPost.id} to @${claimedPost.account} ` +
             `proxy=${proxyId || 'none'} captionLen=${caption.length} caption="${caption.slice(0, 60)}"`,

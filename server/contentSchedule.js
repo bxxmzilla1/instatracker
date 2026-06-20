@@ -18,6 +18,8 @@ export function resolvePublishCaption(post, row) {
   if (row?.media_type === 'story') return '';
   const fromPost = trimCaption(post?.caption);
   if (fromPost) return fromPost;
+  const fromPublished = trimCaption(post?.publishedCaption);
+  if (fromPublished) return fromPublished;
   return trimCaption(row?.caption);
 }
 
