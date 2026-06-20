@@ -3,7 +3,9 @@ import { runAccountWarmup, WARMUP_STEP_COUNT } from './bskyWarmup.js';
 
 const RUN_STALE_MS = 15000;
 const EXECUTOR_ID = 'server';
-const WARMUP_CONCURRENCY = 5;
+// One account at a time: accounts share one IP, so parallel warm-ups get rate
+// limited. The server only steps in when no other executor is active.
+const WARMUP_CONCURRENCY = 1;
 
 function rowToRelay(row) {
   if (!row?.host || !row?.port) return undefined;

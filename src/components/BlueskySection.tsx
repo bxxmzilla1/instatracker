@@ -189,8 +189,12 @@ interface RunState {
 const RUN_STALE_MS = 15000;
 // Finished warm-ups are cleared from the UI/DB shortly after completion.
 const WARMUP_DONE_FLASH_MS = 8000;
-/** Max accounts warming up at the same time, in selection order. */
-const WARMUP_CONCURRENCY = 5;
+/**
+ * Max accounts warming up at the same time, in selection order. Kept at 1 so a
+ * single account runs start-to-finish before the next begins — accounts share
+ * one IP (no per-account proxy), so parallel sessions trip Bluesky rate limits.
+ */
+const WARMUP_CONCURRENCY = 1;
 
 // Local day key (YYYY-M-D) used to keep one cumulative follow-event row per
 // account per day, so the events table stays small instead of growing forever.
