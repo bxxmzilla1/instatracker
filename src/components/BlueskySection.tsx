@@ -1391,16 +1391,23 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   }
 
   async function handleDeleteSlaveAccount(id: string) {
+    const key = `slave:${id}`;
+    // Remove it from the UI immediately and tear down any warm-up tied to it so
+    // the card can't be resurrected by the next warm-up poll.
+    warmupCancelRef.current[key] = true;
+    forgetWarmupRun(key);
+    setSlaveAccounts((prev) => prev.filter((a) => a.id !== id));
+    setSelectedSlaveIds((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
     try {
       await deleteSlaveAccount(id);
-      setSelectedSlaveIds((prev) => {
-        const next = new Set(prev);
-        next.delete(id);
-        return next;
-      });
-      await loadAll();
+      await deleteWarmupRun(key).catch(() => {});
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not delete slave account.');
+      await loadAll();
     }
   }
 
@@ -1424,18 +1431,27 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     if (ids.length === 0) return;
     setDeletingSlaves(true);
     setError(null);
+    const idSet = new Set(ids);
+    // Optimistically clear the rows + their warm-up state up front.
+    for (const id of ids) {
+      const key = `slave:${id}`;
+      warmupCancelRef.current[key] = true;
+      forgetWarmupRun(key);
+    }
+    setSlaveAccounts((prev) => prev.filter((a) => !idSet.has(a.id)));
+    setSelectedSlaveIds(new Set());
     const failures: string[] = [];
     try {
       for (const id of ids) {
         try {
           await deleteSlaveAccount(id);
+          await deleteWarmupRun(`slave:${id}`).catch(() => {});
         } catch (err) {
           failures.push(err instanceof Error ? err.message : 'delete failed');
         }
       }
-      setSelectedSlaveIds(new Set());
-      await loadAll();
       if (failures.length > 0) {
+        await loadAll();
         setError(`Deleted ${ids.length - failures.length} of ${ids.length}. ${failures.length} failed.`);
       } else {
         setSuccessMessage(`Deleted ${ids.length} slave account${ids.length === 1 ? '' : 's'}.`);
@@ -1584,6 +1600,25 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     };
     if (delayMs <= 0) remove();
     else window.setTimeout(remove, delayMs);
+  }
+
+  // Drop a warm-up key from all local state so its card disappears instantly
+  // (e.g. when the underlying account is deleted). The matching DB row is
+  // removed separately via deleteWarmupRun so the poll can't re-add it.
+  function forgetWarmupRun(key: string) {
+    warmupExecutorKeysRef.current.delete(key);
+    setWarmupCardProgress((prev) => {
+      if (!(key in prev)) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+    setRemoteWarmupRuns((prev) => {
+      if (!(key in prev)) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
   }
 
   function isWarmupRowBusy(key: string): boolean {
@@ -1933,6 +1968,8 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
 
   async function runWarmupQueue(rows: WarmupRunRow[], options: { resume?: boolean } = {}) {
     if (rows.length === 0) return;
+
+    const drain = async () => {
     const ordered = options.resume ? sortWarmupRowsByQueue(rows) : rows;
     setWarmupRunning(true);
     setError(null);
@@ -2006,6 +2043,29 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
 
     warmupExecutorKeysRef.current = new Set();
     setWarmupRunning(false);
+    };
+
+    // Serialize all warm-up execution through one browser-wide lock so only a
+    // single tab can be an executor at a time. Without this, a second tab (or
+    // the auto-resume race) launches its own queue and warm-ups "spread" across
+    // extra accounts in parallel — which trips Bluesky's per-IP rate limits.
+    if (typeof navigator !== 'undefined' && navigator.locks) {
+      await navigator.locks.request(
+        'bsky-warmup-executor',
+        { ifAvailable: true },
+        async (lock) => {
+          if (!lock) {
+            if (!options.resume) {
+              setError('A warm-up is already running in another tab — let it finish first.');
+            }
+            return;
+          }
+          await drain();
+        },
+      );
+    } else {
+      await drain();
+    }
   }
 
   async function startWarmup() {
@@ -2048,13 +2108,9 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     const rows = orphans;
     const resume = async () => {
       try {
-        if (typeof navigator !== 'undefined' && navigator.locks) {
-          await navigator.locks.request('bsky-warmup-executor', async () => {
-            await runWarmupQueue(rows, { resume: true });
-          });
-        } else {
-          await runWarmupQueue(rows, { resume: true });
-        }
+        // runWarmupQueue now acquires the executor lock itself; acquiring it
+        // here too would deadlock (Web Locks are not reentrant).
+        await runWarmupQueue(rows, { resume: true });
       } finally {
         warmupResumeLockRef.current = false;
       }
@@ -3208,8 +3264,17 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   }
 
   async function handleDeleteAccount(id: string) {
-    await deleteBskyAccount(id);
-    await loadAll();
+    const key = `follow:${id}`;
+    warmupCancelRef.current[key] = true;
+    forgetWarmupRun(key);
+    setAccounts((prev) => prev.filter((a) => a.id !== id));
+    try {
+      await deleteBskyAccount(id);
+      await deleteWarmupRun(key).catch(() => {});
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not delete account.');
+      await loadAll();
+    }
   }
 
   function startEditAccount(acct: BskyAccount) {
