@@ -5,6 +5,24 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 export const WARMUP_SESSION_MS = 5 * 60 * 1000;
 
+const SIGN_IN_TIMEOUT_MS = 90 * 1000;
+
+function withTimeout(promise, ms, message) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(message)), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      },
+    );
+  });
+}
+
 const WARMUP_PLAN = [
   { type: 'scroll_feed', durationMs: 20000, label: 'Scrolling feed…' },
   { type: 'like_post', durationMs: 2000, label: 'Liking a post…' },
@@ -140,9 +158,17 @@ export async function runAccountWarmup(credentials, hooks = {}, options = {}) {
       totalSteps,
       label: startIdx > 0 ? 'Resuming warm-up…' : 'Signing in…',
     });
-    const agent = await loginAgent(credentials);
+    const agent = await withTimeout(
+      loginAgent(credentials),
+      SIGN_IN_TIMEOUT_MS,
+      'Sign-in timed out — check the account proxy or app password.',
+    );
 
-    let timeline = await fetchTimelinePosts(agent);
+    let timeline = await withTimeout(
+      fetchTimelinePosts(agent),
+      SIGN_IN_TIMEOUT_MS,
+      'Loading the timeline timed out after sign-in.',
+    );
     let threadPosts = [];
     let lastProfileHandle;
 

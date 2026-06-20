@@ -16,9 +16,11 @@ const PROXY_SERVER_THRESHOLD_BYTES = 2.5 * 1024 * 1024;
 const PROFILE_PUSH_MAX_ATTEMPTS = 3;
 
 const PROXY_RELAY_MAX_ATTEMPTS = 3;
+/** Abort a single proxy-relay round trip after this long so a dead proxy can't hang a request forever. */
+const PROXY_RELAY_TIMEOUT_MS = 90 * 1000;
 
 function isTransientPushError(message: string): boolean {
-  return /timeout|timed out|econnreset|econnrefused|fetch failed|network|proxy relay failed|empty response|invalid json|unexpected end of json|502|503|504|socket/i.test(
+  return /timeout|timed out|econnreset|econnrefused|fetch failed|network|proxy relay failed|empty response|invalid json|unexpected end of json|aborted|abort|502|503|504|socket/i.test(
     message,
   );
 }
@@ -75,11 +77,14 @@ function makeProxyFetch(proxy: ProxyConfig): typeof fetch {
     let lastError = 'Proxy relay failed.';
 
     for (let attempt = 1; attempt <= PROXY_RELAY_MAX_ATTEMPTS; attempt++) {
+      const controller = new AbortController();
+      const abortTimer = setTimeout(() => controller.abort(), PROXY_RELAY_TIMEOUT_MS);
       try {
         const relay = await fetch('/api/bsky-proxy', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(relayPayload),
+          signal: controller.signal,
         });
 
         const raw = await relay.text();
@@ -150,12 +155,17 @@ function makeProxyFetch(proxy: ProxyConfig): typeof fetch {
           data.bodyEncoding === 'base64' ? base64ToBytes(data.body) : data.body ?? '';
         return new Response(responseBody, { status: data.status, headers: data.headers });
       } catch (err) {
-        lastError = parseError(err);
+        const aborted = err instanceof Error && err.name === 'AbortError';
+        lastError = aborted
+          ? 'Proxy relay timed out — try again or switch proxy.'
+          : parseError(err);
         if (attempt < PROXY_RELAY_MAX_ATTEMPTS && isTransientPushError(lastError)) {
           await sleep(1000 * attempt);
           continue;
         }
-        throw err instanceof Error ? err : new Error(lastError);
+        throw new Error(lastError);
+      } finally {
+        clearTimeout(abortTimer);
       }
     }
 

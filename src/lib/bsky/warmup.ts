@@ -6,6 +6,26 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 /** Total session length (~5 minutes). */
 export const WARMUP_SESSION_MS = 5 * 60 * 1000;
 
+/** Max time to allow for sign-in + first timeline fetch before failing. */
+const SIGN_IN_TIMEOUT_MS = 90 * 1000;
+
+/** Rejects if `promise` doesn't settle within `ms` so a hung network call can't stall the queue. */
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(message)), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      },
+    );
+  });
+}
+
 export interface WarmupProgress {
   step: number;
   totalSteps: number;
@@ -157,9 +177,17 @@ export async function runAccountWarmup(
       totalSteps,
       label: startIdx > 0 ? 'Resuming warm-up…' : 'Signing in…',
     });
-    const agent = await loginBskyAgent(credentials);
+    const agent = await withTimeout(
+      loginBskyAgent(credentials),
+      SIGN_IN_TIMEOUT_MS,
+      'Sign-in timed out — check the account proxy or app password.',
+    );
 
-    let timeline = await fetchTimelinePosts(agent);
+    let timeline = await withTimeout(
+      fetchTimelinePosts(agent),
+      SIGN_IN_TIMEOUT_MS,
+      'Loading the timeline timed out after sign-in.',
+    );
     let threadPosts: PostRef[] = [];
     let lastProfileHandle: string | undefined;
 
