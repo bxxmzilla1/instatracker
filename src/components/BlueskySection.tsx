@@ -335,6 +335,9 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   const [deletingWarmupKey, setDeletingWarmupKey] = useState<string | null>(null);
   // Keys the user has asked to stop; shown as "Stopping…" until the run clears.
   const [warmupStoppingKeys, setWarmupStoppingKeys] = useState<Set<string>>(new Set());
+  // Keys force-stopped this session: hidden locally even if a runaway executor
+  // on another device keeps re-writing the shared run. Cleared on re-run.
+  const [warmupForceHiddenKeys, setWarmupForceHiddenKeys] = useState<Set<string>>(new Set());
   const warmupWriteTimesRef = useRef<Record<string, number>>({});
   const warmupExecutorKeysRef = useRef<Set<string>>(new Set());
   const warmupCardProgressRef = useRef<Record<string, WarmupCardState>>({});
@@ -1742,6 +1745,11 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   // the shared run so an executor on another device stops at its next step.
   function stopWarmups(keys: string[]) {
     if (keys.length === 0) return;
+    // Anything already asked to stop but still hanging gets force-removed.
+    const alreadyStopping = keys.filter((k) => warmupStoppingKeys.has(k));
+    if (alreadyStopping.length > 0) forceStopWarmups(alreadyStopping);
+    keys = keys.filter((k) => !warmupStoppingKeys.has(k));
+    if (keys.length === 0) return;
     warmupStopRequestedRef.current = true;
     const now = Date.now();
     setWarmupStoppingKeys((prev) => {
@@ -1783,6 +1791,31 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
 
   function stopAllFollowWarmups() {
     stopWarmups(collectActiveWarmupKeysForTab('follow:'));
+  }
+
+  // Hard-clears a run without waiting for its (possibly remote, possibly stale)
+  // executor to acknowledge. Deletes the shared row and hides it locally so a
+  // session running old code elsewhere can't keep it pinned on screen.
+  function forceStopWarmups(keys: string[]) {
+    if (keys.length === 0) return;
+    warmupStopRequestedRef.current = true;
+    setWarmupForceHiddenKeys((prev) => {
+      const next = new Set(prev);
+      for (const key of keys) next.add(key);
+      return next;
+    });
+    setWarmupStoppingKeys((prev) => {
+      const next = new Set(prev);
+      for (const key of keys) next.delete(key);
+      return next;
+    });
+    for (const key of keys) {
+      warmupCancelRef.current[key] = true;
+      void requestWarmupCancel(key).catch(() => {});
+      void deleteWarmupRun(key).catch(() => {});
+      forgetWarmupRun(key);
+    }
+    setSuccessMessage(`Force-stopped ${keys.length} warm-up${keys.length === 1 ? '' : 's'}.`);
   }
 
   function persistWarmupRun(
@@ -1841,6 +1874,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     const now = Date.now();
     for (const run of Object.values(remoteWarmupRuns)) {
       if (!run.accountKey.startsWith(prefix)) continue;
+      if (warmupForceHiddenKeys.has(run.accountKey)) continue;
       if (!isWarmupRunInProgress(run) && !isWarmupRunVisible(run, now)) continue;
       byKey.set(run.accountKey, {
         key: run.accountKey,
@@ -1850,6 +1884,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     }
     for (const [key, card] of Object.entries(warmupCardProgress)) {
       if (!key.startsWith(prefix)) continue;
+      if (warmupForceHiddenKeys.has(key)) continue;
       if (card.status !== 'waiting' && card.status !== 'running' && card.status !== 'done' && card.status !== 'error') {
         continue;
       }
@@ -1874,6 +1909,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     remoteWarmupRuns,
     warmupCardProgress,
     visibleWarmupKeys,
+    warmupForceHiddenKeys,
     accounts,
     slaveAccounts,
   ]);
@@ -2062,6 +2098,13 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     const drain = async () => {
     const ordered = options.resume ? sortWarmupRowsByQueue(rows) : rows;
     setWarmupRunning(true);
+    // A re-run clears any prior force-stop hiding for these accounts.
+    setWarmupForceHiddenKeys((prev) => {
+      if (prev.size === 0) return prev;
+      const next = new Set(prev);
+      for (const r of ordered) next.delete(r.key);
+      return next;
+    });
     setError(null);
     if (!options.resume) setSuccessMessage(null);
     warmupExecutorKeysRef.current = new Set(ordered.map((r) => r.key));
@@ -2366,8 +2409,13 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                 </button>
               )}
               {isStopping && (
-                <button type="button" className="btn warmup-bubble-card__delete" disabled>
-                  Stopping…
+                <button
+                  type="button"
+                  className="btn btn--danger warmup-bubble-card__delete"
+                  onClick={() => forceStopWarmups([row.key])}
+                  title="The run isn't responding — remove it immediately"
+                >
+                  Force stop
                 </button>
               )}
               {card.error && <p className="warmup-bubble-card__error">{card.error}</p>}
