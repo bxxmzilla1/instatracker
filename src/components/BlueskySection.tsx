@@ -53,6 +53,7 @@ import {
   upsertRun,
   upsertWarmupRun,
   deleteWarmupRun,
+  requestWarmupCancel,
   updateBanner,
   updateBio,
   updatePost,
@@ -332,6 +333,8 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     {},
   );
   const [deletingWarmupKey, setDeletingWarmupKey] = useState<string | null>(null);
+  // Keys the user has asked to stop; shown as "Stopping…" until the run clears.
+  const [warmupStoppingKeys, setWarmupStoppingKeys] = useState<Set<string>>(new Set());
   const warmupWriteTimesRef = useRef<Record<string, number>>({});
   const warmupExecutorKeysRef = useRef<Set<string>>(new Set());
   const warmupCardProgressRef = useRef<Record<string, WarmupCardState>>({});
@@ -339,6 +342,9 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
   const warmupResumeLockRef = useRef(false);
   const warmupCancelRef = useRef<Record<string, boolean>>({});
   const warmupStopRequestedRef = useRef(false);
+  // Mirror of the latest polled warm-up runs so a running executor can detect a
+  // cancel requested from another device between warm-up steps.
+  const remoteWarmupRunsRef = useRef<Record<string, BskyWarmupRun>>({});
   // Per-engagement-card input for how many slave accounts to like / repost with.
   const [engagementInputs, setEngagementInputs] = useState<
     Record<string, { like: string; repost: string }>
@@ -781,6 +787,7 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
         if (!active) return;
         const map: Record<string, BskyWarmupRun> = {};
         for (const r of runs) map[r.accountKey] = r;
+        remoteWarmupRunsRef.current = map;
         setRemoteWarmupRuns(map);
       } catch {
         // ignore transient fetch errors
@@ -1637,19 +1644,29 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     [activeWarmupRows, remoteWarmupRuns, warmupCardProgress],
   );
 
-  const activeSlaveWarmupCount = useMemo(() => {
+  function countActiveWarmups(prefix: 'follow:' | 'slave:'): number {
     const keys = new Set<string>();
     for (const [key, card] of Object.entries(warmupCardProgress)) {
-      if (!key.startsWith('slave:')) continue;
+      if (!key.startsWith(prefix)) continue;
       if (card.status === 'waiting' || card.status === 'running') keys.add(key);
     }
     for (const run of Object.values(remoteWarmupRuns)) {
-      if (run.accountKey.startsWith('slave:') && isWarmupRunInProgress(run)) {
+      if (run.accountKey.startsWith(prefix) && isWarmupRunInProgress(run)) {
         keys.add(run.accountKey);
       }
     }
     return keys.size;
-  }, [warmupCardProgress, remoteWarmupRuns]);
+  }
+
+  const activeSlaveWarmupCount = useMemo(
+    () => countActiveWarmups('slave:'),
+    [warmupCardProgress, remoteWarmupRuns],
+  );
+
+  const activeFollowWarmupCount = useMemo(
+    () => countActiveWarmups('follow:'),
+    [warmupCardProgress, remoteWarmupRuns],
+  );
 
   function needsWarmupExecutor(run: BskyWarmupRun, now = Date.now()): boolean {
     if (!run.active) return false;
@@ -1702,25 +1719,70 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     return [...keys];
   }
 
-  function stopAllSlaveWarmups() {
-    const keys = collectActiveSlaveWarmupKeys();
-    if (keys.length === 0) return;
-    warmupStopRequestedRef.current = true;
-    for (const key of keys) warmupCancelRef.current[key] = true;
-    for (const key of keys) {
-      const card = warmupCardProgress[key];
-      if (card?.status === 'waiting') {
-        clearFinishedWarmupRow(warmupRowFromKey(key), 0);
-      } else if (card?.status === 'running') {
-        setWarmupCardProgress((prev) => ({
-          ...prev,
-          [key]: { ...prev[key]!, label: 'Stopping…' },
-        }));
-      } else {
-        void deleteWarmupRun(key).catch(() => {});
+  // All in-progress warm-up keys for one tab ('follow:' or 'slave:'), including
+  // runs owned by other devices (seen via the shared poll).
+  function collectActiveWarmupKeysForTab(prefix: 'follow:' | 'slave:'): string[] {
+    const keys = new Set<string>();
+    for (const key of warmupExecutorKeysRef.current) {
+      if (key.startsWith(prefix)) keys.add(key);
+    }
+    for (const [key, card] of Object.entries(warmupCardProgress)) {
+      if (!key.startsWith(prefix)) continue;
+      if (card.status === 'waiting' || card.status === 'running') keys.add(key);
+    }
+    for (const run of Object.values(remoteWarmupRuns)) {
+      if (run.accountKey.startsWith(prefix) && isWarmupRunInProgress(run)) {
+        keys.add(run.accountKey);
       }
     }
-    setSuccessMessage(`Stopping ${keys.length} slave warm-up${keys.length === 1 ? '' : 's'}…`);
+    return [...keys];
+  }
+
+  // Cancels the given warm-up runs. Stops local execution immediately and flags
+  // the shared run so an executor on another device stops at its next step.
+  function stopWarmups(keys: string[]) {
+    if (keys.length === 0) return;
+    warmupStopRequestedRef.current = true;
+    const now = Date.now();
+    setWarmupStoppingKeys((prev) => {
+      const next = new Set(prev);
+      for (const key of keys) next.add(key);
+      return next;
+    });
+    for (const key of keys) {
+      warmupCancelRef.current[key] = true;
+      const card = warmupCardProgress[key];
+      if (card?.status === 'running') {
+        setWarmupCardProgress((prev) =>
+          prev[key] ? { ...prev, [key]: { ...prev[key]!, label: 'Stopping…' } } : prev,
+        );
+      }
+
+      const remote = remoteWarmupRuns[key];
+      const ownedByLiveOtherDevice =
+        remote?.status === 'running' &&
+        remote.claimedBy !== warmupClientIdRef.current &&
+        now - remote.updatedAt < RUN_STALE_MS;
+
+      if (ownedByLiveOtherDevice) {
+        // Signal the owning device; it will stop and clear the run itself.
+        void requestWarmupCancel(key).catch(() => {});
+      } else if (card?.status === 'waiting' || !card) {
+        // Not actively running locally: drop it outright so it can't resume.
+        void requestWarmupCancel(key).catch(() => {});
+        clearFinishedWarmupRow(warmupRowFromKey(key), 0);
+        forgetWarmupRun(key);
+      }
+    }
+    setSuccessMessage(`Stopping ${keys.length} warm-up${keys.length === 1 ? '' : 's'}…`);
+  }
+
+  function stopAllSlaveWarmups() {
+    stopWarmups(collectActiveSlaveWarmupKeys());
+  }
+
+  function stopAllFollowWarmups() {
+    stopWarmups(collectActiveWarmupKeysForTab('follow:'));
   }
 
   function persistWarmupRun(
@@ -1865,6 +1927,28 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
     warmupCardProgressRef.current = warmupCardProgress;
   }, [warmupCardProgress]);
 
+  // Once a cancelled run has actually cleared (locally and in shared storage),
+  // drop it from the "Stopping…" set so the label/state resets cleanly.
+  useEffect(() => {
+    if (warmupStoppingKeys.size === 0) return;
+    setWarmupStoppingKeys((prev) => {
+      let changed = false;
+      const next = new Set(prev);
+      for (const key of prev) {
+        const remote = remoteWarmupRuns[key];
+        const localCard = warmupCardProgress[key];
+        const remoteBusy = remote ? isWarmupRunInProgress(remote) : false;
+        const localBusy = localCard?.status === 'waiting' || localCard?.status === 'running';
+        if (!remoteBusy && !localBusy) {
+          next.delete(key);
+          delete warmupCancelRef.current[key];
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [remoteWarmupRuns, warmupCardProgress, warmupStoppingKeys]);
+
   async function runWarmupOne(
     row: WarmupRunRow,
     options: { resume?: boolean; queueOrder: number },
@@ -1927,7 +2011,9 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
             setWarmupCardProgress((prev) => ({ ...prev, [row.key]: card }));
             persistWarmupRun(row, card, true, false, options.queueOrder);
           },
-          shouldCancel: () => warmupCancelRef.current[row.key] === true,
+          shouldCancel: () =>
+            warmupCancelRef.current[row.key] === true ||
+            remoteWarmupRunsRef.current[row.key]?.cancelRequested === true,
         },
         { startFromStepIndex },
       );
@@ -2233,8 +2319,12 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
               label: 'Ready to start',
             } satisfies WarmupCardState);
           const percent = warmupCardPercent(card);
-          const statusLabel =
-            card.status === 'ready'
+          const isStopping = warmupStoppingKeys.has(row.key);
+          const canStop =
+            !isStopping && (card.status === 'running' || card.status === 'waiting');
+          const statusLabel = isStopping
+            ? 'Stopping'
+            : card.status === 'ready'
               ? 'Ready'
               : card.status === 'waiting'
                 ? 'Waiting'
@@ -2259,11 +2349,27 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                   <div className="publish-progress__fill" style={{ width: `${percent}%` }} />
                 </div>
                 <span className="publish-progress__label">
-                  {card.status === 'running' || card.status === 'done'
-                    ? `Step ${card.step}/${card.totalSteps} · ${card.label}`
-                    : card.label}
+                  {isStopping
+                    ? 'Stopping…'
+                    : card.status === 'running' || card.status === 'done'
+                      ? `Step ${card.step}/${card.totalSteps} · ${card.label}`
+                      : card.label}
                 </span>
               </div>
+              {canStop && (
+                <button
+                  type="button"
+                  className="btn btn--danger warmup-bubble-card__delete"
+                  onClick={() => stopWarmups([row.key])}
+                >
+                  Stop
+                </button>
+              )}
+              {isStopping && (
+                <button type="button" className="btn warmup-bubble-card__delete" disabled>
+                  Stopping…
+                </button>
+              )}
               {card.error && <p className="warmup-bubble-card__error">{card.error}</p>}
               {card.status === 'error' && isAccountTakedownError(card.error) && (
                 <button
@@ -4873,6 +4979,15 @@ export function BlueskySection({ session, isAdmin, canSwitch, onSwitchToInstagra
                         onClick={stopAllSlaveWarmups}
                       >
                         Stop all ({activeSlaveWarmupCount})
+                      </button>
+                    )}
+                    {warmupTab === 'follow' && activeFollowWarmupCount > 0 && (
+                      <button
+                        type="button"
+                        className="btn btn--danger"
+                        onClick={stopAllFollowWarmups}
+                      >
+                        Stop all ({activeFollowWarmupCount})
                       </button>
                     )}
                     <button

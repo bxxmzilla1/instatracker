@@ -753,6 +753,7 @@ interface WarmupRunRow {
   updated_at: number | string | null;
   claimed_by: string | null;
   queue_order: number | string | null;
+  cancel_requested: boolean | null;
 }
 
 function toWarmupRun(row: WarmupRunRow): BskyWarmupRun {
@@ -776,6 +777,7 @@ function toWarmupRun(row: WarmupRunRow): BskyWarmupRun {
     updatedAt: Number(row.updated_at ?? 0),
     claimedBy: row.claimed_by ?? undefined,
     queueOrder: row.queue_order != null ? Number(row.queue_order) : undefined,
+    cancelRequested: row.cancel_requested ?? false,
   };
 }
 
@@ -806,5 +808,18 @@ export async function upsertWarmupRun(run: BskyWarmupRun): Promise<void> {
 
 export async function deleteWarmupRun(accountKey: string): Promise<void> {
   const { error } = await client().from('bsky_warmup_runs').delete().eq('account_key', accountKey);
+  if (error) throw new Error(error.message);
+}
+
+/**
+ * Flags a run so whichever executor owns it (possibly on another device) stops
+ * at its next checkpoint. upsertWarmupRun never writes this column, so progress
+ * heartbeats won't clear the request before the executor sees it.
+ */
+export async function requestWarmupCancel(accountKey: string): Promise<void> {
+  const { error } = await client()
+    .from('bsky_warmup_runs')
+    .update({ cancel_requested: true })
+    .eq('account_key', accountKey);
   if (error) throw new Error(error.message);
 }

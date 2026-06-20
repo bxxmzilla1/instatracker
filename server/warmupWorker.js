@@ -175,23 +175,34 @@ export async function processWarmupQueue() {
     claimedBy: EXECUTOR_ID,
   });
 
+  let cancelRequested = false;
   const heartbeat = setInterval(() => {
-    void upsertWarmupRun(db, {
-      ...next,
-      status: 'running',
-      step: lastStep,
-      totalSteps: WARMUP_STEP_COUNT,
-      label: next.label || 'Running…',
-      active: true,
-      updatedAt: Date.now(),
-      claimedBy: EXECUTOR_ID,
-    });
+    void (async () => {
+      // Surface a cancel requested from any device so the run can stop.
+      const { data } = await db
+        .from('bsky_warmup_runs')
+        .select('cancel_requested')
+        .eq('account_key', next.accountKey)
+        .maybeSingle();
+      if (data?.cancel_requested) cancelRequested = true;
+      await upsertWarmupRun(db, {
+        ...next,
+        status: 'running',
+        step: lastStep,
+        totalSteps: WARMUP_STEP_COUNT,
+        label: next.label || 'Running…',
+        active: true,
+        updatedAt: Date.now(),
+        claimedBy: EXECUTOR_ID,
+      });
+    })();
   }, 2000);
 
   try {
     const res = await runAccountWarmup(
       creds,
       {
+        shouldCancel: () => cancelRequested,
         onProgress: async (p) => {
           lastStep = p.step;
           next.label = p.label;

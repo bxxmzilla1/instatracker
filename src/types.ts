@@ -141,6 +141,8 @@ export interface BskyWarmupRun {
   updatedAt: number;
   claimedBy?: string;
   queueOrder?: number;
+  /** Set true to ask whichever executor owns this run to stop (cross-device). */
+  cancelRequested?: boolean;
 }
 
 /** A recorded batch of follows performed by a Bluesky follow account. */

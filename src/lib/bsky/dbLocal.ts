@@ -402,3 +402,9 @@ export async function deleteWarmupRun(accountKey: string): Promise<void> {
   const db = await getDb();
   await db.delete('warmupRuns', accountKey);
 }
+
+export async function requestWarmupCancel(accountKey: string): Promise<void> {
+  const db = await getDb();
+  const run = await db.get('warmupRuns', accountKey);
+  if (run) await db.put('warmupRuns', { ...run, cancelRequested: true });
+}

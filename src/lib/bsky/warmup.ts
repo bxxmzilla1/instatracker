@@ -10,6 +10,17 @@ export const WARMUP_SESSION_MS = 5 * 60 * 1000;
 const SIGN_IN_TIMEOUT_MS = 90 * 1000;
 
 /** Rejects if `promise` doesn't settle within `ms` so a hung network call can't stall the queue. */
+/** Sleep that wakes early (in ~1s slices) once a cancel has been requested. */
+async function interruptibleSleep(ms: number, shouldCancel: () => boolean) {
+  let remaining = ms;
+  while (remaining > 0) {
+    if (shouldCancel()) return;
+    const slice = Math.min(1000, remaining);
+    await sleep(slice);
+    remaining -= slice;
+  }
+}
+
 function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error(message)), ms);
@@ -106,30 +117,37 @@ async function fetchTimelinePosts(agent: AtpAgent, limit = 30): Promise<PostRef[
     }));
 }
 
-async function scrollTimeline(agent: AtpAgent, durationMs: number) {
+async function scrollTimeline(agent: AtpAgent, durationMs: number, shouldCancel: () => boolean) {
   const started = Date.now();
   let cursor: string | undefined;
   while (Date.now() - started < durationMs) {
+    if (shouldCancel()) return;
     const res = await agent.app.bsky.feed.getTimeline({ limit: 30, cursor });
     cursor = res.data.cursor;
-    await sleep(Math.min(4000, durationMs - (Date.now() - started)));
+    await interruptibleSleep(Math.min(4000, durationMs - (Date.now() - started)), shouldCancel);
     if (!cursor) break;
   }
   const remaining = durationMs - (Date.now() - started);
-  if (remaining > 0) await sleep(remaining);
+  if (remaining > 0) await interruptibleSleep(remaining, shouldCancel);
 }
 
-async function browseAuthorFeed(agent: AtpAgent, actor: string, durationMs: number) {
+async function browseAuthorFeed(
+  agent: AtpAgent,
+  actor: string,
+  durationMs: number,
+  shouldCancel: () => boolean,
+) {
   const started = Date.now();
   let cursor: string | undefined;
   while (Date.now() - started < durationMs) {
+    if (shouldCancel()) return;
     const res = await agent.app.bsky.feed.getAuthorFeed({ actor, limit: 30, cursor });
     cursor = res.data.cursor;
-    await sleep(Math.min(4000, durationMs - (Date.now() - started)));
+    await interruptibleSleep(Math.min(4000, durationMs - (Date.now() - started)), shouldCancel);
     if (!cursor) break;
   }
   const remaining = durationMs - (Date.now() - started);
-  if (remaining > 0) await sleep(remaining);
+  if (remaining > 0) await interruptibleSleep(remaining, shouldCancel);
 }
 
 async function likePost(agent: AtpAgent, post: PostRef) {
@@ -201,14 +219,14 @@ export async function runAccountWarmup(
 
       switch (action.type) {
         case 'scroll_feed': {
-          await scrollTimeline(agent, action.durationMs);
+          await scrollTimeline(agent, action.durationMs, shouldCancel);
           timeline = await fetchTimelinePosts(agent);
           break;
         }
         case 'like_post': {
           const post = pickRandom(timeline);
           if (post) await likePost(agent, post);
-          await sleep(action.durationMs);
+          await interruptibleSleep(action.durationMs, shouldCancel);
           break;
         }
         case 'like_comment': {
@@ -225,7 +243,7 @@ export async function runAccountWarmup(
               await likePost(agent, root);
             }
           }
-          await sleep(action.durationMs);
+          await interruptibleSleep(action.durationMs, shouldCancel);
           break;
         }
         case 'read_thread': {
@@ -238,7 +256,7 @@ export async function runAccountWarmup(
               threadPosts = [post];
             }
           }
-          await sleep(action.durationMs);
+          await interruptibleSleep(action.durationMs, shouldCancel);
           break;
         }
         case 'open_profile': {
@@ -248,16 +266,16 @@ export async function runAccountWarmup(
             await agent.app.bsky.actor.getProfile({ actor: handle });
             lastProfileHandle = handle;
           }
-          await sleep(action.durationMs);
+          await interruptibleSleep(action.durationMs, shouldCancel);
           break;
         }
         case 'browse_feed': {
           const handle = lastProfileHandle ?? pickRandom(timeline)?.handle;
           if (handle) {
             lastProfileHandle = handle;
-            await browseAuthorFeed(agent, handle, action.durationMs);
+            await browseAuthorFeed(agent, handle, action.durationMs, shouldCancel);
           } else {
-            await sleep(action.durationMs);
+            await interruptibleSleep(action.durationMs, shouldCancel);
           }
           break;
         }
@@ -270,7 +288,7 @@ export async function runAccountWarmup(
               // non-fatal
             }
           }
-          await sleep(action.durationMs);
+          await interruptibleSleep(action.durationMs, shouldCancel);
           break;
         }
         case 'reply_comment': {
@@ -290,18 +308,19 @@ export async function runAccountWarmup(
               // non-fatal
             }
           }
-          await sleep(action.durationMs);
+          await interruptibleSleep(action.durationMs, shouldCancel);
           break;
         }
         default:
-          await sleep(action.durationMs);
+          await interruptibleSleep(action.durationMs, shouldCancel);
       }
     }
 
     const elapsed = Date.now() - sessionStart;
     if (elapsed < WARMUP_SESSION_MS) {
       onProgress({ step: totalSteps, totalSteps, label: 'Finishing session…' });
-      await sleep(WARMUP_SESSION_MS - elapsed);
+      await interruptibleSleep(WARMUP_SESSION_MS - elapsed, shouldCancel);
+      if (shouldCancel()) return { ok: true, cancelled: true };
     }
 
     return { ok: true };

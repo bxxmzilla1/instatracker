@@ -50,4 +50,5 @@ export const {
   getWarmupRuns,
   upsertWarmupRun,
   deleteWarmupRun,
+  requestWarmupCancel,
 } = impl;
